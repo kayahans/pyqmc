@@ -1,6 +1,6 @@
 import numpy as np
 import pyqmc.gpu as gpu
-import pyqmc.determinant_tools as determinant_tools
+import determinant_tools as determinant_tools
 import pyqmc.orbitals
 import warnings
 
@@ -79,136 +79,39 @@ def sherman_morrison_ms(e, inv, vec):
     return ratio, invnew
 
 
-class Slater:
+class BosonWF:
     r"""
-    A multi-determinant wave function object initialized
-    via an SCF calculation.
-
-    How to use with hci
-
-    .. code-block:: python
-
-        cisolver = pyscf.hci.SCI(mol)
-        cisolver.select_cutoff=0.1
-        nmo = mf.mo_coeff.shape[1]
-        nelec = mol.nelec
-        h1 = mf.mo_coeff.T.dot(mf.get_hcore()).dot(mf.mo_coeff)
-        h2 = pyscf.ao2mo.full(mol, mf.mo_coeff)
-        e, civec = cisolver.kernel(h1, h2, nmo, nelec, verbose=4)
-        cisolver.ci = civec[0]
-        wf = pyqmc.slater.Slater(mol, mf, cisolver, tol=0.1)
-
-    How to use with CASCI/CASSCF
-
-    .. code-block:: python
-
-        cell, mf = pyq.recover_pyscf(scf_checkfile, cancel_outputs=False)
-        mc = mcscf.CASCI(mf, 2, 2)
-        mc.kernel()
-        wf = pyqmc.slater.Slater(mol, mf, mc, tol=0.1)
-
-    To use saved results, attributes of CASCI/CASSCF objects need to be saved
-
-    .. code-block:: python
-
-        cell, mf = pyq.recover_pyscf(scf_checkfile, cancel_outputs=False)
-
-        mc = mcscf.CASCI(mf, 2, 2)
-        mc.kernel()
-        with h5py.File(casci_checkfile, "a") as f:
-            f.create_group("ci")
-            f["ci/nelecas"] = list(mc.nelecas)
-            f["ci/ci"] = mc.ci
-            f["ci/ncas"] = mc.ncas
-            f["ci/mo_coeff"] = mc.mo_coeff
-
-        mc = mcscf.CASSCF(mf, 2, 2)
-        mc.chkfile = casscf_checkfile # only CASSCF saves results
-        mc.kernel()
-        with h5py.File(casscf_checkfile, "a") as f:
-            f["mcscf/nelecas"] = list(mc.nelecas)
-            f["mcscf/ci"] = mc.ci
-
-    Note that when using CASCI/CASSCF, the ``mc`` object needs to have these four attributes: 
-        * ``nelecas``: list of 2 ints
-        * ``ci``: :math:`(N_{\rm det}, N_{\rm det})` matrix of ci coefficients 
-        * ``ncas``: int
-        * ``mo_coeff``: :math:`(N_{\rm AO}, N_{\rm AO})` array
-
     """
 
-    def __init__(self, mol, mf, mc=None, tol=None, twist=None, determinants=None):
+    def __init__(self, mol, mf, tol=None):
         """
-        determinants should be a list of tuples, for example
-        [ (1.0, [0,1],[0,1]),
-          (-0.2, [0,2],[0,2]) ]
-        would be a two-determinant wave function with a doubles excitation in the second one.
-
-        determinants overrides any information in mc, if passed.
         """
+        from wftools import generate_slater
         self.tol = -1 if tol is None else tol
         self._mol = mol
-        if hasattr(mc, "nelecas"):
-            # In case nelecas overrode the information from the molecule object.
-            ncore = mc.ncore
-            if not hasattr(ncore, "__len__"):
-                ncore = [ncore, ncore]
-            self._nelec = (mc.nelecas[0] + ncore[0], mc.nelecas[1] + ncore[1])
-        else:
-            self._nelec = mol.nelec
-
-        self.myparameters = {}
-        (
-            self.myparameters["det_coeff"],
-            self._det_occup,
-            self._det_map,
-            self.orbitals,
-        ) = pyqmc.orbitals.choose_evaluator_from_pyscf(
-            mol, mf, mc, twist=twist, determinants=determinants, tol=self.tol
-        )
-
-        self.parameters = JoinParameters([self.myparameters, self.orbitals.parameters])
-
-        iscomplex = self.orbitals.mo_dtype == complex or bool(
-            sum(map(gpu.cp.iscomplexobj, self.parameters.values()))
-        )
-        self.dtype = complex if iscomplex else float
-        self.get_phase = get_complex_phase if iscomplex else gpu.cp.sign
+        self._nelec = mol.nelec
+        self.nmax = 1 
+        wf1, to_opt1 = generate_slater(mol, mf)
+        self.slater_dets = [wf1]
 
     def recompute(self, configs):
-        """This computes the value from scratch. Returns the logarithm of the wave function as
-        (phase,logdet). If the wf is real, phase will be +/- 1."""
-
+        """This computes the value from scratch"""
+        import pdb
+        pdb.set_trace()
         nconf, nelec, ndim = configs.configs.shape
-        aos = self.orbitals.aos("GTOval_sph", configs)
-        self._aovals = aos.reshape(-1, nconf, nelec, aos.shape[-1])
         self._dets = []
-        self._inverse = []
-        for s in [0, 1]:
-            begin = self._nelec[0] * s
-            end = self._nelec[0] + self._nelec[1] * s
-            mo = self.orbitals.mos(self._aovals[:, :, begin:end, :], s)
-            mo_vals = gpu.cp.swapaxes(mo[:, :, self._det_occup[s]], 1, 2)
-            import pdb
-            pdb.set_trace()
-            self._dets.append(
-                gpu.cp.asarray(np.linalg.slogdet(mo_vals))
-            )  # Spin, (sign, val), nconf, [ndet_up, ndet_dn]
-
-            is_zero = np.sum(np.abs(self._dets[s][0]) < 1e-16)
-            compute = np.isfinite(self._dets[s][1])
-            if is_zero > 0:
-                warnings.warn(
-                    f"A wave function is zero. Found this proportion: {is_zero/nconf}"
-                )
-                # print(configs.configs[])
-                print(f"zero {is_zero/np.prod(compute.shape)}")
-            self._inverse.append(gpu.cp.zeros(mo_vals.shape, dtype=mo_vals.dtype))
-            for d in range(compute.shape[1]):
-                self._inverse[s][compute[:, d], d, :, :] = gpu.cp.linalg.inv(
-                    mo_vals[compute[:, d], d, :, :]
-                )
-            # spin, Nconf, [ndet_up, ndet_dn], nelec, nelec
+        for det_ind, slater_det in enumerate(self.slater_dets):
+            aos = slater_det.orbitals.aos("GTOval_sph", configs)
+            slater_det._aovals = aos.reshape(-1, nconf, nelec, aos.shape[-1])
+            
+            self._dets.append([])
+            for s in [0, 1]:                
+                begin = slater_det._nelec[0] * s
+                end = slater_det._nelec[0] + slater_det._nelec[1] * s
+                mo = slater_det.orbitals.mos(slater_det._aovals[:, :, begin:end, :], s)
+                mo_vals = gpu.cp.swapaxes(mo[:, :, slater_det._det_occup[s]], 1, 2)
+                pdb.set_trace()
+                self._dets[det_ind].append(np.linalg.det(mo_vals))
         return self.value()
 
     def updateinternals(self, e, epos, configs, mask=None, saved_values=None):
@@ -243,12 +146,17 @@ class Slater:
         self._dets[s][1, mask, :] += gpu.cp.log(gpu.cp.abs(det_ratio))
 
     def value(self):
-        """Return logarithm of the wave function as noted in recompute()"""
-        updets = self._dets[0][:, :, self._det_map[0]]
-        dndets = self._dets[1][:, :, self._det_map[1]]
-        return determinant_tools.compute_value(
-            updets, dndets, self.parameters["det_coeff"]
-        )
+        """
+        """
+        wf_val = 0
+        for det_ind, slater_det in enumerate(self.slater_dets):
+            updets = self._dets[det_ind][0][:, [0]]
+            dndets = self._dets[det_ind][1][:, [0]]
+            cmm = gpu.cp.einsum("ci,ci->ci", updets, dndets)
+            cmm2 = gpu.cp.einsum("ci,ci->ci", cmm, cmm)
+            wf_val += np.nan_to_num(cmm2)
+        wf_val_sqrt = np.sqrt(wf_val)
+        return wf_val_sqrt
 
     def _testrow(self, e, vec, mask=None, spin=None):
         """vec is a nconfig,nmo vector which replaces row e"""
@@ -357,10 +265,11 @@ class Slater:
         Note that this can be called even if the internals have not been updated for electron e,
         if epos differs from the current position of electron e."""
         s = int(e >= self._nelec[0])
-        aograd = self.orbitals.aos("GTOval_sph_deriv1", epos)
-        mograd = self.orbitals.mos(aograd, s)
-
-        mograd_vals = mograd[:, :, self._det_occup[s]]
+        aograd = self.slater_dets[0].orbitals.aos("GTOval_sph_deriv1", epos)
+        mograd = self.slater_dets[0].orbitals.mos(aograd, s)
+        import pdb
+        pdb.set_trace()
+        mograd_vals = mograd[:, :, self.slater_dets[0]._det_occup[s]]
 
         ratios = gpu.asnumpy(self._testrowderiv(e, mograd_vals))
         derivatives = ratios[1:] / ratios[0]

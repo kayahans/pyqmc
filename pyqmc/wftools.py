@@ -1,6 +1,8 @@
 from pyqmc import three_body_jastrow
-import pyqmc.slater as slater
-import pyqmc.multiplywf as multiplywf
+import slater as slater
+#import pyqmc.slater as slater
+import multiplywf as multiplywf
+#import pyqmc.multiplywf as multiplywf
 import pyqmc.addwf as addwf
 import pyqmc.jastrowspin as jastrowspin
 import pyqmc.func3d as func3d
@@ -8,6 +10,21 @@ import pyqmc.gpu as gpu
 import numpy as np
 import h5py
 
+def generate_boson(
+    mol,
+    mf,
+):
+    """Construct a Slater determinant
+
+    :parameter boolean optimize_orbitals: make `to_opt` true for orbital parameters
+    :parameter array-like twist: The twist to extract from the mean-field object
+    :parameter boolean optimize_zeros: optimize coefficients that are zero in the mean-field object
+    :returns: slater, to_opt
+    """
+    import bosonwf
+    wf = bosonwf.BosonWF(mol, mf)
+    to_opt = {}
+    return wf, to_opt
 
 def generate_slater(
     mol,
@@ -165,6 +182,24 @@ def generate_wf(
         to_opt.update({f"wf{i+2}" + k: v for k, v in to_opt2.items()})
     return wf, to_opt
 
+def generate_boson_wf(
+    mol, mf, jastrow=generate_jastrow, jastrow_kws=None, slater_kws=None
+):
+    """
+    """
+    if jastrow_kws is None:
+        jastrow_kws = {}
+
+    if slater_kws is None:
+        slater_kws = {}
+
+    if not isinstance(jastrow, list):
+        jastrow = [jastrow]
+        jastrow_kws = [jastrow_kws]
+    wf, to_opt1 = generate_boson(mol, mf, **slater_kws)
+
+    to_opt = {}
+    return wf, to_opt
 
 def read_wf(wf, wf_file):
     """Read the wave function parameters from wf_file into wf.

@@ -100,6 +100,8 @@ def vmc_worker(wf, configs, tstep, nsteps, accumulators):
         acc = 0.0
         for e in range(nelec):
             # Propose move
+            import pdb
+            pdb.set_trace()
             g, _, _ = wf.gradient_value(e, configs.electron(e))
             grad = limdrift(np.real(g.T))
             gauss = np.random.normal(scale=np.sqrt(tstep), size=(nconf, 3))

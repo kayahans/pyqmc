@@ -54,6 +54,44 @@ class EnergyAccumulator:
     def shapes(self):
         return {"ke": (), "ee": (), "ei": (), "ecp": (), "total": (), "grad2": ()}
 
+class ABDMCEnergyAccumulator:
+    """Returns local energy of each configuration in a dictionary."""
+
+    def __init__(self, mf, threshold=10, naip=None, **kwargs):
+        self.mol = mf.mol
+        self.threshold = threshold
+        self.naip = naip
+        self.mf = mf
+
+        if hasattr(self.mol, "a"):
+            self.coulomb = ewald.Ewald(self.mol, **kwargs)
+        else:
+            self.coulomb = energy.OpenCoulomb(self.mol, **kwargs)
+
+    def __call__(self, configs, wf):
+        ee, ei, ii = self.coulomb.energy(configs)
+        vxc = energy.vxc_energy(self.mf, self.box, configs)
+        ke, grad2 = energy.kinetic(configs, wf)
+        return {
+            "ke": ke,
+            "ee": ee,
+            "vxc": vxc,
+            "ei": ei,
+            "ii": ii,
+            "grad2": grad2,
+            "total": ke + ee - vxc + ei + ii,
+        }
+
+
+    def avg(self, configs, wf):
+        return {k: np.mean(it, axis=0) for k, it in self(configs, wf).items()}
+
+    def keys(self):
+        return set(["ke", "ee", "vxc", "ei", "total", "grad2"])
+
+    def shapes(self):
+        return {"ke": (), "ee": (), "vxc": (), "ei": (), "ecp": (), "total": (), "grad2": ()}
+
 
 class LinearTransform:
     """

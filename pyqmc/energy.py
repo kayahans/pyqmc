@@ -1,7 +1,7 @@
 import numpy as np
 import pyqmc.eval_ecp as eval_ecp
 import pyqmc.distance as distance
-
+from pyscf.dft import numint
 
 class OpenCoulomb:
     def __init__(self, mol):
@@ -50,3 +50,17 @@ def kinetic(configs, wf):
         ke += -0.5 * lap.real
         grad2 += np.sum(np.abs(grad) ** 2, axis=0)
     return ke, grad2
+
+def vxc_energy(mf, box, configs):
+    # Will be tested on LDA only
+    mol = mf.mol
+    grids = mf.grids
+    dm = mf.make_rdm1()
+    nelec, ex, vx = numint.nr_vxc(mol, grids, mf.xc, dm)
+    ao_value = numint.eval_ao(mol, configs)
+    shls_slice = (0, mol.nbas)
+    ao_loc = mol.ao_loc_nr()
+    c0 = numint._dot_ao_dm(mol, ao_value, vx, None, shls_slice, ao_loc)
+    rho = numint._contract_rho(ao_value, c0)
+    rhod = rho.reshape((box.ys, box.xs, box.zs), order='C')
+    return rhod

@@ -9,7 +9,8 @@ from pyqmc.optimize_ortho import optimize_orthogonal
 from pyqmc.reblock import reblock as avg_reblock
 from pyqmc.wftools import generate_wf, read_wf, generate_jastrow, generate_slater
 from pyqmc.pyscftools import recover_pyscf
-from pyqmc.slater import Slater
+#from pyqmc.slater import Slater
+from slater import Slater
 from pyqmc.jastrowspin import JastrowSpin
 from pyqmc.multiplywf import MultiplyWF
 from pyqmc.addwf import AddWF

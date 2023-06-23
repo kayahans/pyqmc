@@ -1,7 +1,7 @@
 import os
 import numpy as np
+# import pyqmc.mc as mc
 import mc
-#import pyqmc.mc as mc
 import sys
 import h5py
 import logging
@@ -108,7 +108,7 @@ def propose_tmoves(wf, configs, energy_accumulator, tstep, e):
     return newpos, move_selected, acceptance, np.sum(t_amplitudes)
 
 
-def dmc_propagate(
+def abdmc_propagate(
     wf,
     configs,
     weights,
@@ -121,15 +121,15 @@ def dmc_propagate(
     ekey=("energy", "total"),
 ):
     """
-    Propagate DMC without branching
+    Propagate abdmc without branching
 
     :parameter wf: A Wave function-like class. recompute(), gradient(), and updateinternals() are used, as well as anything (such as laplacian() ) used by accumulators
     :parameter configs: Configs object, (nconfig, nelec, 3) - initial coordinates to start calculation.
     :parameter weights: (nconfig,) - initial weights to start calculation
     :parameter tstep: Time step for move proposals. Introduces time step error.
-    :parameter nsteps: number of DMC steps to take
+    :parameter nsteps: number of abdmc steps to take
     :parameter accumulators: A dictionary of functor objects that take in (coords,wf) and return a dictionary of quantities to be averaged. np.mean(quantity,axis=0) should give the average over configurations. If none, a default energy accumulator will be used.
-    :parameter ekey: tuple of strings; energy is needed for DMC weights. Access total energy by accumulators[ekey[0]](configs, wf)[ekey[1]
+    :parameter ekey: tuple of strings; energy is needed for abdmc weights. Access total energy by accumulators[ekey[0]](configs, wf)[ekey[1]
     :returns: (df,coords,weights)
       df: A list of dictionaries nstep long that contains all results from the accumulators.
 
@@ -140,6 +140,8 @@ def dmc_propagate(
     """
     assert accumulators is not None, "Need an energy accumulator for DMC"
     nconfig, nelec = configs.configs.shape[0:2]
+    import pdb
+    pdb.set_trace()
     wf.recompute(configs)
 
     energy_acc = accumulators[ekey[0]](configs, wf)
@@ -356,7 +358,7 @@ def evaluate_energies(wf, configs, en, client, npartitions):
         return ret
 
 
-def rundmc(
+def runabdmc(
     wf,
     configs,
     weights=None,
@@ -377,16 +379,16 @@ def rundmc(
     **kwargs,
 ):
     """
-    Run DMC
+    Run abdmc
 
     :parameter wf: A Wave function-like class. recompute(), gradient(), and updateinternals() are used, as well as anything (such as laplacian() ) used by accumulators
     :parameter configs: (nconfig, nelec, 3) - initial coordinates to start calculation.
     :parameter weights: (nconfig,) - initial weights to start calculation, defaults to uniform.
-    :parameter nsteps: number of DMC steps to take
+    :parameter nsteps: number of abdmc steps to take
     :parameter tstep: Time step for move proposals. Introduces time step error.
     :parameter branchtime: number of steps to take between branching
     :parameter accumulators: A dictionary of functor objects that take in (coords,wf) and return a dictionary of quantities to be averaged. np.mean(quantity,axis=0) should give the average over configurations. If none, a default energy accumulator will be used.
-    :parameter ekey: tuple of strings; energy is needed for DMC weights. Access total energy by accumulators[ekey[0]](configs, wf)[ekey[1]
+    :parameter ekey: tuple of strings; energy is needed for abdmc weights. Access total energy by accumulators[ekey[0]](configs, wf)[ekey[1]
     :parameter verbose: Print out step information
     :parameter stepoffset: If continuing a run, what to start the step numbering at.
     :parameter vmc_warmup: If starting a run, how many VMC warmup blocks to run
@@ -417,7 +419,7 @@ def rundmc(
             weights = np.array(hdf["weights"])
             if "e_trial" not in hdf.keys():
                 raise ValueError(
-                    "Did not find e_trial in the restart file. This may mean that you are trying to restart from a different version of DMC"
+                    "Did not find e_trial in the restart file. This may mean that you are trying to restart from a different version of abdmc"
                 )
             e_trial = hdf["e_trial"][-1]
             e_est = hdf["e_est"][-1]
@@ -425,6 +427,8 @@ def rundmc(
             if verbose:
                 print(f"Restarting calculation {continue_from} from step {stepoffset}")
     else:
+        import pdb
+        pdb.set_trace()
         df, configs = mc.vmc(
             wf,
             configs,
@@ -450,36 +454,19 @@ def rundmc(
     npropagate = int(np.ceil(nsteps / branchtime))
     df = []
     for step in range(npropagate):
-        if client is None:
-            df_, configs, weights = dmc_propagate(
-                wf,
-                configs,
-                weights,
-                tstep,
-                branchcut_start * esigma,
-                e_trial=e_trial,
-                e_est=e_est,
-                nsteps=branchtime,
-                accumulators=accumulators,
-                ekey=ekey,
-                **kwargs,
-            )
-        else:
-            df_, configs, weights = dmc_propagate_parallel(
-                wf,
-                configs,
-                weights,
-                client,
-                npartitions,
-                tstep,
-                branchcut_start * esigma,
-                e_trial=e_trial,
-                e_est=e_est,
-                nsteps=branchtime,
-                accumulators=accumulators,
-                ekey=ekey,
-                **kwargs,
-            )
+        df_, configs, weights = abdmc_propagate(
+            wf,
+            configs,
+            weights,
+            tstep,
+            branchcut_start * esigma,
+            e_trial=e_trial,
+            e_est=e_est,
+            nsteps=branchtime,
+            accumulators=accumulators,
+            ekey=ekey,
+            **kwargs,
+        )
 
         df_["e_trial"] = e_trial
         df_["e_est"] = e_est
