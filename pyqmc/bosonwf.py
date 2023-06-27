@@ -284,7 +284,7 @@ class BosonWF:
         s = int(e >= self._nelec[0])
         self._grad_nom = []
         import pdb
-        numer = 0
+        ratio = 0
         for det_ind, slater_det in enumerate(self.slater_dets):
             d_ao = slater_det.orbitals.aos("GTOval_sph_deriv1", epos)
             d_mo = slater_det.orbitals.mos(d_ao, s)
@@ -297,16 +297,8 @@ class BosonWF:
             )
             det_up_i = self._dets[det_ind][0]
             det_dn_i = self._dets[det_ind][1]
-            numer += gpu.cp.einsum("id,id,id,id,eid->ei", det_dn_i, det_dn_i, det_up_i, det_up_i, ratios)
-            # if s == 0:
-            #     numer = gpu.cp.einsum("id,id,id,eid->ei", det_dn_i, det_dn_i, det_up_i, ratios)
-            # elif s == 1:
-            #     numer = gpu.cp.einsum("id,id,id,eid->ei", det_dn_i, det_up_i, det_up_i, ratios)
-        # det_up = self._dets[:, 0, :, :]
-        # det_dn = self._dets[:, 1, :, :]
-        # denom = 1 #np.sqrt(gpu.cp.einsum("cid,cid,cid,cid->i", det_up, np.conjugate(det_up), det_dn, np.conjugate(det_dn)))
+            ratio += gpu.cp.einsum("id,id,id,id,eid->ei", det_dn_i, det_dn_i, det_up_i, det_up_i, ratios)
         
-        ratio = numer/denom
         val = self.value()
         derivatives = ratio[1:]/val[:,0] #ratio[0]
         
