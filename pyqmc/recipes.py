@@ -226,7 +226,8 @@ def initialize_boson_qmc_objects(
     wf, to_opt = wftools.generate_boson_wf(
         mol, mf, jastrow_kws=jastrow_kws, slater_kws=slater_kws
     )
-    configs = pyqmc.mc.initial_guess(mol, nconfig)
+    from mc import fixed_initial_guess
+    configs = fixed_initial_guess(mol, nconfig)
 
     acc = generate_accumulators(mol, mf, twist=0, **accumulators)
 

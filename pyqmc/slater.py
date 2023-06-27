@@ -348,7 +348,8 @@ class Slater:
         mograd = self.orbitals.mos(aograd, s)
 
         mograd_vals = mograd[:, :, self._det_occup[s]]
-
+        import pdb
+        pdb.set_trace()
         ratios = self._testrowderiv(e, mograd_vals)
         return gpu.asnumpy(ratios[1:] / ratios[0])
 
@@ -361,7 +362,8 @@ class Slater:
         mograd = self.orbitals.mos(aograd, s)
 
         mograd_vals = mograd[:, :, self._det_occup[s]]
-
+        import pdb
+        pdb.set_trace()
         ratios = gpu.asnumpy(self._testrowderiv(e, mograd_vals))
         derivatives = ratios[1:] / ratios[0]
         derivatives[~np.isfinite(derivatives)] = 0.0

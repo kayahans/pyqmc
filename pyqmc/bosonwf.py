@@ -96,22 +96,36 @@ class BosonWF:
 
     def recompute(self, configs):
         """This computes the value from scratch"""
-        import pdb
-        pdb.set_trace()
         nconf, nelec, ndim = configs.configs.shape
         self._dets = []
+        self._detsq = []
+        self._inverse = []
         for det_ind, slater_det in enumerate(self.slater_dets):
             aos = slater_det.orbitals.aos("GTOval_sph", configs)
             slater_det._aovals = aos.reshape(-1, nconf, nelec, aos.shape[-1])
-            
             self._dets.append([])
+            self._detsq.append([])
+            self._inverse.append([])
             for s in [0, 1]:                
                 begin = slater_det._nelec[0] * s
                 end = slater_det._nelec[0] + slater_det._nelec[1] * s
                 mo = slater_det.orbitals.mos(slater_det._aovals[:, :, begin:end, :], s)
                 mo_vals = gpu.cp.swapaxes(mo[:, :, slater_det._det_occup[s]], 1, 2)
-                pdb.set_trace()
-                self._dets[det_ind].append(np.linalg.det(mo_vals))
+                det = np.linalg.det(mo_vals)
+                self._dets[det_ind].append(det)
+                conj = np.conjugate(det)
+                self._detsq[det_ind].append(np.multiply(det, conj)) # Assuming real
+                compute = np.isfinite(self._dets[det_ind][s])
+                self._inverse[det_ind].append(gpu.cp.zeros(mo_vals.shape, dtype=mo_vals.dtype))
+                for d in range(compute.shape[1]):
+                    self._inverse[det_ind][s][compute[:, d], d, :, :] = gpu.cp.linalg.inv(
+                        mo_vals[compute[:, d], d, :, :]
+                    )
+        self._configs = configs
+        self._dets = gpu.cp.array(self._dets)
+        self._detsq = gpu.cp.array(self._detsq)
+        self._inverse = gpu.cp.array(self._inverse)
+        
         return self.value()
 
     def updateinternals(self, e, epos, configs, mask=None, saved_values=None):
@@ -149,7 +163,10 @@ class BosonWF:
         """
         """
         wf_val = 0
+        # import pdb
+        # pdb.set_trace()
         for det_ind, slater_det in enumerate(self.slater_dets):
+
             updets = self._dets[det_ind][0][:, [0]]
             dndets = self._dets[det_ind][1][:, [0]]
             cmm = gpu.cp.einsum("ci,ci->ci", updets, dndets)
@@ -265,18 +282,50 @@ class BosonWF:
         Note that this can be called even if the internals have not been updated for electron e,
         if epos differs from the current position of electron e."""
         s = int(e >= self._nelec[0])
-        aograd = self.slater_dets[0].orbitals.aos("GTOval_sph_deriv1", epos)
-        mograd = self.slater_dets[0].orbitals.mos(aograd, s)
+        self._grad_nom = []
         import pdb
-        pdb.set_trace()
-        mograd_vals = mograd[:, :, self.slater_dets[0]._det_occup[s]]
-
-        ratios = gpu.asnumpy(self._testrowderiv(e, mograd_vals))
-        derivatives = ratios[1:] / ratios[0]
+        numer = 0
+        for det_ind, slater_det in enumerate(self.slater_dets):
+            d_ao = slater_det.orbitals.aos("GTOval_sph_deriv1", epos)
+            d_mo = slater_det.orbitals.mos(d_ao, s)
+            d_mo_vals = d_mo[:, :, slater_det._det_occup[s]]    
+            pdb.set_trace()
+            ratios = gpu.cp.einsum(
+                "eidj,idj->eid",
+                d_mo_vals,
+                self._inverse[det_ind, s, ..., e - s * self._nelec[0]],
+            )
+            det_up_i = self._dets[det_ind][0]
+            det_dn_i = self._dets[det_ind][1]
+            numer += gpu.cp.einsum("id,id,id,id,eid->ei", det_dn_i, det_dn_i, det_up_i, det_up_i, ratios)
+            # if s == 0:
+            #     numer = gpu.cp.einsum("id,id,id,eid->ei", det_dn_i, det_dn_i, det_up_i, ratios)
+            # elif s == 1:
+            #     numer = gpu.cp.einsum("id,id,id,eid->ei", det_dn_i, det_up_i, det_up_i, ratios)
+        # det_up = self._dets[:, 0, :, :]
+        # det_dn = self._dets[:, 1, :, :]
+        # denom = 1 #np.sqrt(gpu.cp.einsum("cid,cid,cid,cid->i", det_up, np.conjugate(det_up), det_dn, np.conjugate(det_dn)))
+        
+        ratio = numer/denom
+        val = self.value()
+        derivatives = ratio[1:]/val[:,0] #ratio[0]
+        
         derivatives[~np.isfinite(derivatives)] = 0.0
         values = ratios[0]
         values[~np.isfinite(values)] = 1.0
-        return derivatives, values, (aograd[:, 0], mograd[0])
+        import matplotlib.pyplot as plt
+        z = epos.configs[:, 2]
+        plt.plot(z,2*derivatives[2], '-ob', label='der_pyqmc')
+        
+        plt.plot(z,np.gradient(val[:,0], z), '-sk', label='der_num')
+        plt.plot(z,val*10, '-or', label='value*10')
+        plt.legend()
+        plt.xlabel('Z coordinate')
+        plt.show()
+        
+        pdb.set_trace()
+        return derivatives, values, val
+
 
     def laplacian(self, e, epos):
         """Compute the laplacian Psi/ Psi."""

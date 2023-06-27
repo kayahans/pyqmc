@@ -140,10 +140,7 @@ def abdmc_propagate(
     """
     assert accumulators is not None, "Need an energy accumulator for DMC"
     nconfig, nelec = configs.configs.shape[0:2]
-    import pdb
-    pdb.set_trace()
     wf.recompute(configs)
-
     energy_acc = accumulators[ekey[0]](configs, wf)
     eloc = energy_acc[ekey[1]].real
     v2 = get_V2(configs, wf, energy_acc)
@@ -427,8 +424,6 @@ def runabdmc(
             if verbose:
                 print(f"Restarting calculation {continue_from} from step {stepoffset}")
     else:
-        import pdb
-        pdb.set_trace()
         df, configs = mc.vmc(
             wf,
             configs,
