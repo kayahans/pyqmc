@@ -13,6 +13,12 @@ import h5py
 def generate_boson(
     mol,
     mf,
+    mc=None,
+    optimize_determinants=False,
+    optimize_orbitals=False,
+    optimize_zeros=True,    
+    epsilon=1e-8,
+    **kwargs,
 ):
     """Construct a Slater determinant
 
@@ -22,7 +28,17 @@ def generate_boson(
     :returns: slater, to_opt
     """
     import bosonwf
-    wf = bosonwf.BosonWF(mol, mf)
+    wf = bosonwf.BosonWF(mol, mf, mc=mc)
+    # Do not optimize det coeff or mo_coeff for now
+    # to_opt["det_coeff"] = np.zeros_like(wf.parameters["det_coeff"], dtype=bool)
+    # if optimize_determinants:
+    #     to_opt["det_coeff"] = np.ones_like(wf.parameters["det_coeff"], dtype=bool)
+    #     to_opt["det_coeff"][np.argmax(wf.parameters["det_coeff"])] = False
+    # if optimize_orbitals:
+    #     for k in ["mo_coeff_alpha", "mo_coeff_beta"]:
+    #         to_opt[k] = np.ones(wf.parameters[k].shape, dtype=bool)
+    #         if not optimize_zeros:
+    #             to_opt[k][np.abs(gpu.asnumpy(wf.parameters[k])) < epsilon] = False
     to_opt = {}
     return wf, to_opt
 
@@ -183,7 +199,7 @@ def generate_wf(
     return wf, to_opt
 
 def generate_boson_wf(
-    mol, mf, jastrow=generate_jastrow, jastrow_kws=None, slater_kws=None
+    mol, mf, jastrow=generate_jastrow, jastrow_kws=None, slater_kws=None, mc = None, 
 ):
     """
     """
@@ -196,9 +212,16 @@ def generate_boson_wf(
     if not isinstance(jastrow, list):
         jastrow = [jastrow]
         jastrow_kws = [jastrow_kws]
-    wf, to_opt1 = generate_boson(mol, mf, **slater_kws)
+    
+    wf1, to_opt1 = generate_boson(mol, mf, mc=mc, **slater_kws)
 
-    to_opt = {}
+    pack = [jast(mol, **kw) for jast, kw in zip(jastrow, jastrow_kws)]
+    wfs = [p[0] for p in pack]
+    to_opts = [p[1] for p in pack]
+    wf = multiplywf.MultiplyWF(wf1, *wfs)
+    to_opt = {"wf1" + k: v for k, v in to_opt1.items()}
+    for i, to_opt2 in enumerate(to_opts):
+        to_opt.update({f"wf{i+2}" + k: v for k, v in to_opt2.items()})
     return wf, to_opt
 
 def read_wf(wf, wf_file):

@@ -1,7 +1,7 @@
 import numpy as np
 import pyqmc.gpu as gpu
 import determinant_tools as determinant_tools
-import pyqmc.orbitals
+import orbitals
 import warnings
 
 
@@ -83,49 +83,71 @@ class BosonWF:
     r"""
     """
 
-    def __init__(self, mol, mf, tol=None):
+    def __init__(self, mol, mf, mc=None, tol=None, twist=None, determinants=None):
         """
         """
         from wftools import generate_slater
         self.tol = -1 if tol is None else tol
         self._mol = mol
-        self._nelec = mol.nelec
-        self.nmax = 1 
-        wf1, to_opt1 = generate_slater(mol, mf)
-        self.slater_dets = [wf1]
+        if hasattr(mc, "nelecas"):
+            # In case nelecas overrode the information from the molecule object.
+            ncore = mc.ncore
+            if not hasattr(ncore, "__len__"):
+                ncore = [ncore, ncore]
+            self._nelec = (mc.nelecas[0] + ncore[0], mc.nelecas[1] + ncore[1])
+        else:
+            self._nelec = mol.nelec
+        self.myparameters = {}
+        (
+            det_coeff,
+            self._det_occup,
+            self._det_map,
+            self.orbitals,
+        ) = orbitals.choose_evaluator_from_pyscf(
+            mol, mf, mc, twist=twist, determinants=determinants, tol=self.tol
+        )
+        num_det = len(det_coeff)
+        # Use constant weight 
+        self.myparameters["det_coeff"] = np.ones(num_det)/num_det
 
-    def recompute(self, configs):
+        self.parameters = JoinParameters([self.myparameters, self.orbitals.parameters])
+
+        iscomplex = self.orbitals.mo_dtype == complex or bool(
+            sum(map(gpu.cp.iscomplexobj, self.parameters.values()))
+        )
+        self.dtype = complex if iscomplex else float
+
+    def recompute(self,configs,det_zero_tol=1e-16):
         """This computes the value from scratch"""
         nconf, nelec, ndim = configs.configs.shape
-        self._dets = []
+        aos = self.orbitals.aos("GTOval_sph", configs)
+        self._aovals = aos.reshape(-1, nconf, nelec, aos.shape[-1])
         self._detsq = []
         self._inverse = []
-        for det_ind, slater_det in enumerate(self.slater_dets):
-            aos = slater_det.orbitals.aos("GTOval_sph", configs)
-            slater_det._aovals = aos.reshape(-1, nconf, nelec, aos.shape[-1])
-            self._dets.append([])
-            self._detsq.append([])
-            self._inverse.append([])
-            for s in [0, 1]:                
-                begin = slater_det._nelec[0] * s
-                end = slater_det._nelec[0] + slater_det._nelec[1] * s
-                mo = slater_det.orbitals.mos(slater_det._aovals[:, :, begin:end, :], s)
-                mo_vals = gpu.cp.swapaxes(mo[:, :, slater_det._det_occup[s]], 1, 2)
-                det = np.linalg.det(mo_vals)
-                self._dets[det_ind].append(det)
-                conj = np.conjugate(det)
-                self._detsq[det_ind].append(np.multiply(det, conj)) # Assuming real
-                compute = np.isfinite(self._dets[det_ind][s])
-                self._inverse[det_ind].append(gpu.cp.zeros(mo_vals.shape, dtype=mo_vals.dtype))
-                for d in range(compute.shape[1]):
-                    self._inverse[det_ind][s][compute[:, d], d, :, :] = gpu.cp.linalg.inv(
-                        mo_vals[compute[:, d], d, :, :]
-                    )
+        for s in [0, 1]:
+            begin = self._nelec[0] * s
+            end = self._nelec[0] + self._nelec[1] * s
+            mo = self.orbitals.mos(self._aovals[:, :, begin:end, :], s)
+            mo_vals = gpu.cp.swapaxes(mo[:, :, self._det_occup[s]], 1, 2)
+            det = np.linalg.det(mo_vals)
+            detsq = gpu.cp.asarray(det * np.conjugate(det), dtype=float)
+            self._detsq.append(detsq)
+            is_zero = np.sum(np.abs(self._detsq[s]) < det_zero_tol)
+            compute = np.isfinite(self._detsq[s])
+            if is_zero > 0:
+                warnings.warn(
+                    f"A wave function is zero. Found this proportion: {is_zero/nconf}"
+                )
+                # print(configs.configs[])
+                print(f"zero {is_zero/np.prod(compute.shape)}")
+            self._inverse.append(gpu.cp.zeros(mo_vals.shape, dtype=mo_vals.dtype))
+            for d in range(compute.shape[1]):
+                self._inverse[s][compute[:, d], d, :, :] = gpu.cp.linalg.inv(
+                    mo_vals[compute[:, d], d, :, :]
+                )
         self._configs = configs
-        self._dets = gpu.cp.array(self._dets)
         self._detsq = gpu.cp.array(self._detsq)
         self._inverse = gpu.cp.array(self._inverse)
-        
         return self.value()
 
     def updateinternals(self, e, epos, configs, mask=None, saved_values=None):
@@ -135,14 +157,13 @@ class BosonWF:
         s = int(e >= self._nelec[0])
         if mask is None:
             mask = np.ones(epos.configs.shape[0], dtype=bool)
-        is_zero = np.sum(np.isinf(self._dets[s][1]))
+        is_zero = np.sum(np.isinf(self._detsq[s][1]))
         if is_zero:
             warnings.warn(
                 "Found a zero in the wave function. Recomputing everything. This should not happen often."
             )
             self.recompute(configs)
             return
-
         eeff = e - s * self._nelec[0]
         if saved_values is None:
             ao = self.orbitals.aos("GTOval_sph", epos, mask)
@@ -156,24 +177,18 @@ class BosonWF:
         det_ratio, self._inverse[s][mask, :, :, :] = sherman_morrison_ms(
             eeff, self._inverse[s][mask, :, :, :], mo_vals
         )
-        self._dets[s][0, mask, :] *= self.get_phase(det_ratio)
-        self._dets[s][1, mask, :] += gpu.cp.log(gpu.cp.abs(det_ratio))
+        self._detsq[s][mask, :] *= gpu.cp.abs(det_ratio)**2
+        # TODO(kayahans): Check this again 
 
     def value(self):
         """
         """
-        wf_val = 0
-        # import pdb
-        # pdb.set_trace()
-        for det_ind, slater_det in enumerate(self.slater_dets):
-
-            updets = self._dets[det_ind][0][:, [0]]
-            dndets = self._dets[det_ind][1][:, [0]]
-            cmm = gpu.cp.einsum("ci,ci->ci", updets, dndets)
-            cmm2 = gpu.cp.einsum("ci,ci->ci", cmm, cmm)
-            wf_val += np.nan_to_num(cmm2)
-        wf_val_sqrt = np.sqrt(wf_val)
-        return wf_val_sqrt
+        det_coeff = self.parameters["det_coeff"]
+        updetsq = self._detsq[0][:, self._det_map[0]]
+        dndetsq = self._detsq[1][:, self._det_map[1]]
+        valsq = gpu.cp.einsum("id,id,d->i", updetsq, dndetsq, det_coeff)
+        val = np.sqrt(valsq)
+        return val
 
     def _testrow(self, e, vec, mask=None, spin=None):
         """vec is a nconfig,nmo vector which replaces row e"""
@@ -268,56 +283,35 @@ class BosonWF:
         """Compute the gradient of the log wave function
         Note that this can be called even if the internals have not been updated for electron e,
         if epos differs from the current position of electron e."""
-        s = int(e >= self._nelec[0])
-        aograd = self.orbitals.aos("GTOval_sph_deriv1", epos)
-        mograd = self.orbitals.mos(aograd, s)
-
-        mograd_vals = mograd[:, :, self._det_occup[s]]
-
-        ratios = self._testrowderiv(e, mograd_vals)
-        return gpu.asnumpy(ratios[1:] / ratios[0])
+        grad, _, _ = self.gradient_value(e, epos)
+        #TODO: gradient is shortcut, but check if using the original version has any computational advantage
+        return grad
 
     def gradient_value(self, e, epos):
         """Compute the gradient of the log wave function
         Note that this can be called even if the internals have not been updated for electron e,
         if epos differs from the current position of electron e."""
         s = int(e >= self._nelec[0])
-        self._grad_nom = []
-        import pdb
-        ratio = 0
-        for det_ind, slater_det in enumerate(self.slater_dets):
-            d_ao = slater_det.orbitals.aos("GTOval_sph_deriv1", epos)
-            d_mo = slater_det.orbitals.mos(d_ao, s)
-            d_mo_vals = d_mo[:, :, slater_det._det_occup[s]]    
-            pdb.set_trace()
-            ratios = gpu.cp.einsum(
-                "eidj,idj->eid",
-                d_mo_vals,
-                self._inverse[det_ind, s, ..., e - s * self._nelec[0]],
-            )
-            det_up_i = self._dets[det_ind][0]
-            det_dn_i = self._dets[det_ind][1]
-            ratio += gpu.cp.einsum("id,id,id,id,eid->ei", det_dn_i, det_dn_i, det_up_i, det_up_i, ratios)
+        aograd = self.orbitals.aos("GTOval_sph_deriv1", epos)
+        mograd = self.orbitals.mos(aograd, s)
+        mograd_vals = mograd[:, :, self._det_occup[s]]
         
-        val = self.value()
-        derivatives = ratio[1:]/val[:,0] #ratio[0]
-        
-        derivatives[~np.isfinite(derivatives)] = 0.0
-        values = ratios[0]
-        values[~np.isfinite(values)] = 1.0
-        import matplotlib.pyplot as plt
-        z = epos.configs[:, 2]
-        plt.plot(z,2*derivatives[2], '-ob', label='der_pyqmc')
-        
-        plt.plot(z,np.gradient(val[:,0], z), '-sk', label='der_num')
-        plt.plot(z,val*10, '-or', label='value*10')
-        plt.legend()
-        plt.xlabel('Z coordinate')
-        plt.show()
-        
-        pdb.set_trace()
-        return derivatives, values, val
 
+        jacobi = gpu.cp.einsum(
+            "ei...dj,idj...->ei...d",
+            mograd_vals,
+            self._inverse[s, ..., e - s * self._nelec[0]],
+        )
+        detsq_up = self._detsq[0][:, self._det_map[0]]
+        detsq_dn = self._detsq[1][:, self._det_map[1]]
+        
+        det_coeff = self.parameters["det_coeff"]
+        numer = gpu.cp.einsum("d,id,id,eid->ei",det_coeff, detsq_up, detsq_dn, jacobi[..., self._det_map[s]])
+        values = self.value()
+        grad = numer[1:]/values    
+        grad[~np.isfinite(grad)] = 0.0
+        values[~np.isfinite(values)] = 1.0
+        return grad, values, (aograd[:, 0], mograd[0])
 
     def laplacian(self, e, epos):
         """Compute the laplacian Psi/ Psi."""

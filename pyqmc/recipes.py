@@ -14,9 +14,9 @@ import h5py
 import scipy.stats
 import pandas as pd
 import copy
-import pyqmc.accumulators
+import accumulators
 import os
-
+from accumulators import ABDMCEnergyAccumulator
 
 def OPTIMIZE(
     dft_checkfile,
@@ -208,7 +208,7 @@ def initialize_boson_qmc_objects(
     jastrow_kws=None,
     slater_kws=None,
     accumulators=None,
-    opt_wf=False,
+    # opt_wf=False,
     target_root=0,
     nodal_cutoff=1e-3,
 ):
@@ -222,16 +222,29 @@ def initialize_boson_qmc_objects(
 
     if S is not None:
         mol = supercell.get_supercell(mol, np.asarray(S))
-
     wf, to_opt = wftools.generate_boson_wf(
-        mol, mf, jastrow_kws=jastrow_kws, slater_kws=slater_kws
+        mol, mf, mc=mc, jastrow_kws=jastrow_kws, slater_kws=slater_kws
     )
-    from mc import fixed_initial_guess
-    configs = fixed_initial_guess(mol, nconfig)
+    if load_parameters is not None:
+        wftools.read_wf(wf, load_parameters)    
+    # from mc import fixed_initial_guess
+    # configs = fixed_initial_guess(mol, nconfig)
+    configs = pyqmc.mc.initial_guess(mol, nconfig)
 
-    acc = generate_accumulators(mol, mf, twist=0, **accumulators)
-
-    return wf, configs, acc
+    # if opt_wf:
+    #     acc = pyqmc.accumulators.gradient_generator(
+    #         mol, wf, to_opt, nodal_cutoff=nodal_cutoff
+    #     )
+    # else:
+    #     if accumulators == None:
+    accumulators = {}
+    if slater_kws is not None and "twist" in slater_kws.keys():
+        twist = slater_kws["twist"]
+    else:
+        twist = 0
+    accumulators['energy'] = ABDMCEnergyAccumulator(mf)
+    # acc = generate_accumulators(mol, mf, twist=twist, **accumulators)
+    return wf, configs, accumulators
 
 
 

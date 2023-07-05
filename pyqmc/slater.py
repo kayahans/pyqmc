@@ -156,7 +156,8 @@ class Slater:
             self._nelec = (mc.nelecas[0] + ncore[0], mc.nelecas[1] + ncore[1])
         else:
             self._nelec = mol.nelec
-
+        import pdb
+        pdb.set_trace()
         self.myparameters = {}
         (
             self.myparameters["det_coeff"],
@@ -244,6 +245,8 @@ class Slater:
 
     def value(self):
         """Return logarithm of the wave function as noted in recompute()"""
+        import pdb
+        pdb.set_trace()
         updets = self._dets[0][:, :, self._det_map[0]]
         dndets = self._dets[1][:, :, self._det_map[1]]
         return determinant_tools.compute_value(
@@ -294,7 +297,8 @@ class Slater:
     def _testrowderiv(self, e, vec, spin=None):
         """vec is a nconfig,nmo vector which replaces row e"""
         s = int(e >= self._nelec[0]) if spin is None else spin
-
+        import pdb
+        pdb.set_trace()
         ratios = gpu.cp.einsum(
             "ei...dj,idj...->ei...d",
             vec,
@@ -348,8 +352,6 @@ class Slater:
         mograd = self.orbitals.mos(aograd, s)
 
         mograd_vals = mograd[:, :, self._det_occup[s]]
-        import pdb
-        pdb.set_trace()
         ratios = self._testrowderiv(e, mograd_vals)
         return gpu.asnumpy(ratios[1:] / ratios[0])
 
@@ -363,7 +365,7 @@ class Slater:
 
         mograd_vals = mograd[:, :, self._det_occup[s]]
         import pdb
-        pdb.set_trace()
+        pdb.set_trace()        
         ratios = gpu.asnumpy(self._testrowderiv(e, mograd_vals))
         derivatives = ratios[1:] / ratios[0]
         derivatives[~np.isfinite(derivatives)] = 0.0

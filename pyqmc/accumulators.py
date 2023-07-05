@@ -1,6 +1,6 @@
 import numpy as np
 import pyqmc.gpu as gpu
-import pyqmc.energy as energy
+import energy as energy
 import pyqmc.ewald as ewald
 import pyqmc.eval_ecp as eval_ecp
 import copy
@@ -57,10 +57,8 @@ class EnergyAccumulator:
 class ABDMCEnergyAccumulator:
     """Returns local energy of each configuration in a dictionary."""
 
-    def __init__(self, mf, threshold=10, naip=None, **kwargs):
+    def __init__(self, mf, **kwargs):
         self.mol = mf.mol
-        self.threshold = threshold
-        self.naip = naip
         self.mf = mf
 
         if hasattr(self.mol, "a"):
@@ -70,15 +68,17 @@ class ABDMCEnergyAccumulator:
 
     def __call__(self, configs, wf):
         ee, ei, ii = self.coulomb.energy(configs)
-        vxc = energy.vxc_energy(self.mf, self.box, configs)
-        ke, grad2 = energy.kinetic(configs, wf)
+        import pdb
+        pdb.set_trace()
+        mf = self.mf
+        vxc = energy.vxc_energy(mf, configs)
+        ke= energy.boson_kinetic(configs, wf)
         return {
             "ke": ke,
             "ee": ee,
             "vxc": vxc,
             "ei": ei,
             "ii": ii,
-            "grad2": grad2,
             "total": ke + ee - vxc + ei + ii,
         }
 

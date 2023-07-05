@@ -105,8 +105,8 @@ def fixed_initial_guess(mol, nconfig, r=1.0):
 
     # epos += r * np.random.randn(*epos.shape)  # random shifts from atom positions
     # epos = np.linspace(0, 2, num=nconfig)
-    import pdb
-    pdb.set_trace()    
+    # import pdb
+    # pdb.set_trace()    
     if hasattr(mol, "a"):
         epos = PeriodicConfigs(epos, mol.lattice_vectors())
     else:
@@ -147,7 +147,6 @@ def vmc_worker(wf, configs, tstep, nsteps, accumulators):
     nconf, nelec, _ = configs.configs.shape
     block_avg = {}
     wf.recompute(configs)
-
     for _ in range(nsteps):
         acc = 0.0
         for e in range(nelec):
@@ -168,7 +167,6 @@ def vmc_worker(wf, configs, tstep, nsteps, accumulators):
             t_prob = np.exp(1 / (2 * tstep) * (forward - backward))
             ratio = np.abs(new_val) ** 2 * t_prob
             accept = ratio > np.random.rand(nconf)
-
             # Update wave function
             configs.move(e, newcoorde, accept)
             wf.updateinternals(e, newcoorde, configs, mask=accept, saved_values=saved)

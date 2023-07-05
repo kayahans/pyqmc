@@ -1,7 +1,7 @@
 import numpy as np
 import pyqmc.eval_ecp as eval_ecp
 import pyqmc.distance as distance
-from pyscf.dft import numint
+from pyscf.dft import numint, libxc
 
 class OpenCoulomb:
     def __init__(self, mol):
@@ -51,16 +51,53 @@ def kinetic(configs, wf):
         grad2 += np.sum(np.abs(grad) ** 2, axis=0)
     return ke, grad2
 
-def vxc_energy(mf, box, configs):
-    # Will be tested on LDA only
+def vxc_energy(mf, configs):
+    xc = 'LDA,VWN'
     mol = mf.mol
-    grids = mf.grids
-    dm = mf.make_rdm1()
-    nelec, ex, vx = numint.nr_vxc(mol, grids, mf.xc, dm)
-    ao_value = numint.eval_ao(mol, configs)
-    shls_slice = (0, mol.nbas)
-    ao_loc = mol.ao_loc_nr()
-    c0 = numint._dot_ao_dm(mol, ao_value, vx, None, shls_slice, ao_loc)
-    rho = numint._contract_rho(ao_value, c0)
-    rhod = rho.reshape((box.ys, box.xs, box.zs), order='C')
-    return rhod
+    nconf, nelec, ndim = configs.configs.shape
+    vxc = np.zeros(nconf)
+    for s in [0,1]:
+        ao_value = numint.eval_ao(mol, configs.configs[:,s,:])
+        dm = mf.make_rdm1()
+        rho = numint.eval_rho(mol, ao_value, dm, xctype='LDA')
+        exc, vxcs = libxc.eval_xc(xc, rho)[:2]
+        vxc += vxcs[0]
+    return vxc
+
+def boson_kinetic(configs, wf):
+    nconf, nelec, ndim = configs.configs.shape
+    ke = np.zeros(nconf)
+    wave_functions = wf.wf_factors
+    jastrow_wf = None
+    boson_wf = None
+    import pdb
+    
+    from bosonwf import BosonWF
+    from pyqmc.jastrowspin import JastrowSpin
+    for wave in wave_functions:
+        if isinstance(wave, BosonWF):
+            boson_wf = wave
+        if isinstance(wave, JastrowSpin):
+            jastrow_wf = wave
+    
+    lap_j = np.zeros(nconf)
+    drift_b = np.zeros(nconf)
+    pdb.set_trace()
+    for e in range(nelec):
+        grad_j, lap = jastrow_wf.gradient_laplacian(e, configs.electron(e))
+        lap_j += -0.5  * lap.real
+        grad_b = boson_wf.gradient(e, configs.electron(e))
+        drift_b += np.einsum("di,di->i", grad_j, grad_b) #dim,config
+        # TODO: check if division is required
+    ke = lap_j + drift_b
+    return ke
+
+def boson_drift(configs, wf):
+    nconf, nelec, ndim = configs.configs.shape
+    ke = np.zeros(nconf)
+    grad2 = np.zeros(nconf)
+    for e in range(nelec):
+        grad, lap = wf.gradient_laplacian(e, configs.electron(e))
+        ke += -0.5 * lap.real
+        grad2 += np.sum(np.abs(grad) ** 2, axis=0)
+    return ke, grad2
