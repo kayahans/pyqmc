@@ -85,9 +85,11 @@ def boson_kinetic(configs, wf):
     pdb.set_trace()
     for e in range(nelec):
         grad_j, lap = jastrow_wf.gradient_laplacian(e, configs.electron(e))
-        lap_j += -0.5  * lap.real
+        # Convert to exp form of jastrow gradients from the jastrow log wavefunction
+        # \frac{\nabla{e^{-U(r)}}}{e^{-U(r)}} = -{\nabla^2}U(r) + ({\nabla}U(r))^2
+        lap_j += -0.5  * (-lap.real + np.einsum("di,di->i",grad_j,np.conjugate(grad_j)))
         grad_b = boson_wf.gradient(e, configs.electron(e))
-        drift_b += np.einsum("di,di->i", grad_j, grad_b) #dim,config
+        drift_b += np.einsum("di,di->i", -grad_j, grad_b)/boson_wf.value()
         # TODO: check if division is required
     ke = lap_j + drift_b
     return ke
