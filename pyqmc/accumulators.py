@@ -67,25 +67,38 @@ class ABDMCEnergyAccumulator:
             self.coulomb = energy.OpenCoulomb(self.mol, **kwargs)
 
     def __call__(self, configs, wf):
-        ee, ei, ii = self.coulomb.energy(configs)
-        import pdb
-        pdb.set_trace()
+        # import pdb
+        # pdb.set_trace()
+        ee, (ei, delta), ii = self.coulomb.energy(configs)
         mf = self.mf
-        vxc = energy.vxc_energy(mf, configs)
-        ke= energy.boson_kinetic(configs, wf)
+        vh, vxc,eid,ecorr = energy.dft_energy(mf, configs)
+        ke1, ke2 = energy.boson_kinetic(configs, wf)
+        ke = ke1+ke2
+        # import pdb
+        # pdb.set_trace()
         return {
+            "ka": ke1,
+            "kb": ke2,
             "ke": ke,
             "ee": ee,
+            "ei": ee,
+            "vh": vh,
             "vxc": vxc,
+            "eid": eid,
+            "delta": delta,
+            "corr": np.ones(ee.shape)*ecorr,
             "ei": ei,
-            "ii": ii,
-            "total": ke + ee - vxc + ei + ii,
+            "ii":np.ones(ee.shape)*ii,
+            "total": ke + ee - vh - vxc,
         }
 
 
     def avg(self, configs, wf):
         return {k: np.mean(it, axis=0) for k, it in self(configs, wf).items()}
 
+    def has_nonlocal_moves(self):
+        return self.mol._ecp != {}
+    
     def keys(self):
         return set(["ke", "ee", "vxc", "ei", "total", "grad2"])
 

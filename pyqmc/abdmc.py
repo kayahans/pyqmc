@@ -423,7 +423,7 @@ def runabdmc(
             esigma = hdf["esigma"][-1]
             if verbose:
                 print(f"Restarting calculation {continue_from} from step {stepoffset}")
-    else:
+    else:  
         df, configs = mc.vmc(
             wf,
             configs,
@@ -432,8 +432,6 @@ def runabdmc(
             verbose=verbose,
             nblocks=vmc_warmup,
         )
-        import pdb
-        pdb.set_trace()
         en = evaluate_energies(wf, configs, accumulators[ekey[0]], client, npartitions)[
             ekey[1]
         ]

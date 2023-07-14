@@ -134,7 +134,8 @@ class BosonWF:
             self._detsq.append(detsq)
             is_zero = np.sum(np.abs(self._detsq[s]) < det_zero_tol)
             compute = np.isfinite(self._detsq[s])
-            if is_zero > 0:
+            zero_pct = is_zero/np.prod(compute.shape)
+            if is_zero > 0 and zero_pct > 0.01:
                 warnings.warn(
                     f"A wave function is zero. Found this proportion: {is_zero/nconf}"
                 )
@@ -147,7 +148,7 @@ class BosonWF:
                 )
         self._configs = configs
         self._detsq = gpu.cp.array(self._detsq)
-        self._inverse = gpu.cp.array(self._inverse)
+        # self._inverse = gpu.cp.array(self._inverse)
         return self.value()
 
     def updateinternals(self, e, epos, configs, mask=None, saved_values=None):
@@ -181,6 +182,7 @@ class BosonWF:
         # TODO(kayahans): Check this again 
 
     def value(self):
+
         """
         """
         det_coeff = self.parameters["det_coeff"]
@@ -189,96 +191,7 @@ class BosonWF:
         valsq = gpu.cp.einsum("id,id,d->i", updetsq, dndetsq, det_coeff)
         val = np.sqrt(valsq)
         return val
-
-    def _testrow(self, e, vec, mask=None, spin=None):
-        """vec is a nconfig,nmo vector which replaces row e"""
-        s = int(e >= self._nelec[0]) if spin is None else spin
-        if mask is None:
-            mask = [True] * vec.shape[0]
-
-        ratios = gpu.cp.einsum(
-            "i...dj,idj...->i...d",
-            vec,
-            self._inverse[s][mask][..., e - s * self._nelec[0]],
-        )
-
-        upref = gpu.cp.amax(self._dets[0][1]).real
-        dnref = gpu.cp.amax(self._dets[1][1]).real
-
-        det_array = (
-            self._dets[0][0, mask][:, self._det_map[0]]
-            * self._dets[1][0, mask][:, self._det_map[1]]
-            * gpu.cp.exp(
-                self._dets[0][1, mask][:, self._det_map[0]]
-                + self._dets[1][1, mask][:, self._det_map[1]]
-                - upref
-                - dnref
-            )
-        ).T
-        numer = gpu.cp.einsum(
-            "i...d,d,di->i...",
-            ratios[..., self._det_map[s]],
-            self.parameters["det_coeff"],
-            det_array,
-        )
-        denom = gpu.cp.einsum(
-            "d,di->i...",
-            self.parameters["det_coeff"],
-            det_array,
-        )
-
-        if len(numer.shape) == 2:
-            denom = denom[:, gpu.cp.newaxis]
-        return numer / denom
-
-    def _testrowderiv(self, e, vec, spin=None):
-        """vec is a nconfig,nmo vector which replaces row e"""
-        s = int(e >= self._nelec[0]) if spin is None else spin
-
-        ratios = gpu.cp.einsum(
-            "ei...dj,idj...->ei...d",
-            vec,
-            self._inverse[s][..., e - s * self._nelec[0]],
-        )
-
-        upref = gpu.cp.amax(self._dets[0][1]).real
-        dnref = gpu.cp.amax(self._dets[1][1]).real
-
-        det_array = (
-            self._dets[0][0, :, self._det_map[0]]
-            * self._dets[1][0, :, self._det_map[1]]
-            * gpu.cp.exp(
-                self._dets[0][1, :, self._det_map[0]]
-                + self._dets[1][1, :, self._det_map[1]]
-                - upref
-                - dnref
-            )
-        )
-        numer = gpu.cp.einsum(
-            "ei...d,d,di->ei...",
-            ratios[..., self._det_map[s]],
-            self.parameters["det_coeff"],
-            det_array,
-        )
-        denom = gpu.cp.einsum(
-            "d,di->i...",
-            self.parameters["det_coeff"],
-            det_array,
-        )
-        # curr_val = self.value()
-
-        if len(numer.shape) == 3:
-            denom = denom[gpu.cp.newaxis, :, gpu.cp.newaxis]
-        return numer / denom
-
-    def _testcol(self, det, i, s, vec):
-        """vec is a nconfig,nmo vector which replaces column i
-        of spin s in determinant det"""
-
-        return gpu.cp.einsum(
-            "ij...,ij->i...", vec, self._inverse[s][:, det, i, :], optimize="greedy"
-        )
-
+    
     def gradient(self, e, epos):
         """Compute the gradient of the log wave function
         Note that this can be called even if the internals have not been updated for electron e,
@@ -287,7 +200,7 @@ class BosonWF:
         #TODO: gradient is shortcut, but check if using the original version has any computational advantage
         return grad
 
-    def gradient_value(self, e, epos):
+    def gradient_value(self, e, epos, configs=None):
         """Compute the gradient of the log wave function
         Note that this can be called even if the internals have not been updated for electron e,
         if epos differs from the current position of electron e."""
@@ -300,148 +213,22 @@ class BosonWF:
         jacobi = gpu.cp.einsum(
             "ei...dj,idj...->ei...d",
             mograd_vals,
-            self._inverse[s, ..., e - s * self._nelec[0]],
+            self._inverse[s][..., e - s * self._nelec[0]],
         )
         detsq_up = self._detsq[0][:, self._det_map[0]]
         detsq_dn = self._detsq[1][:, self._det_map[1]]
         
         det_coeff = self.parameters["det_coeff"]
         numer = gpu.cp.einsum("d,id,id,eid->ei",det_coeff, detsq_up, detsq_dn, jacobi[..., self._det_map[s]])
-        values = self.value()
-        grad = numer[1:]/values    
+        if configs is not None:
+            cf = configs.copy()
+            cf.configs[:,e,:] = epos.configs
+            values = self.recompute(cf)
+        else:
+            values = self.value()
+        
+        grad = numer[1:]/values
+        # print("Grad max ", np.max(grad))
         grad[~np.isfinite(grad)] = 0.0
         values[~np.isfinite(values)] = 1.0
         return grad, values, (aograd[:, 0], mograd[0])
-
-    def laplacian(self, e, epos):
-        """Compute the laplacian Psi/ Psi."""
-        s = int(e >= self._nelec[0])
-        ao = self.orbitals.aos("GTOval_sph_deriv2", epos)
-        ao_val = ao[:, 0, :, :]
-        ao_lap = gpu.cp.sum(ao[:, [4, 7, 9], :, :], axis=1)
-        mos = gpu.cp.stack(
-            [self.orbitals.mos(x, s)[..., self._det_occup[s]] for x in [ao_val, ao_lap]]
-        )
-        ratios = self._testrowderiv(e, mos)
-        return gpu.asnumpy(ratios[1] / ratios[0])
-
-    def gradient_laplacian(self, e, epos):
-        s = int(e >= self._nelec[0])
-        ao = self.orbitals.aos("GTOval_sph_deriv2", epos)
-        ao = gpu.cp.concatenate(
-            [ao[:, 0:4, ...], ao[:, [4, 7, 9], ...].sum(axis=1, keepdims=True)], axis=1
-        )
-        mo = self.orbitals.mos(ao, s)
-        mo_vals = mo[:, :, self._det_occup[s]]
-        ratios = self._testrowderiv(e, mo_vals)
-        ratios = gpu.asnumpy(ratios / ratios[:1])
-        return ratios[1:-1], ratios[-1]
-
-    def testvalue(self, e, epos, mask=None):
-        """return the ratio between the current wave function and the wave function if
-        electron e's position is replaced by epos"""
-        s = int(e >= self._nelec[0])
-        ao = self.orbitals.aos("GTOval_sph", epos, mask)
-        mo = self.orbitals.mos(ao, s)
-        mo_vals = mo[..., self._det_occup[s]]
-        if len(epos.configs.shape) > 2:
-            mo_vals = mo_vals.reshape(
-                -1, epos.configs.shape[1], mo_vals.shape[1], mo_vals.shape[2]
-            )
-        return gpu.asnumpy(self._testrow(e, mo_vals, mask)), (ao, mo)
-
-    def testvalue_many(self, e, epos, mask=None):
-        """return the ratio between the current wave function and the wave function if
-        electron e's position is replaced by epos for each electron"""
-        s = (e >= self._nelec[0]).astype(int)
-        ao = self.orbitals.aos("GTOval_sph", epos, mask)
-        ratios = gpu.cp.zeros((epos.configs.shape[0], e.shape[0]), dtype=self.dtype)
-        for spin in [0, 1]:
-            ind = s == spin
-            mo = self.orbitals.mos(ao, spin)
-            mo_vals = mo[..., self._det_occup[spin]]
-            ratios[:, ind] = self._testrow(e[ind], mo_vals, mask, spin=spin)
-
-        return gpu.asnumpy(ratios)
-
-    def pgradient(self):
-        """Compute the parameter gradient of Psi.
-        Returns :math:`\partial_p \Psi/\Psi` as a dictionary of numpy arrays,
-        which correspond to the parameter dictionary.
-
-        The wave function is given by ci Di, with an implicit sum
-
-        We have two sets of parameters:
-
-        Determinant coefficients:
-        di psi/psi = Dui Ddi/psi
-
-        Orbital coefficients:
-        dj psi/psi = ci dj (Dui Ddi)/psi
-
-        Let's suppose that j corresponds to an up orbital coefficient. Then
-        dj (Dui Ddi) = (dj Dui)/Dui Dui Ddi/psi = (dj Dui)/Dui di psi/psi
-        where di psi/psi is the derivative defined above.
-        """
-        d = {}
-
-        # Det coeff
-        curr_val = self.value()
-        nonzero = curr_val[0] != 0.0
-
-        # dets[spin][ (phase,log), configuration, determinant]
-        dets = (
-            self._dets[0][:, :, self._det_map[0]],
-            self._dets[1][:, :, self._det_map[1]],
-        )
-
-        d["det_coeff"] = gpu.cp.zeros(dets[0].shape[1:], dtype=dets[0].dtype)
-        d["det_coeff"][nonzero, :] = (
-            dets[0][0, nonzero, :]
-            * dets[1][0, nonzero, :]
-            * gpu.cp.exp(
-                dets[0][1, nonzero, :]
-                + dets[1][1, nonzero, :]
-                - gpu.cp.array(curr_val[1][nonzero, np.newaxis])
-            )
-            / gpu.cp.array(curr_val[0][nonzero, np.newaxis])
-        )
-
-        for s, parm in zip([0, 1], ["mo_coeff_alpha", "mo_coeff_beta"]):
-            ao = self._aovals[
-                :, :, s * self._nelec[0] : self._nelec[s] + s * self._nelec[0], :
-            ]
-
-            split, aos = self.orbitals.pgradient(ao, s)
-            mos = gpu.cp.split(gpu.cp.arange(split[-1]), gpu.asnumpy(split).astype(int))
-            # Compute dj Diu/Diu
-            nao = aos[0].shape[-1]
-            nconf = aos[0].shape[0]
-            nmo = int(split[-1])
-            deriv = gpu.cp.zeros(
-                (len(self._det_occup[s]), nconf, nao, nmo), dtype=curr_val[0].dtype
-            )
-            for det, occ in enumerate(self._det_occup[s]):
-                for ao, mo in zip(aos, mos):
-                    for i in mo:
-                        if i in occ:
-                            col = occ.index(i)
-                            deriv[det, :, :, i] = self._testcol(det, col, s, ao)
-
-            # now we reduce over determinants
-            d[parm] = gpu.cp.zeros(deriv.shape[1:], dtype=curr_val[0].dtype)
-            for di, coeff in enumerate(self.parameters["det_coeff"]):
-                whichdet = self._det_map[s][di]
-                d[parm] += (
-                    deriv[whichdet]
-                    * coeff
-                    * d["det_coeff"][:, di, np.newaxis, np.newaxis]
-                )
-
-        for k, v in d.items():
-            d[k] = gpu.asnumpy(v)
-
-        for k in list(d.keys()):
-            if np.prod(d[k].shape) == 0:
-                del d[k]
-        return d

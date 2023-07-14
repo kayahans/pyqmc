@@ -189,6 +189,8 @@ def dmc_propagate(
         avg = {}
         for k, accumulator in accumulators.items():
             dat = accumulator(configs, wf) if k != ekey[0] else energydat
+            import pdb
+            pdb.set_trace()
             for m, res in dat.items():
                 avg[k + m] = np.einsum("...i,i...->...", weights, res) / (
                     nconfig * wavg

@@ -29,7 +29,7 @@ def initial_guess(mol, nconfig, r=1.0):
     epos = np.zeros((nconfig, np.sum(mol.nelec), 3))
     wts = mol.atom_charges()
     wts = wts / np.sum(wts)
-
+    
     for s in [0, 1]:
         neach = np.array(
             np.floor(mol.nelec[s] * wts), dtype=int
@@ -51,7 +51,6 @@ def initial_guess(mol, nconfig, r=1.0):
             epos[:, ind0 + nassigned : ind0 + mol.nelec[s], :] = mol.atom_coords()[
                 inds
             ]  # assign remaining electrons
-
     epos += r * np.random.randn(*epos.shape)  # random shifts from atom positions
     if hasattr(mol, "a"):
         epos = PeriodicConfigs(epos, mol.lattice_vectors())
@@ -90,7 +89,7 @@ def fixed_initial_guess(mol, nconfig, r=1.0):
         nassigned = np.sum(neach)  # number of electrons assigned
         totleft = int(mol.nelec[s] - nassigned)  # number of electrons not yet assigned
         ind0 = s * mol.nelec[0]
-        epos[:, ind0, :] = np.linspace([0,0,-0.1], [0,0,2.1], num=nconfig)
+        epos[:, ind0, :] = np.linspace([-0.1,-0.1,-1], [0.1,0.1,3], num=nconfig)
     #     np.repeat(
     #         mol.atom_coords(), neach, axis=0
     #     )  # assign core electrons
@@ -105,8 +104,6 @@ def fixed_initial_guess(mol, nconfig, r=1.0):
 
     # epos += r * np.random.randn(*epos.shape)  # random shifts from atom positions
     # epos = np.linspace(0, 2, num=nconfig)
-    # import pdb
-    # pdb.set_trace()    
     if hasattr(mol, "a"):
         epos = PeriodicConfigs(epos, mol.lattice_vectors())
     else:
@@ -138,7 +135,7 @@ def vmc_file(hdf_file, data, attr, configs):
             configs.to_hdf(hdf)
 
 
-def vmc_worker(wf, configs, tstep, nsteps, accumulators):
+def vmc_worker(wf, configs, tstep, nsteps, accumulators, bosonic=False):
     """
     Run VMC for nsteps.
 
@@ -147,31 +144,42 @@ def vmc_worker(wf, configs, tstep, nsteps, accumulators):
     nconf, nelec, _ = configs.configs.shape
     block_avg = {}
     wf.recompute(configs)
+    import pdb
+    # pdb.set_trace()
     for _ in range(nsteps):
         acc = 0.0
+        
         for e in range(nelec):
             # Propose move
-            g, _, _ = wf.gradient_value(e, configs.electron(e))
-            grad = limdrift(np.real(g.T))
+            g1, val, _ = wf.gradient_value(e, configs.electron(e))
+            grad = - limdrift(np.real(g1.T))
             gauss = np.random.normal(scale=np.sqrt(tstep), size=(nconf, 3))
+            # print(np.max(grad), np.max(gauss))
             newcoorde = configs.configs[:, e, :] + gauss + grad * tstep
             newcoorde = configs.make_irreducible(e, newcoorde)
 
             # Compute reverse move
-            g, new_val, saved = wf.gradient_value(e, newcoorde)
-            new_grad = limdrift(np.real(g.T))
+            g2, new_val, saved = wf.gradient_value(e, newcoorde, configs=configs)
+            new_grad = - limdrift(np.real(g2.T))
             forward = np.sum(gauss**2, axis=1)
             backward = np.sum((gauss + tstep * (grad + new_grad)) ** 2, axis=1)
 
             # Acceptance
-            t_prob = np.exp(1 / (2 * tstep) * (forward - backward))
-            ratio = np.abs(new_val) ** 2 * t_prob
+            if bosonic:
+                t_prob = forward/backward
+                ratio = (new_val/val)**2 * t_prob
+            else:
+                t_prob = np.exp(1 / (2 * tstep) * (forward - backward))
+                ratio = np.abs(new_val) ** 2 * t_prob
+            
             accept = ratio > np.random.rand(nconf)
             # Update wave function
             configs.move(e, newcoorde, accept)
+            # print(configs.configs[:,e,2])
+            # pdb.set_trace()
             wf.updateinternals(e, newcoorde, configs, mask=accept, saved_values=saved)
             acc += np.mean(accept) / nelec
-
+        # print(" ")
         # Rolling average on step
         for k, accumulator in accumulators.items():
             dat = accumulator.avg(configs, wf)
@@ -218,6 +226,7 @@ def vmc(
     continue_from=None,
     client=None,
     npartitions=None,
+    bosonic=False,
 ):
     """Run a Monte Carlo sample of a given wave function.
 
@@ -279,7 +288,7 @@ def vmc(
             print(f"-", end="", flush=True)
         if client is None:
             block_avg, configs = vmc_worker(
-                wf, configs, tstep, nsteps_per_block, accumulators
+                wf, configs, tstep, nsteps_per_block, accumulators, bosonic=bosonic
             )
         else:
             block_avg, configs = vmc_parallel(

@@ -173,6 +173,31 @@ def DMC(
 
     dmc.rundmc(wf, configs, accumulators=acc, **dmc_kws)
 
+def ABVMC(
+    dft_checkfile,
+    output,
+    nconfig=1000,
+    ci_checkfile=None,
+    load_parameters=None,
+    S=None,
+    jastrow_kws=None,
+    slater_kws=None,
+    accumulators=None,
+    **vmc_kws,
+):
+    vmc_kws["hdf_file"] = output
+    wf, configs, acc = initialize_boson_qmc_objects(
+        dft_checkfile,
+        nconfig=nconfig,
+        ci_checkfile=ci_checkfile,
+        load_parameters=load_parameters,
+        S=S,
+        jastrow_kws=jastrow_kws,
+        slater_kws=slater_kws,
+        accumulators=accumulators,
+    )
+    mc.vmc(wf, configs, accumulators=acc, bosonic=True, **vmc_kws)
+
 def ABDMC(
     dft_checkfile,
     output,
@@ -223,7 +248,7 @@ def initialize_boson_qmc_objects(
     if S is not None:
         mol = supercell.get_supercell(mol, np.asarray(S))
     wf, to_opt = wftools.generate_boson_wf(
-        mol, mf, mc=mc, jastrow_kws=jastrow_kws, slater_kws=slater_kws
+        mol, mf, mc=mc, jastrow_kws=jastrow_kws, slater_kws=slater_kws, load_parameters=load_parameters,
     )
     if load_parameters is not None:
         wftools.read_wf(wf, load_parameters)    

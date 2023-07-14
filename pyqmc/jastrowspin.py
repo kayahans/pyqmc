@@ -13,7 +13,7 @@ class JastrowSpin:
 
     """
 
-    def __init__(self, mol, a_basis, b_basis):
+    def __init__(self, mol, a_basis, b_basis, use_exp=False):
         r"""
         Args:
 
@@ -23,6 +23,8 @@ class JastrowSpin:
 
         b_basis : list of func3d objects that comprise the electron-electron basis
 
+        use_exp : if True, uses psi=e^{-U(R)}, rather than the log form used throughout fermionic QMC
+
         """
         self.a_basis = a_basis
         self.b_basis = b_basis
@@ -31,6 +33,7 @@ class JastrowSpin:
         self._mol = mol
         self.parameters["bcoeff"] = gpu.cp.zeros((len(b_basis), 3))
         self.parameters["acoeff"] = gpu.cp.zeros((self._mol.natm, len(a_basis), 2))
+        self.use_exp = use_exp
         self.dtype = float
 
     def recompute(self, configs):
@@ -88,7 +91,10 @@ class JastrowSpin:
 
         u = gpu.cp.sum(self._bvalues * self.parameters["bcoeff"], axis=(2, 1))
         u += gpu.cp.einsum("ijkl,jkl->i", self._avalues, self.parameters["acoeff"])
-        return (np.ones(len(u)), gpu.asnumpy(u))
+        val = u
+        if self.use_exp:
+            val = np.exp(u)
+        return (np.ones(len(u)), val)
 
     def updateinternals(self, e, epos, configs, mask=None, saved_values=None):
         r"""Update a and b sums.
@@ -276,12 +282,12 @@ class JastrowSpin:
 
         return gpu.asnumpy(grad)
 
-    def gradient_value(self, e, epos):
+    def gradient_value(self, e, epos, configs=None):
         r""""""
         nconf, nelec = self._configscurrent.configs.shape[:2]
         nup = self._mol.nelec[0]
 
-        # Get e-e and e-ion distances
+        # Get e-e and e-ion distances2
         not_e = np.arange(nelec) != e
         dnew = gpu.cp.asarray(
             epos.dist.dist_i(self._configscurrent.configs[:, not_e], epos.configs)

@@ -4,7 +4,8 @@ import slater as slater
 import multiplywf as multiplywf
 #import pyqmc.multiplywf as multiplywf
 import pyqmc.addwf as addwf
-import pyqmc.jastrowspin as jastrowspin
+# import pyqmc.jastrowspin as jastrowspin
+import jastrowspin as jastrowspin
 import pyqmc.func3d as func3d
 import pyqmc.gpu as gpu
 import numpy as np
@@ -104,7 +105,7 @@ def default_jastrow_basis(mol, ion_cusp=False, na=4, nb=3, rcut=None):
     return abasis, bbasis
 
 
-def generate_jastrow(mol, ion_cusp=None, na=4, nb=3, rcut=None):
+def generate_jastrow(mol, ion_cusp=None, na=4, nb=3, rcut=None, use_exp=False):
     """
     Default 2-body jastrow from QWalk,
 
@@ -125,7 +126,7 @@ def generate_jastrow(mol, ion_cusp=None, na=4, nb=3, rcut=None):
         assert isinstance(ion_cusp, list)
 
     abasis, bbasis = default_jastrow_basis(mol, len(ion_cusp) > 0, na, nb, rcut)
-    jastrow = jastrowspin.JastrowSpin(mol, a_basis=abasis, b_basis=bbasis)
+    jastrow = jastrowspin.JastrowSpin(mol, a_basis=abasis, b_basis=bbasis, use_exp=use_exp)
     if len(ion_cusp) > 0:
         coefs = mol.atom_charges().copy()
         coefs[[l[0] not in ion_cusp for l in mol._atom]] = 0.0
@@ -199,7 +200,7 @@ def generate_wf(
     return wf, to_opt
 
 def generate_boson_wf(
-    mol, mf, jastrow=generate_jastrow, jastrow_kws=None, slater_kws=None, mc = None, 
+    mol, mf, jastrow=generate_jastrow, jastrow_kws=None, slater_kws=None, mc = None, load_parameters=None
 ):
     """
     """
@@ -214,14 +215,17 @@ def generate_boson_wf(
         jastrow_kws = [jastrow_kws]
     
     wf1, to_opt1 = generate_boson(mol, mf, mc=mc, **slater_kws)
-
-    pack = [jast(mol, **kw) for jast, kw in zip(jastrow, jastrow_kws)]
-    wfs = [p[0] for p in pack]
-    to_opts = [p[1] for p in pack]
-    wf = multiplywf.MultiplyWF(wf1, *wfs)
     to_opt = {"wf1" + k: v for k, v in to_opt1.items()}
-    for i, to_opt2 in enumerate(to_opts):
-        to_opt.update({f"wf{i+2}" + k: v for k, v in to_opt2.items()})
+    if load_parameters is not None:
+        pack = [jast(mol, use_exp=True, **kw) for jast, kw in zip(jastrow, jastrow_kws)]
+        wfs = [p[0] for p in pack]
+        to_opts = [p[1] for p in pack]
+        wf = multiplywf.MultiplyWF(wf1, *wfs)
+        for i, to_opt2 in enumerate(to_opts):
+            to_opt.update({f"wf{i+2}" + k: v for k, v in to_opt2.items()})
+    else:
+        wf = wf1
+    
     return wf, to_opt
 
 def read_wf(wf, wf_file):

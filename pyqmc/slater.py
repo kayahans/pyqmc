@@ -156,8 +156,6 @@ class Slater:
             self._nelec = (mc.nelecas[0] + ncore[0], mc.nelecas[1] + ncore[1])
         else:
             self._nelec = mol.nelec
-        import pdb
-        pdb.set_trace()
         self.myparameters = {}
         (
             self.myparameters["det_coeff"],
@@ -190,8 +188,6 @@ class Slater:
             end = self._nelec[0] + self._nelec[1] * s
             mo = self.orbitals.mos(self._aovals[:, :, begin:end, :], s)
             mo_vals = gpu.cp.swapaxes(mo[:, :, self._det_occup[s]], 1, 2)
-            import pdb
-            pdb.set_trace()
             self._dets.append(
                 gpu.cp.asarray(np.linalg.slogdet(mo_vals))
             )  # Spin, (sign, val), nconf, [ndet_up, ndet_dn]
@@ -245,8 +241,6 @@ class Slater:
 
     def value(self):
         """Return logarithm of the wave function as noted in recompute()"""
-        import pdb
-        pdb.set_trace()
         updets = self._dets[0][:, :, self._det_map[0]]
         dndets = self._dets[1][:, :, self._det_map[1]]
         return determinant_tools.compute_value(
@@ -297,8 +291,6 @@ class Slater:
     def _testrowderiv(self, e, vec, spin=None):
         """vec is a nconfig,nmo vector which replaces row e"""
         s = int(e >= self._nelec[0]) if spin is None else spin
-        import pdb
-        pdb.set_trace()
         ratios = gpu.cp.einsum(
             "ei...dj,idj...->ei...d",
             vec,
@@ -355,7 +347,7 @@ class Slater:
         ratios = self._testrowderiv(e, mograd_vals)
         return gpu.asnumpy(ratios[1:] / ratios[0])
 
-    def gradient_value(self, e, epos):
+    def gradient_value(self, e, epos, config=None):
         """Compute the gradient of the log wave function
         Note that this can be called even if the internals have not been updated for electron e,
         if epos differs from the current position of electron e."""
@@ -364,8 +356,6 @@ class Slater:
         mograd = self.orbitals.mos(aograd, s)
 
         mograd_vals = mograd[:, :, self._det_occup[s]]
-        import pdb
-        pdb.set_trace()        
         ratios = gpu.asnumpy(self._testrowderiv(e, mograd_vals))
         derivatives = ratios[1:] / ratios[0]
         derivatives[~np.isfinite(derivatives)] = 0.0

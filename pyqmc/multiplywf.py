@@ -99,8 +99,8 @@ class MultiplyWF:
         testvalues = [wf.testvalue_many(e, epos, mask=mask) for wf in self.wf_factors]
         return np.prod(testvalues, axis=0)
 
-    def gradient_value(self, e, epos):
-        grad_vals = [wf.gradient_value(e, epos) for wf in self.wf_factors]
+    def gradient_value(self, e, epos, configs=None):
+        grad_vals = [wf.gradient_value(e, epos, configs) for wf in self.wf_factors]
         grads, vals, saved_values = list(zip(*grad_vals))
         return np.sum(grads, axis=0), np.prod(vals, axis=0), saved_values
 
