@@ -18,24 +18,17 @@ def ee_energy(configs):
         return np.zeros(configs.configs.shape[0])
     ee = np.zeros(configs.configs.shape[0])
     ee, ij = configs.dist.dist_matrix(configs.configs)
-    import pdb
-    pdb.set_trace()
     ee = np.linalg.norm(ee, axis=2)
     return np.sum(1.0 / ee, axis=1)
 
 
 def ei_energy(mol, configs):
     ei = 0.0
-    min_delta = 10.0
     for c, coord in zip(mol.atom_charges(), mol.atom_coords()):
         delta = configs.configs - coord[np.newaxis, np.newaxis, :]
-        min_i = np.min(np.abs(delta), axis=(1,2))
-        if np.min(min_i) < np.min(min_delta):
-            min_delta = min_i
         deltar = np.sqrt(np.sum(delta**2, axis=2))
         ei += -c * np.sum(1.0 / deltar, axis=1)
-    return ei, min_delta
-
+    return ei
 
 def ii_energy(mol):
     d = distance.RawDistance()
@@ -61,35 +54,25 @@ def dft_energy(mf, configs):
     xc = 'LDA,VWN'
     mol = mf.mol
     nconf, nelec, ndim = configs.configs.shape
-    vxc = np.zeros(nconf)
-    vh = np.zeros(nconf)
-    vei = np.zeros(nconf)
-    # import pdb
-    # pdb.set_trace()
-    _ = mf.energy_tot()
+    
+    #Hartree potential
+    vj = np.einsum('pij,sij->p', mol.intor('int1e_grids', grids=configs.configs), mf.make_rdm1())
+    #Eigenvalue sum
     ecorr = np.sum(mf.mo_energy*mf.mo_occ) 
+    #Vxc potential
+    vxc = np.zeros(nconf)
+    _ = mf.energy_tot()
     dm = mf.make_rdm1()
     for e in range(nelec):
         s = int(e >= nelec/2)
-
-        ao_value = numint.eval_ao(mol, configs.configs[:,e,:])    
-        rho_u = numint.eval_rho(mol, ao_value, dm[0], xctype='LDA')
-        rho_d = numint.eval_rho(mol, ao_value, dm[1], xctype='LDA')
-        excd, vxcs  = libxc.eval_xc('LDA,VWN', np.array([rho_u.T, rho_d.T]), spin=1)[:2]
-        # rho = numint.eval_rho(mol, ao_value, dm[s], xctype='LDA')
-        # exc, vxcs = libxc.eval_xc(xc, rho)[:2]
+        ao_value = numint.eval_ao(mol, configs.configs[:,:,:])
+        rho_u = numint.eval_rho(mol, ao_value, dm[0], xctype='LDA')*(1-s)
+        rho_d = numint.eval_rho(mol, ao_value, dm[1], xctype='LDA')*s
+        excd, vxcs  = libxc.eval_xc('LDA,VWN', np.array([rho_u, rho_d]), spin=1)[:2]
         # import pdb
         # pdb.set_trace()
-        vxc += np.sum(vxcs[0],axis=1)
-        vh += np.einsum('pij,sij->p', mol.intor('int1e_grids', grids=np.array(configs.configs[:,e,:])), dm)
-
-        # for ind, orig in enumerate(configs.configs[:,s,:]):
-        #     with mol.with_rinv_origin(orig):
-        #         rinv = mol.intor('int1e_rinv')
-        #         vh[ind] = np.einsum('ij,ij', rinv, dm)
-        # import pdb
-        # pdb.set_trace()
-    return vh, vxc, vei, ecorr
+        vxc += vxcs[0][:, s]
+    return vj, vxc, ecorr
 
 def boson_kinetic(configs, wf):
     nconf, nelec, ndim = configs.configs.shape
