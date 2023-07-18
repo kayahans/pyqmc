@@ -75,7 +75,7 @@ def propose_tmoves(wf, configs, energy_accumulator, tstep, e):
     norm = 1.0 + np.sum(forward_probability, axis=1)  # EQN 34
 
     def select_walker(array):
-        r = np.random.rand()
+        r = np. d()
         return np.searchsorted(array, r)
 
     cdf = np.cumsum(forward_probability / norm[:, np.newaxis], axis=1)

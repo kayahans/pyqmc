@@ -150,33 +150,46 @@ def vmc_worker(wf, configs, tstep, nsteps, accumulators, bosonic=False):
         acc = 0.0
         
         for e in range(nelec):
-            # Propose move
-            g1, val, _ = wf.gradient_value(e, configs.electron(e))
-            grad = - limdrift(np.real(g1.T))
-            gauss = np.random.normal(scale=np.sqrt(tstep), size=(nconf, 3))
-            # print(np.max(grad), np.max(gauss))
-            newcoorde = configs.configs[:, e, :] + gauss + grad * tstep
-            newcoorde = configs.make_irreducible(e, newcoorde)
-
-            # Compute reverse move
-            g2, new_val, saved = wf.gradient_value(e, newcoorde, configs=configs)
-            new_grad = - limdrift(np.real(g2.T))
-            forward = np.sum(gauss**2, axis=1)
-            backward = np.sum((gauss + tstep * (grad + new_grad)) ** 2, axis=1)
-
             # Acceptance
             if bosonic:
+                # Propose move
+                g1, val, _ = wf.gradient_value(e, configs.electron(e))
+                grad = - limdrift(np.real(g1.T))
+                gauss = np.random.normal(scale=np.sqrt(tstep), size=(nconf, 3))
+                newcoorde = configs.configs[:, e, :] + gauss + grad * tstep
+                rg = np.linalg.norm(gauss, axis=1)
+                # import pdb
+                # pdb.set_trace()
+                newcoorde = configs.make_irreducible(e, newcoorde)
+
+                # Compute reverse move
+                g2, new_val, saved = wf.gradient_value(e, newcoorde, configs=configs)
+                new_grad = - limdrift(np.real(g2.T))
+                forward = np.exp(np.sum(gauss**2/(2*tstep), axis=1))
+                backward = np.exp(np.sum((gauss + tstep * (grad + new_grad)) ** 2/(2*tstep), axis=1)) 
+
                 t_prob = forward/backward
                 ratio = (new_val/val)**2 * t_prob
             else:
+                # Propose move
+                g1, val, _ = wf.gradient_value(e, configs.electron(e))
+                grad = - limdrift(np.real(g1.T))
+                gauss = np.random.normal(scale=np.sqrt(tstep), size=(nconf, 3))
+                newcoorde = configs.configs[:, e, :] + gauss + grad * tstep
+                newcoorde = configs.make_irreducible(e, newcoorde)
+
+                # Compute reverse move
+                g2, new_val, saved = wf.gradient_value(e, newcoorde, configs=configs)
+                new_grad = - limdrift(np.real(g2.T))
+                forward = np.sum(gauss**2, axis=1)
+                backward = np.sum((gauss + tstep * (grad + new_grad)) ** 2, axis=1)
+
                 t_prob = np.exp(1 / (2 * tstep) * (forward - backward))
                 ratio = np.abs(new_val) ** 2 * t_prob
             
             accept = ratio > np.random.rand(nconf)
             # Update wave function
             configs.move(e, newcoorde, accept)
-            # print(configs.configs[:,e,2])
-            # pdb.set_trace()
             wf.updateinternals(e, newcoorde, configs, mask=accept, saved_values=saved)
             acc += np.mean(accept) / nelec
         # print(" ")

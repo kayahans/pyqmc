@@ -50,13 +50,19 @@ def kinetic(configs, wf):
         grad2 += np.sum(np.abs(grad) ** 2, axis=0)
     return ke, grad2
 
-def dft_energy(mf, configs):
+def dft_energy(mf, configs, nup_dn):
     xc = 'LDA,VWN'
     mol = mf.mol
     nconf, nelec, ndim = configs.configs.shape
-    
+    import pdb
+    # pdb.set_trace()
     #Hartree potential
-    vj = np.einsum('pij,sij->p', mol.intor('int1e_grids', grids=configs.configs), mf.make_rdm1())
+    dm = mf.make_rdm1()
+    # vj1 = np.einsum('pij,sij->p', mol.intor('int1e_grids', grids=configs.configs[:,0,:]), dm)
+    # vj2 = np.einsum('pij,sij->p', mol.intor('int1e_grids', grids=configs.configs[:,1,:]), dm)
+    vj = np.einsum('pij,sij->p', mol.intor('int1e_grids', grids=configs.configs), dm)
+    # vj = vj1+vj2
+    # pdb.set_trace()
     #Eigenvalue sum
     ecorr = np.sum(mf.mo_energy*mf.mo_occ) 
     #Vxc potential
@@ -64,14 +70,14 @@ def dft_energy(mf, configs):
     _ = mf.energy_tot()
     dm = mf.make_rdm1()
     for e in range(nelec):
-        s = int(e >= nelec/2)
-        ao_value = numint.eval_ao(mol, configs.configs[:,:,:])
-        rho_u = numint.eval_rho(mol, ao_value, dm[0], xctype='LDA')*(1-s)
-        rho_d = numint.eval_rho(mol, ao_value, dm[1], xctype='LDA')*s
-        excd, vxcs  = libxc.eval_xc('LDA,VWN', np.array([rho_u, rho_d]), spin=1)[:2]
-        # import pdb
+        s = int(e >= nup_dn[0])
+        ao_value = numint.eval_ao(mol, configs.configs[:,e,:])
+        rho_u = numint.eval_rho(mol, ao_value, dm[s], xctype='LDA')
+        rho_d = numint.eval_rho(mol, ao_value, dm[abs(1-s)], xctype='LDA')
         # pdb.set_trace()
-        vxc += vxcs[0][:, s]
+        excd, vxcs  = libxc.eval_xc('LDA,VWN', np.array([rho_u, rho_d]), spin=1)[:2]
+        
+        vxc += vxcs[0][:,s]
     return vj, vxc, ecorr
 
 def boson_kinetic(configs, wf):

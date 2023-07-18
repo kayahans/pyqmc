@@ -71,7 +71,8 @@ class ABDMCEnergyAccumulator:
         # pdb.set_trace()
         ee, ei, ii = self.coulomb.energy(configs)
         mf = self.mf
-        vj,vxc,ecorr = energy.dft_energy(mf, configs)
+        nup_dn = wf._nelec 
+        vh,vxc,ecorr = energy.dft_energy(mf, configs, nup_dn)
         ke1, ke2 = energy.boson_kinetic(configs, wf)
         ke = ke1+ke2
         # import pdb
@@ -82,12 +83,12 @@ class ABDMCEnergyAccumulator:
             "ke": ke,
             "ee": ee,
             "ei": ee,
-            "vj": vj,
+            "vh": vh,
             "vxc": vxc,
             "corr": np.ones(ee.shape)*ecorr,
             "ei": ei,
             "ii":np.ones(ee.shape)*ii,
-            "total": ke + ee - (vj + vxc) + ecorr,
+            "total": ke + ee - (vh + vxc) + ecorr,
         }
 
 
