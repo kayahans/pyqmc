@@ -4,7 +4,7 @@ import energy as energy
 import pyqmc.ewald as ewald
 import pyqmc.eval_ecp as eval_ecp
 import copy
-
+from bosonwf import BosonWF
 
 def gradient_generator(mol, wf, to_opt=None, nodal_cutoff=1e-3, **ewald_kwargs):
     return PGradTransform(
@@ -71,7 +71,18 @@ class ABDMCEnergyAccumulator:
         # pdb.set_trace()
         ee, ei, ii = self.coulomb.energy(configs)
         mf = self.mf
-        nup_dn = wf._nelec 
+        try:
+            nwf = len(wf.wf_factors)
+        except:
+            nwf = 1
+        
+        if nwf == 1:
+            nup_dn = wf._nelec
+        else:
+            for wfi in wf.wf_factors:
+                if isinstance(wfi, BosonWF):
+                    nup_dn = wfi._nelec
+        
         vh,vxc,ecorr = energy.dft_energy(mf, configs, nup_dn)
         ke1, ke2 = energy.boson_kinetic(configs, wf)
         ke = ke1+ke2
@@ -88,7 +99,7 @@ class ABDMCEnergyAccumulator:
             "corr": np.ones(ee.shape)*ecorr,
             "ei": ei,
             "ii":np.ones(ee.shape)*ii,
-            "total": ke + ee - (vh + vxc) + ecorr,
+            "total": ke + ee - (vh + vxc) + ecorr + ii,
         }
 
 

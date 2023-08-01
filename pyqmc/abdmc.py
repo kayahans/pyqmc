@@ -34,26 +34,47 @@ def get_V2(configs, wf, acc_out):
     return v2
 
 
-def propose_drift_diffusion(wf, configs, tstep, e):
-    nconfig = configs.configs.shape[0]
-    grad = limdrift(np.real(wf.gradient(e, configs.electron(e)).T), tstep)
-    gauss = np.random.normal(scale=np.sqrt(tstep), size=(nconfig, 3))
-    eposnew = configs.configs[:, e, :] + gauss + grad
-    newepos = configs.make_irreducible(e, eposnew)
+def propose_drift_diffusion(wf, configs, tstep, e, bosonic=False):
+    if bosonic:
+        nconf = configs.configs.shape[0]
+        g1, val, _ = wf.gradient_value(e, configs.electron(e))
+        grad = limdrift(np.real(g1.T), tstep)
+        gauss = np.random.normal(scale=np.sqrt(tstep), size=(nconf, 3))
+        eposnew = configs.configs[:, e, :] + gauss + grad * tstep
+        newepos = configs.make_irreducible(e, eposnew)
 
-    # Compute reverse move
-    g, wfratio, saved = wf.gradient_value(e, newepos)
-    new_grad = limdrift(np.real(g.T), tstep)
-    forward = np.sum(gauss**2, axis=1)
-    backward = np.sum((gauss + grad + new_grad) ** 2, axis=1)
-    t_prob = np.exp(1 / (2 * tstep) * (forward - backward))
+        # Compute reverse move
+        g2, new_val, saved = wf.gradient_value(e, newepos, configs=configs)
+        new_grad = limdrift(np.real(g2.T), tstep)
+        forward = np.exp(np.sum(-gauss**2, axis=1))
+        backward = np.exp(np.sum(-(gauss + tstep * (grad + new_grad)) ** 2, axis=1)) 
 
-    # Acceptance -- fixed-node: reject if wf changes sign
-    ratio = np.abs(wfratio) ** 2 * t_prob
-    if wf.dtype == float:
-        ratio *= np.sign(wfratio)
-    accept = ratio > np.random.rand(nconfig)
-    r2 = np.sum((gauss + grad) ** 2, axis=1)
+        t_prob = forward/backward
+        ratio = (new_val/val)**2  * t_prob
+        
+        accept = ratio > np.random.rand(nconf)
+        r2 = np.exp(np.sum((gauss + grad) ** 2, axis=1))
+
+    else:
+        nconfig = configs.configs.shape[0]
+        grad = limdrift(np.real(wf.gradient(e, configs.electron(e)).T), tstep)
+        gauss = np.random.normal(scale=np.sqrt(tstep), size=(nconfig, 3))
+        eposnew = configs.configs[:, e, :] + gauss + grad
+        newepos = configs.make_irreducible(e, eposnew)
+
+        # Compute reverse move
+        g, wfratio, saved = wf.gradient_value(e, newepos)
+        new_grad = limdrift(np.real(g.T), tstep)
+        forward = np.sum(gauss**2, axis=1)
+        backward = np.sum((gauss + grad + new_grad) ** 2, axis=1)
+        t_prob = np.exp(1 / (2 * tstep) * (forward - backward))
+
+        # Acceptance -- fixed-node: reject if wf changes sign
+        ratio = np.abs(wfratio) ** 2 * t_prob
+        if wf.dtype == float:
+            ratio *= np.sign(wfratio)
+        accept = ratio > np.random.rand(nconfig)
+        r2 = np.sum((gauss + grad) ** 2, axis=1)
 
     return newepos, accept, r2, saved
 
@@ -151,7 +172,6 @@ def abdmc_propagate(
         r2_proposed = np.zeros(nconfig)
         prob_acceptance = np.zeros(nconfig)
         tmove_acceptance = np.zeros(nconfig)
-
         if accumulators[ekey[0]].has_nonlocal_moves():
             for e in range(nelec):  # T-moves
                 newepos, mask, probability, ecp_totweight = propose_tmoves(
@@ -163,7 +183,7 @@ def abdmc_propagate(
                 tmove_acceptance += accept / nelec
 
         for e in range(nelec):  # drift-diffusion
-            newepos, accept, r2, saved = propose_drift_diffusion(wf, configs, tstep, e)
+            newepos, accept, r2, saved = propose_drift_diffusion(wf, configs, tstep, e, bosonic=True)
             configs.move(e, newepos, accept)
             wf.updateinternals(e, newepos, configs, mask=accept, saved_values=saved)
             r2_proposed += r2
@@ -184,7 +204,6 @@ def abdmc_propagate(
         wmult = np.exp(tstep * tdamp * (0.5 * Snew + 0.5 * Sold))
         weights *= wmult
         wavg = np.mean(weights)
-
         avg = {}
         for k, accumulator in accumulators.items():
             dat = accumulator(configs, wf) if k != ekey[0] else energydat

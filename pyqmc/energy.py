@@ -58,11 +58,7 @@ def dft_energy(mf, configs, nup_dn):
     # pdb.set_trace()
     #Hartree potential
     dm = mf.make_rdm1()
-    # vj1 = np.einsum('pij,sij->p', mol.intor('int1e_grids', grids=configs.configs[:,0,:]), dm)
-    # vj2 = np.einsum('pij,sij->p', mol.intor('int1e_grids', grids=configs.configs[:,1,:]), dm)
-    vj = np.einsum('pij,sij->p', mol.intor('int1e_grids', grids=configs.configs), dm)
-    # vj = vj1+vj2
-    # pdb.set_trace()
+    vj = np.zeros(nconf)
     #Eigenvalue sum
     ecorr = np.sum(mf.mo_energy*mf.mo_occ) 
     #Vxc potential
@@ -72,12 +68,12 @@ def dft_energy(mf, configs, nup_dn):
     for e in range(nelec):
         s = int(e >= nup_dn[0])
         ao_value = numint.eval_ao(mol, configs.configs[:,e,:])
-        rho_u = numint.eval_rho(mol, ao_value, dm[s], xctype='LDA')
-        rho_d = numint.eval_rho(mol, ao_value, dm[abs(1-s)], xctype='LDA')
+        rho_u = numint.eval_rho(mol, ao_value, dm[0], xctype='LDA')
+        rho_d = numint.eval_rho(mol, ao_value, dm[1], xctype='LDA')
         # pdb.set_trace()
-        excd, vxcs  = libxc.eval_xc('LDA,VWN', np.array([rho_u, rho_d]), spin=1)[:2]
-        
+        excd, vxcs  = libxc.eval_xc('LDA, VWN', np.array([rho_u, rho_d]), spin=1)[:2]
         vxc += vxcs[0][:,s]
+        vj += np.einsum('pij,sij->p', mol.intor('int1e_grids', grids=configs.configs[:,e,:]), dm)
     return vj, vxc, ecorr
 
 def boson_kinetic(configs, wf):
@@ -103,8 +99,6 @@ def boson_kinetic(configs, wf):
     drift_b = np.zeros(nconf)
     if has_jastrow:
         for e in range(nelec):
-            # import pdb
-            # pdb.set_trace()
             grad_j, lap = jastrow_wf.gradient_laplacian(e, configs.electron(e))
             # Convert to exp form of jastrow gradients from the jastrow log wavefunction
             # \frac{\nabla{e^{U(r)}}}{e^{U(r)}} = {\nabla^2}U(r) + ({\nabla}U(r))^2

@@ -157,19 +157,16 @@ def vmc_worker(wf, configs, tstep, nsteps, accumulators, bosonic=False):
                 grad = - limdrift(np.real(g1.T))
                 gauss = np.random.normal(scale=np.sqrt(tstep), size=(nconf, 3))
                 newcoorde = configs.configs[:, e, :] + gauss + grad * tstep
-                rg = np.linalg.norm(gauss, axis=1)
-                # import pdb
-                # pdb.set_trace()
                 newcoorde = configs.make_irreducible(e, newcoorde)
 
                 # Compute reverse move
                 g2, new_val, saved = wf.gradient_value(e, newcoorde, configs=configs)
                 new_grad = - limdrift(np.real(g2.T))
-                forward = np.exp(np.sum(gauss**2/(2*tstep), axis=1))
-                backward = np.exp(np.sum((gauss + tstep * (grad + new_grad)) ** 2/(2*tstep), axis=1)) 
+                forward = np.exp(np.sum(-gauss**2, axis=1))
+                backward = np.exp(np.sum(-(gauss + tstep * (grad + new_grad)) ** 2, axis=1)) 
 
                 t_prob = forward/backward
-                ratio = (new_val/val)**2 * t_prob
+                ratio = (new_val/val)**2  * t_prob
             else:
                 # Propose move
                 g1, val, _ = wf.gradient_value(e, configs.electron(e))
