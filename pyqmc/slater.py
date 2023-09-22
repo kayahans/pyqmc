@@ -347,7 +347,7 @@ class Slater:
         ratios = self._testrowderiv(e, mograd_vals)
         return gpu.asnumpy(ratios[1:] / ratios[0])
 
-    def gradient_value(self, e, epos, config=None):
+    def gradient_value(self, e, epos, configs=None):
         """Compute the gradient of the log wave function
         Note that this can be called even if the internals have not been updated for electron e,
         if epos differs from the current position of electron e."""

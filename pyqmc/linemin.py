@@ -122,7 +122,6 @@ def line_minimization(
     :parameter boolean verbose: print output if True
     :return: optimized wave function, optimization data
     """
-
     if vmcoptions is None:
         vmcoptions = {}
     vmcoptions.update({"verbose": verbose})
@@ -135,7 +134,6 @@ def line_minimization(
     if "tstep" not in warmup_options and "tstep" in vmcoptions:
         warmup_options["tstep"] = vmcoptions["tstep"]
     assert npts >= 3, f"linemin npts={npts}; need npts >= 3 for correlated sampling"
-
     iteration_offset = 0
     if hdf_file is not None and os.path.isfile(hdf_file):  # restarting -- read in data
         with h5py.File(hdf_file, "r") as hdf:
@@ -190,7 +188,6 @@ def line_minimization(
             raise ValueError("NaN detected in derivatives")
 
         return coords, grad, Sij, en, en_err, sigma
-
     x0 = pgrad_acc.transform.serialize_parameters(wf.parameters)
 
     df = []
@@ -212,7 +209,6 @@ def line_minimization(
 
         xfit = []
         yfit = []
-
         # Calculate samples to fit.
         # include near zero in the fit, and go backwards as well
         # We don't use the above computed value because we are

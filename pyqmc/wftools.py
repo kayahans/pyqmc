@@ -11,38 +11,6 @@ import pyqmc.gpu as gpu
 import numpy as np
 import h5py
 
-def generate_boson(
-    mol,
-    mf,
-    mc=None,
-    optimize_determinants=False,
-    optimize_orbitals=False,
-    optimize_zeros=True,    
-    epsilon=1e-8,
-    **kwargs,
-):
-    """Construct a Slater determinant
-
-    :parameter boolean optimize_orbitals: make `to_opt` true for orbital parameters
-    :parameter array-like twist: The twist to extract from the mean-field object
-    :parameter boolean optimize_zeros: optimize coefficients that are zero in the mean-field object
-    :returns: slater, to_opt
-    """
-    import bosonwf
-    wf = bosonwf.BosonWF(mol, mf, mc=mc)
-    # Do not optimize det coeff or mo_coeff for now
-    # to_opt["det_coeff"] = np.zeros_like(wf.parameters["det_coeff"], dtype=bool)
-    # if optimize_determinants:
-    #     to_opt["det_coeff"] = np.ones_like(wf.parameters["det_coeff"], dtype=bool)
-    #     to_opt["det_coeff"][np.argmax(wf.parameters["det_coeff"])] = False
-    # if optimize_orbitals:
-    #     for k in ["mo_coeff_alpha", "mo_coeff_beta"]:
-    #         to_opt[k] = np.ones(wf.parameters[k].shape, dtype=bool)
-    #         if not optimize_zeros:
-    #             to_opt[k][np.abs(gpu.asnumpy(wf.parameters[k])) < epsilon] = False
-    to_opt = {}
-    return wf, to_opt
-
 def generate_slater(
     mol,
     mf,
@@ -187,7 +155,6 @@ def generate_wf(
     if not isinstance(jastrow, list):
         jastrow = [jastrow]
         jastrow_kws = [jastrow_kws]
-
     wf1, to_opt1 = generate_slater(mol, mf, mc=mc, **slater_kws)
 
     pack = [jast(mol, **kw) for jast, kw in zip(jastrow, jastrow_kws)]
@@ -199,34 +166,6 @@ def generate_wf(
         to_opt.update({f"wf{i+2}" + k: v for k, v in to_opt2.items()})
     return wf, to_opt
 
-def generate_boson_wf(
-    mol, mf, jastrow=generate_jastrow, jastrow_kws=None, slater_kws=None, mc = None, load_parameters=None
-):
-    """
-    """
-    if jastrow_kws is None:
-        jastrow_kws = {}
-
-    if slater_kws is None:
-        slater_kws = {}
-
-    if not isinstance(jastrow, list):
-        jastrow = [jastrow]
-        jastrow_kws = [jastrow_kws]
-    
-    wf1, to_opt1 = generate_boson(mol, mf, mc=mc, **slater_kws)
-    to_opt = {"wf1" + k: v for k, v in to_opt1.items()}
-    if load_parameters is not None:
-        pack = [jast(mol, use_exp=True, **kw) for jast, kw in zip(jastrow, jastrow_kws)]
-        wfs = [p[0] for p in pack]
-        to_opts = [p[1] for p in pack]
-        wf = multiplywf.MultiplyWF(wf1, *wfs)
-        for i, to_opt2 in enumerate(to_opts):
-            to_opt.update({f"wf{i+2}" + k: v for k, v in to_opt2.items()})
-    else:
-        wf = wf1
-    
-    return wf, to_opt
 
 def read_wf(wf, wf_file):
     """Read the wave function parameters from wf_file into wf.
@@ -292,3 +231,101 @@ def read_superposition(mol, mf, wf_files, coeffs, mc=None):
             to_opt[f"wf{iwf}" + k] = v
     wf = addwf.AddWF(coeffs, wfs)
     return wf, to_opt
+
+# kayahan edited below
+def generate_boson(
+    mol,
+    mf,
+    mc=None,
+    optimize_determinants=False,
+    optimize_orbitals=False,
+    optimize_zeros=True,    
+    epsilon=1e-8,
+    **kwargs,
+):
+    """Construct a Slater determinant
+
+    :parameter boolean optimize_orbitals: make `to_opt` true for orbital parameters
+    :parameter array-like twist: The twist to extract from the mean-field object
+    :parameter boolean optimize_zeros: optimize coefficients that are zero in the mean-field object
+    :returns: slater, to_opt
+    """
+    import bosonwf
+    wf = bosonwf.BosonWF(mol, mf, mc=mc)
+    # Do not optimize det coeff or mo_coeff for now
+    # to_opt["det_coeff"] = np.zeros_like(wf.parameters["det_coeff"], dtype=bool)
+    # if optimize_determinants:
+    #     to_opt["det_coeff"] = np.ones_like(wf.parameters["det_coeff"], dtype=bool)
+    #     to_opt["det_coeff"][np.argmax(wf.parameters["det_coeff"])] = False
+    # if optimize_orbitals:
+    #     for k in ["mo_coeff_alpha", "mo_coeff_beta"]:
+    #         to_opt[k] = np.ones(wf.parameters[k].shape, dtype=bool)
+    #         if not optimize_zeros:
+    #             to_opt[k][np.abs(gpu.asnumpy(wf.parameters[k])) < epsilon] = False
+    to_opt = {}
+    return wf, to_opt
+
+# TODO: remove no_jastrows in the future
+def generate_boson_wf(
+    mol, mf, jastrow=generate_jastrow, jastrow_kws=None, slater_kws=None, mc = None, no_jastrows=False
+):
+    """
+    """
+    if jastrow_kws is None:
+        jastrow_kws = {}
+
+    if slater_kws is None:
+        slater_kws = {}
+
+    if not isinstance(jastrow, list):
+        jastrow = [jastrow]
+        jastrow_kws = [jastrow_kws]
+    wf1, to_opt1 = generate_boson(mol, mf, mc=mc, **slater_kws)
+    to_opt = {"wf1" + k: v for k, v in to_opt1.items()}
+    if no_jastrows:
+        wf = wf1
+    else:
+        pack = [jast(mol, use_exp=True, **kw) for jast, kw in zip(jastrow, jastrow_kws)]
+        wfs = [p[0] for p in pack]
+        to_opts = [p[1] for p in pack]
+        wf = multiplywf.MultiplyBosonWF(wf1, *wfs)
+        for i, to_opt2 in enumerate(to_opts):
+            to_opt.update({f"wf{i+2}" + k: v for k, v in to_opt2.items()})
+    
+    return wf, to_opt
+
+def generate_boson_jastrow(mol, ion_cusp=None, na=4, nb=3, rcut=None):
+    """
+    Default 2-body jastrow from QWalk,
+
+    :parameter boolean ion_cusp: add an extra term to satisfy electron-ion cusp.
+    :returns: jastrow, to_opt
+    """
+    if ion_cusp == False:
+        ion_cusp = []
+        if not mol.has_ecp():
+            print("Warning: using neither ECP nor ion_cusp")
+    elif ion_cusp == True:
+        ion_cusp = list(mol._basis.keys())
+        if mol.has_ecp():
+            print("Warning: using both ECP and ion_cusp")
+    elif ion_cusp is None:
+        ion_cusp = [l for l in mol._basis.keys() if l not in mol._ecp.keys()]
+    else:
+        assert isinstance(ion_cusp, list)
+
+    abasis, bbasis = default_jastrow_basis(mol, len(ion_cusp) > 0, na, nb, rcut)
+    jastrow = jastrowspin.BosonJastrowSpin(mol, a_basis=abasis, b_basis=bbasis)
+    if len(ion_cusp) > 0:
+        coefs = mol.atom_charges().copy()
+        coefs[[l[0] not in ion_cusp for l in mol._atom]] = 0.0
+        jastrow.parameters["acoeff"][:, 0, :] = gpu.cp.asarray(coefs[:, None])
+    jastrow.parameters["bcoeff"][0, [0, 1, 2]] = gpu.cp.array([-0.25, -0.50, -0.25])
+
+    to_opt = {"acoeff": np.ones(jastrow.parameters["acoeff"].shape).astype(bool)}
+    if len(ion_cusp) > 0:
+        to_opt["acoeff"][:, 0, :] = False  # Cusp conditions
+    to_opt["bcoeff"] = np.ones(jastrow.parameters["bcoeff"].shape).astype(bool)
+    to_opt["bcoeff"][0, [0, 1, 2]] = False  # Cusp conditions
+    return jastrow, to_opt
+
