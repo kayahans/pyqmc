@@ -54,68 +54,6 @@ class EnergyAccumulator:
     def shapes(self):
         return {"ke": (), "ee": (), "ei": (), "ecp": (), "total": (), "grad2": ()}
 
-class ABDMCEnergyAccumulator:
-    """Returns local energy of each configuration in a dictionary."""
-
-    def __init__(self, mf, **kwargs):
-        self.mol = mf.mol
-        self.mf = mf
-
-        if hasattr(self.mol, "a"):
-            self.coulomb = ewald.Ewald(self.mol, **kwargs)
-        else:
-            self.coulomb = energy.OpenCoulomb(self.mol, **kwargs)
-
-    def __call__(self, configs, wf):
-        # import pdb
-        # pdb.set_trace()
-        ee, ei, ii = self.coulomb.energy(configs)
-        mf = self.mf
-        try:
-            nwf = len(wf.wf_factors)
-        except:
-            nwf = 1
-        
-        if nwf == 1:
-            nup_dn = wf._nelec
-        else:
-            for wfi in wf.wf_factors:
-                if isinstance(wfi, BosonWF):
-                    nup_dn = wfi._nelec
-        
-        vh,vxc,ecorr = energy.dft_energy(mf, configs, nup_dn)
-        ke1, ke2 = energy.boson_kinetic(configs, wf)
-        ke = ke1+ke2
-        # import pdb
-        # pdb.set_trace()
-        return {
-            "ka": ke1,
-            "kb": ke2,
-            "ke": ke,
-            "ee": ee,
-            "ei": ee,
-            "vh": vh,
-            "vxc": vxc,
-            "corr": np.ones(ee.shape)*ecorr,
-            "ei": ei,
-            "ii":np.ones(ee.shape)*ii,
-            "total": ke + ee - (vh + vxc) + ecorr + ii,
-        }
-
-
-    def avg(self, configs, wf):
-        return {k: np.mean(it, axis=0) for k, it in self(configs, wf).items()}
-
-    def has_nonlocal_moves(self):
-        return self.mol._ecp != {}
-    
-    def keys(self):
-        return set(["ke", "ee", "vxc", "ei", "total", "grad2"])
-
-    def shapes(self):
-        return {"ke": (), "ee": (), "vxc": (), "ei": (), "ecp": (), "total": (), "grad2": ()}
-
-
 class LinearTransform:
     """
     Linearize a dictionary of wf parameters.
@@ -368,3 +306,63 @@ class SymmetryAccumulator:
 
     def shapes(self):
         return {S: () for S in self.symmetry_operators.keys()}
+
+#kayahan edited below
+
+class ABDMCEnergyAccumulator:
+    """Returns local energy of each configuration in a dictionary."""
+
+    def __init__(self, mf, **kwargs):
+        self.mol = mf.mol
+        self.mf = mf
+
+        if hasattr(self.mol, "a"):
+            self.coulomb = ewald.Ewald(self.mol, **kwargs)
+        else:
+            self.coulomb = energy.OpenCoulomb(self.mol, **kwargs)
+
+    def __call__(self, configs, wf):
+        ee, ei, ii = self.coulomb.energy(configs)
+        mf = self.mf
+        try:
+            nwf = len(wf.wf_factors)
+        except:
+            nwf = 1
+        
+        if nwf == 1:
+            nup_dn = wf._nelec
+        else:
+            for wfi in wf.wf_factors:
+                if isinstance(wfi, BosonWF):
+                    nup_dn = wfi._nelec
+        
+        vh,vxc,ecorr = energy.dft_energy(mf, configs, nup_dn)
+        ke1, ke2 = energy.boson_kinetic(configs, wf)
+        ke = ke1+ke2
+        return {
+            "ka": ke1,
+            "kb": ke2,
+            "ke": ke,
+            "ee": ee,
+            "ei": ee,
+            "vh": vh,
+            "vxc": vxc,
+            "corr": np.ones(ee.shape)*ecorr,
+            "ei": ei,
+            "ii":np.ones(ee.shape)*ii,
+            "total": ke + ee - (vh + vxc) + ecorr + ii,
+        }
+
+
+    def avg(self, configs, wf):
+        return {k: np.mean(it, axis=0) for k, it in self(configs, wf).items()}
+
+    def has_nonlocal_moves(self):
+        return self.mol._ecp != {}
+    
+    def keys(self):
+        return set(["ke", "ee", "vxc", "ei", "total", "grad2"])
+
+    def shapes(self):
+        return {"ke": (), "ee": (), "vxc": (), "ei": (), "ecp": (), "total": (), "grad2": ()}
+

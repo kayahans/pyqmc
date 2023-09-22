@@ -80,13 +80,20 @@ def sherman_morrison_ms(e, inv, vec):
 
 
 class BosonWF:
-    r"""
-    """
 
     def __init__(self, mol, mf, mc=None, tol=None, twist=None, determinants=None):
         """
+        Create Bosonic wavefunction
+        Args:
+            mol (_type_): A Mole object
+            mf (_type_): a pyscf mean-field object
+            mc (_type_, optional): a pyscf multiconfigurational object. Supports HCI and CAS. Defaults to None.
+            tol (_type_, optional): smallest determinant weight to include in the wave function. Defaults to None.
+            twist (_type_, optional): the twist of the calculation. Defaults to None.
+            determinants (_type_, optional): A list of determinants suitable to pass into create_packed_objects. Defaults to None.
+
+            You cannot pass both mc/tol and determinants.
         """
-        from wftools import generate_slater
         self.tol = -1 if tol is None else tol
         self._mol = mol
         if hasattr(mc, "nelecas"):
@@ -118,7 +125,15 @@ class BosonWF:
         self.dtype = complex if iscomplex else float
 
     def recompute(self,configs,det_zero_tol=1e-16):
-        """This computes the value from scratch"""
+        """Compute the value of wavefunction from scratch
+
+        Args:
+            configs (_type_): QMC configurations
+            det_zero_tol (_type_, optional): zero tolerance for determinant. Defaults to 1e-16.
+
+        Returns:
+            _type_: _description_
+        """
         nconf, nelec, ndim = configs.configs.shape
         aos = self.orbitals.aos("GTOval_sph", configs)
         self._aovals = aos.reshape(-1, nconf, nelec, aos.shape[-1])
@@ -139,7 +154,6 @@ class BosonWF:
                 warnings.warn(
                     f"A wave function is zero. Found this proportion: {is_zero/nconf}"
                 )
-                # print(configs.configs[])
                 print(f"zero {is_zero/np.prod(compute.shape)}")
             self._inverse.append(gpu.cp.zeros(mo_vals.shape, dtype=mo_vals.dtype))
             for d in range(compute.shape[1]):
@@ -151,11 +165,19 @@ class BosonWF:
         # self._inverse = gpu.cp.array(self._inverse)
         return self.value()
 
-    def updateinternals(self, e, epos, configs, mask=None, saved_values=None):
-        """Update any internals given that electron e moved to epos. mask is a Boolean array
-        which allows us to update only certain walkers"""
+    def updateinternals(self, e:int, epos, configs, mask: list=None, saved_values=None):
+        """Update any internals given that electron e moved to epos. 
+        Mask is a Boolean array which allows us to update only certain walkers.
 
-        s = int(e >= self._nelec[0])
+        Args:
+            e (int): electron index
+            epos (_type_): "new" position of all electrons, array?
+            configs (_type_): all electron configurations
+            mask (list, optional): mask on . Defaults to None.
+            saved_values (_type_, optional): _description_. Defaults to None.
+        """
+
+        s = int(e >= self._nelec[0]) # spin index
         if mask is None:
             mask = np.ones(epos.configs.shape[0], dtype=bool)
         is_zero = np.sum(np.isinf(self._detsq[s][1]))
@@ -182,15 +204,18 @@ class BosonWF:
         # TODO(kayahans): Check this again 
 
     def value(self):
+        """Returns the value of the bosonic wavefunction
 
-        """
+        Returns:
+            _type_: _description_
         """
         det_coeff = self.parameters["det_coeff"]
         updetsq = self._detsq[0][:, self._det_map[0]]
         dndetsq = self._detsq[1][:, self._det_map[1]]
         valsq = gpu.cp.einsum("id,id,d->i", updetsq, dndetsq, det_coeff)
         val = np.sqrt(valsq)
-        return val
+        sign = np.ones(val.shape[0]) # bosonic wavefunction always have sign +1 
+        return sign, val
     
     def gradient(self, e, epos):
         """Compute the gradient of the log wave function
@@ -223,9 +248,9 @@ class BosonWF:
         if configs is not None:
             cf = configs.copy()
             cf.configs[:,e,:] = epos.configs
-            values = self.recompute(cf)
+            sign, values = self.recompute(cf)
         else:
-            values = self.value()
+            sign, values = self.value()
         
         grad = numer[1:]/values
         # print("Grad max ", np.max(grad))

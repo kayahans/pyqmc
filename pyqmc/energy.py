@@ -50,12 +50,11 @@ def kinetic(configs, wf):
         grad2 += np.sum(np.abs(grad) ** 2, axis=0)
     return ke, grad2
 
+#kayahan added below
 def dft_energy(mf, configs, nup_dn):
     xc = 'LDA,VWN'
     mol = mf.mol
     nconf, nelec, ndim = configs.configs.shape
-    import pdb
-    # pdb.set_trace()
     #Hartree potential
     dm = mf.make_rdm1()
     vj = np.zeros(nconf)
@@ -70,7 +69,6 @@ def dft_energy(mf, configs, nup_dn):
         ao_value = numint.eval_ao(mol, configs.configs[:,e,:])
         rho_u = numint.eval_rho(mol, ao_value, dm[0], xctype='LDA')
         rho_d = numint.eval_rho(mol, ao_value, dm[1], xctype='LDA')
-        # pdb.set_trace()
         excd, vxcs  = libxc.eval_xc('LDA, VWN', np.array([rho_u, rho_d]), spin=1)[:2]
         vxc += vxcs[0][:,s]
         vj += np.einsum('pij,sij->p', mol.intor('int1e_grids', grids=configs.configs[:,e,:]), dm)
@@ -101,10 +99,10 @@ def boson_kinetic(configs, wf):
         for e in range(nelec):
             grad_j, lap = jastrow_wf.gradient_laplacian(e, configs.electron(e))
             # Convert to exp form of jastrow gradients from the jastrow log wavefunction
-            # \frac{\nabla{e^{U(r)}}}{e^{U(r)}} = {\nabla^2}U(r) + ({\nabla}U(r))^2
+            # \frac{\nabla{e^{-U(r)}}}{e^{-U(r)}} = {\nabla^2}U(r) + ({\nabla}U(r))^2
             lap_j += -0.5  * (lap.real + np.einsum("di,di->i",grad_j,np.conjugate(grad_j)))
             grad_b = boson_wf.gradient(e, configs.electron(e))
-            drift_b += np.einsum("di,di->i", -grad_j, grad_b)/boson_wf.value()
+            drift_b += np.einsum("di,di->i", -grad_j, grad_b)/boson_wf.value()[1]
             # TODO: check if division is required
         # ke = lap_j + drift_b
     return lap_j , drift_b
