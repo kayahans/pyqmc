@@ -352,10 +352,10 @@ class Slater:
         if epos differs from the current position of electron e."""
         s = int(e >= self._nelec[0])
         aograd = self.orbitals.aos("GTOval_sph_deriv1", epos)
-
         mograd = self.orbitals.mos(aograd, s)
 
         mograd_vals = mograd[:, :, self._det_occup[s]]
+        
         ratios = gpu.asnumpy(self._testrowderiv(e, mograd_vals))
         derivatives = ratios[1:] / ratios[0]
         derivatives[~np.isfinite(derivatives)] = 0.0

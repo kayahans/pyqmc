@@ -142,13 +142,13 @@ def vmc_worker(wf, configs, tstep, nsteps, accumulators, bosonic=False):
                 # import pdb
                 # pdb.set_trace()                
                 grad = - limdrift(np.real(g1.T))
-                rng = np.random.RandomState(1)
+                rng = np.random #.RandomState(1)
                 gauss = rng.normal(scale=np.sqrt(tstep), size=(nconf, 3))
                 tt = configs.configs[:, e, :]
                 newcoorde = configs.configs[:, e, :] + gauss + grad * tstep
                 newcoorde = configs.make_irreducible(e, newcoorde)
                 index = 30
-                print('wf_inv1', wf._inverse[0][index])
+                # print('='*30, '\n', 'wf_inv1', wf._inverse[0][index])
                 # Compute reverse move
                 # import pdb
                 # pdb.set_trace()
@@ -158,41 +158,41 @@ def vmc_worker(wf, configs, tstep, nsteps, accumulators, bosonic=False):
                 new_grad = - limdrift(np.real(g2.T))
                 forward = np.sum(gauss**2, axis=1)
                 backward = np.sum((gauss + tstep * (grad + new_grad)) ** 2, axis=1)
-                print('wf_inv2', wf._inverse[0][index])
+                # print('wf_inv2', wf._inverse[0][index])
                 t_prob = np.exp(1 / (2 * tstep) * (forward - backward))
                 ratio = np.abs(new_val) ** 2 * t_prob
                 
             
             accept = ratio > np.random.rand(nconf)
-            index = 30
-            print(
-                # i, '\n',
-                #   e, '\n',
+            
+            # print(
+            #     i, '\n',
+            #       e, '\n',
                   
-                #   vali[index], '\n',
-                #   val[index], '\n',
-                #   valj[index], '\n',
-                  g1.T[index], '\n',
-                  newcoorde.configs[index], '\n',
-                #   val[index], '\n',
-                #   grad[index], '\n',
-                #   gauss[index], '\n',
-                #   tt[index], '\n',
-                #   tstep, '\n',
-                #   configs.electron(e).configs[index], '\n',
-                #   newcoorde.configs[index], '\n',
-                # new_val[index], '\n',
-                  g2.T[index], '\n',
-                  new_grad[index], '\n',
-                  t_prob[index], '\n',
-                  ratio[index], '\n',
-                # wf._inverse[index], '\n',
-                  new_val[index], '\n'
-                #   accept[0], 
-                #   
-                  )
-            from sys import exit
-            exit()
+            #     #   vali[index], '\n',
+            #     #   val[index], '\n',
+            #     #   valj[index], '\n',
+            #       g1.T[index], '\n',
+            #       newcoorde.configs[index], '\n',
+            #     #   val[index], '\n',
+            #     #   grad[index], '\n',
+            #     #   gauss[index], '\n',
+            #     #   tt[index], '\n',
+            #     #   tstep, '\n',
+            #     #   configs.electron(e).configs[index], '\n',
+            #     #   newcoorde.configs[index], '\n',
+            #     # new_val[index], '\n',
+            #       g2.T[index], '\n',
+            #       new_grad[index], '\n',
+            #       t_prob[index], '\n',
+            #       ratio[index], '\n',
+            #     # wf._inverse[index], '\n',
+            #       new_val[index], '\n'
+            #     #   accept[0], 
+            #     #   
+            #       )
+            # from sys import exit
+            # exit()
             # Update wave function
             configs.move(e, newcoorde, accept)
             wf.updateinternals(e, newcoorde, configs, mask=accept, saved_values=saved)
@@ -303,6 +303,8 @@ def vmc(
     for block in range(nblocks):
         if verbose:
             print(f"-", end="", flush=True)
+        # import pdb
+        # pdb.set_trace()            
         if client is None:
             block_avg, configs = vmc_worker(
                 wf, configs, tstep, nsteps_per_block, accumulators
@@ -403,6 +405,8 @@ def abvmc(
             block_avg, configs = abvmc_worker(
                 wf, configs, tstep, nsteps_per_block, accumulators
             )
+            # import pdb
+            # pdb.set_trace()
         else:
             print("Parallel not yet implemented")
             exit()
@@ -453,18 +457,17 @@ def abvmc_worker(wf, configs, tstep, nsteps, accumulators):
             # pdb.set_trace()
             lng1 = g1/np.tile(psi1, (3,1))
             grad = - limdrift(np.real(lng1.T))
-            rng = np.random.RandomState(1)
+            rng = np.random #.RandomState(1)
             gauss = rng.normal(scale=np.sqrt(tstep), size=(nconf, 3))
             tt = configs.configs[:, e, :]
             newcoorde = configs.configs[:, e, :] + gauss + grad * tstep
             newcoorde = configs.make_irreducible(e, newcoorde)
 
             # Compute reverse move
-            import pdb
-            pdb.set_trace()
+            # import pdb
+            # pdb.set_trace()
             index = 30
-            
-            print('wf_inv1', wf._inverse[0][index])
+            # print('='*30, '\n', 'wf_inv1', wf._inverse[0][index])
             g2, new_val, saved = wf.gradient_value(e, newcoorde, configs=configs)  
             psi2 = saved[3]          
 
@@ -477,44 +480,44 @@ def abvmc_worker(wf, configs, tstep, nsteps, accumulators):
             new_grad = -limdrift(np.real(lng2.T))
             forward = np.sum(gauss**2, axis=1)
             backward = np.sum((gauss + tstep * (grad + new_grad)) ** 2, axis=1)
-            print('wf_inv2', wf._inverse[0][index])
+            # print('wf_inv2', wf._inverse[0][index])
             t_prob = np.exp(1 / (2 * tstep) * (forward - backward))
             
             ratio = np.abs(new_val) ** 2 * t_prob
             accept = ratio > np.random.rand(nconf)
             
-            print(
-                #   i, '\n',
-                #   e, '\n',
+            # print(
+            #       i, '\n',
+            #       e, '\n',
                   
-                #   val1[index], '\n',
-                #   np.log(val2[index]), '\n',
-                #   np.log(valj[index]), '\n',
-                  lng1.T[index], '\n',
-                  newcoorde.configs[index], '\n',
-                #   val[index], '\n',
-                #   grad[index], '\n',
-                #   gauss[index], '\n',
-                #   tt[index], '\n',
-                #   tstep, '\n',
-                #   configs.electron(e).configs[index], '\n',
-                #   newcoorde.configs[index], '\n',
-                # new_val[index], '\n',
+            #     #   val1[index], '\n',
+            #     #   np.log(val2[index]), '\n',
+            #     #   np.log(valj[index]), '\n',
+            #       lng1.T[index], '\n',
+            #       newcoorde.configs[index], '\n',
+            #     #   val[index], '\n',
+            #     #   grad[index], '\n',
+            #     #   gauss[index], '\n',
+            #     #   tt[index], '\n',
+            #     #   tstep, '\n',
+            #     #   configs.electron(e).configs[index], '\n',
+            #     #   newcoorde.configs[index], '\n',
+            #     # new_val[index], '\n',
                 
-                  lng2.T[index], '\n',
-                  new_grad[index], '\n',
-                  t_prob[index], '\n',
-                  ratio[index], '\n', 
-                  new_val[index], '\n'
+            #       lng2.T[index], '\n',
+            #       new_grad[index], '\n',
+            #       t_prob[index], '\n',
+            #       ratio[index], '\n', 
+            #       new_val[index], '\n'
 
-                #   accept[0], 
-                #   gauss[0], 
-                  )
-            from sys import exit
-            exit()
+            #     #   accept[0], 
+            #     #   gauss[0], 
+            #       )
+            # from sys import exit
+            # exit()
             # Update wave function
             configs.move(e, newcoorde, accept)
-            wf.updateinternals(e, newcoorde, configs, mask=accept, saved_values=saved)
+            wf.updateinternals(e, newcoorde, configs, mask=accept, saved_values=saved[0:2])
             # update internals runs the sherman morrison update in block
             # this updates the determinant inverse based on the electronic update
             # without fully updating the inverse matrix. 
