@@ -86,11 +86,11 @@ def boson_kinetic(configs, wf):
     jastrow_wf = None
     boson_wf = None
     from bosonwf import BosonWF
-    from jastrowspin import JastrowSpin
+    from jastrowspin import BosonJastrowSpin
     for wave in wave_functions:
         if isinstance(wave, BosonWF):
             boson_wf = wave
-        if isinstance(wave, JastrowSpin):
+        if isinstance(wave, BosonJastrowSpin):
             jastrow_wf = wave
     
     lap_j = np.zeros(nconf)

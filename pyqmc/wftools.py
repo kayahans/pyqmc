@@ -60,7 +60,7 @@ def default_jastrow_basis(mol, ion_cusp=False, na=4, nb=3, rcut=None):
             rcut = np.amin(np.pi / np.linalg.norm(mol.reciprocal_vectors(), axis=1))
         else:
             rcut = 7.5
-
+    
     beta_abasis = expand_beta_qwalk(0.2, na)
     beta_bbasis = expand_beta_qwalk(0.5, nb)
     if ion_cusp:
@@ -73,7 +73,7 @@ def default_jastrow_basis(mol, ion_cusp=False, na=4, nb=3, rcut=None):
     return abasis, bbasis
 
 
-def generate_jastrow(mol, ion_cusp=None, na=4, nb=3, rcut=None, use_exp=False):
+def generate_jastrow(mol, ion_cusp=None, na=4, nb=3, rcut=None):
     """
     Default 2-body jastrow from QWalk,
 
@@ -94,7 +94,7 @@ def generate_jastrow(mol, ion_cusp=None, na=4, nb=3, rcut=None, use_exp=False):
         assert isinstance(ion_cusp, list)
 
     abasis, bbasis = default_jastrow_basis(mol, len(ion_cusp) > 0, na, nb, rcut)
-    jastrow = jastrowspin.JastrowSpin(mol, a_basis=abasis, b_basis=bbasis, use_exp=use_exp)
+    jastrow = jastrowspin.JastrowSpin(mol, a_basis=abasis, b_basis=bbasis)
     if len(ion_cusp) > 0:
         coefs = mol.atom_charges().copy()
         coefs[[l[0] not in ion_cusp for l in mol._atom]] = 0.0
@@ -152,18 +152,21 @@ def generate_wf(
     if slater_kws is None:
         slater_kws = {}
 
-    if not isinstance(jastrow, list):
-        jastrow = [jastrow]
-        jastrow_kws = [jastrow_kws]
-    wf1, to_opt1 = generate_slater(mol, mf, mc=mc, **slater_kws)
-
-    pack = [jast(mol, **kw) for jast, kw in zip(jastrow, jastrow_kws)]
-    wfs = [p[0] for p in pack]
-    to_opts = [p[1] for p in pack]
-    wf = multiplywf.MultiplyWF(wf1, *wfs)
-    to_opt = {"wf1" + k: v for k, v in to_opt1.items()}
-    for i, to_opt2 in enumerate(to_opts):
-        to_opt.update({f"wf{i+2}" + k: v for k, v in to_opt2.items()})
+    #kayahan edited
+    if jastrow == None:
+        wf, to_opt = generate_slater(mol, mf, mc=mc, **slater_kws)
+    else:
+        if not isinstance(jastrow, list):
+            jastrow = [jastrow]
+            jastrow_kws = [jastrow_kws]
+        wf1, to_opt1 = generate_slater(mol, mf, mc=mc, **slater_kws)
+        pack = [jast(mol, **kw) for jast, kw in zip(jastrow, jastrow_kws)]
+        wfs = [p[0] for p in pack]
+        to_opts = [p[1] for p in pack]
+        wf = multiplywf.MultiplyWF(wf1, *wfs)
+        to_opt = {"wf1" + k: v for k, v in to_opt1.items()}
+        for i, to_opt2 in enumerate(to_opts):
+            to_opt.update({f"wf{i+2}" + k: v for k, v in to_opt2.items()})
     return wf, to_opt
 
 
@@ -252,6 +255,7 @@ def generate_boson(
     """
     import bosonwf
     wf = bosonwf.BosonWF(mol, mf, mc=mc)
+    # TODO: update here later
     # Do not optimize det coeff or mo_coeff for now
     # to_opt["det_coeff"] = np.zeros_like(wf.parameters["det_coeff"], dtype=bool)
     # if optimize_determinants:
@@ -265,34 +269,6 @@ def generate_boson(
     to_opt = {}
     return wf, to_opt
 
-# TODO: remove no_jastrows in the future
-def generate_boson_wf(
-    mol, mf, jastrow=generate_jastrow, jastrow_kws=None, slater_kws=None, mc = None, no_jastrows=False
-):
-    """
-    """
-    if jastrow_kws is None:
-        jastrow_kws = {}
-
-    if slater_kws is None:
-        slater_kws = {}
-
-    if not isinstance(jastrow, list):
-        jastrow = [jastrow]
-        jastrow_kws = [jastrow_kws]
-    wf1, to_opt1 = generate_boson(mol, mf, mc=mc, **slater_kws)
-    to_opt = {"wf1" + k: v for k, v in to_opt1.items()}
-    if no_jastrows:
-        wf = wf1
-    else:
-        pack = [jast(mol, use_exp=True, **kw) for jast, kw in zip(jastrow, jastrow_kws)]
-        wfs = [p[0] for p in pack]
-        to_opts = [p[1] for p in pack]
-        wf = multiplywf.MultiplyBosonWF(wf1, *wfs)
-        for i, to_opt2 in enumerate(to_opts):
-            to_opt.update({f"wf{i+2}" + k: v for k, v in to_opt2.items()})
-    
-    return wf, to_opt
 
 def generate_boson_jastrow(mol, ion_cusp=None, na=4, nb=3, rcut=None):
     """
@@ -313,7 +289,6 @@ def generate_boson_jastrow(mol, ion_cusp=None, na=4, nb=3, rcut=None):
         ion_cusp = [l for l in mol._basis.keys() if l not in mol._ecp.keys()]
     else:
         assert isinstance(ion_cusp, list)
-
     abasis, bbasis = default_jastrow_basis(mol, len(ion_cusp) > 0, na, nb, rcut)
     jastrow = jastrowspin.BosonJastrowSpin(mol, a_basis=abasis, b_basis=bbasis)
     if len(ion_cusp) > 0:
@@ -328,4 +303,34 @@ def generate_boson_jastrow(mol, ion_cusp=None, na=4, nb=3, rcut=None):
     to_opt["bcoeff"] = np.ones(jastrow.parameters["bcoeff"].shape).astype(bool)
     to_opt["bcoeff"][0, [0, 1, 2]] = False  # Cusp conditions
     return jastrow, to_opt
+
+# TODO: remove no_jastrows in the future
+def generate_boson_wf(
+    mol, mf, jastrow=generate_boson_jastrow, jastrow_kws=None, slater_kws=None, mc = None, 
+):
+    """
+    """
+    if jastrow_kws is None:
+        jastrow_kws = {}
+
+    if slater_kws is None:
+        slater_kws = {}
+
+    if jastrow == None:
+        wf, to_opt1 = generate_boson(mol, mf, mc=mc, **slater_kws)
+        to_opt = {"wf1" + k: v for k, v in to_opt1.items()}
+    else:            
+        if not isinstance(jastrow, list):
+            jastrow = [jastrow]
+            jastrow_kws = [jastrow_kws]
+
+        wf1, to_opt1 = generate_boson(mol, mf, mc=mc, **slater_kws)
+        to_opt = {"wf1" + k: v for k, v in to_opt1.items()}
+        pack = [jast(mol, **kw) for jast, kw in zip(jastrow, jastrow_kws)]
+        wfs = [p[0] for p in pack]
+        to_opts = [p[1] for p in pack]
+        wf = multiplywf.MultiplyBosonWF(wf1, *wfs)
+        for i, to_opt2 in enumerate(to_opts):
+            to_opt.update({f"wf{i+2}" + k: v for k, v in to_opt2.items()})
+    return wf, to_opt
 

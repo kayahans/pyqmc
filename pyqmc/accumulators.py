@@ -309,7 +309,7 @@ class SymmetryAccumulator:
 
 #kayahan edited below
 
-class ABDMCEnergyAccumulator:
+class ABQMCEnergyAccumulator:
     """Returns local energy of each configuration in a dictionary."""
 
     def __init__(self, mf, **kwargs):

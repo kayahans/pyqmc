@@ -165,6 +165,39 @@ class BosonWF:
         # self._inverse = gpu.cp.array(self._inverse)
         return self.value()
 
+    def value_updated(self, configs, det_zero_tol=1e-16):
+        nconf, nelec, ndim = configs.configs.shape
+        aos = self.orbitals.aos("GTOval_sph", configs)
+        aovals = aos.reshape(-1, nconf, nelec, aos.shape[-1])
+        detsq = []
+        # import pdb
+        # pdb.set_trace()
+        for s in [0, 1]:
+            begin = self._nelec[0] * s
+            end = self._nelec[0] + self._nelec[1] * s
+            mo = self.orbitals.mos(aovals[:, :, begin:end, :], s)
+            mo_vals = gpu.cp.swapaxes(mo[:, :, self._det_occup[s]], 1, 2)
+            det = np.linalg.det(mo_vals)
+            detsq_s = gpu.cp.asarray(det * np.conjugate(det), dtype=float)
+            detsq.append(detsq_s)
+
+            is_zero = np.sum(np.abs(detsq[s]) < det_zero_tol)
+            compute = np.isfinite(detsq[s])
+            zero_pct = is_zero/np.prod(compute.shape)
+            if is_zero > 0 and zero_pct > 0.01:
+                warnings.warn(
+                    f"A wave function is zero. Found this proportion: {is_zero/nconf}"
+                )
+                print(f"zero {is_zero/np.prod(compute.shape)}")
+        detsq = gpu.cp.array(detsq)
+        det_coeff = self.parameters["det_coeff"]
+        updetsq = detsq[0][:, self._det_map[0]]
+        dndetsq = detsq[1][:, self._det_map[1]]
+        valsq = gpu.cp.einsum("id,id,d->i", updetsq, dndetsq, det_coeff)
+        val = np.sqrt(valsq)
+        sign = np.ones(val.shape[0]) # bosonic wavefunction always have sign +1 
+        return sign, val        
+
     def updateinternals(self, e:int, epos, configs, mask: list=None, saved_values=None):
         """Update any internals given that electron e moved to epos. 
         Mask is a Boolean array which allows us to update only certain walkers.
@@ -226,15 +259,20 @@ class BosonWF:
         return grad
 
     def gradient_value(self, e, epos, configs=None):
-        """Compute the gradient of the log wave function
-        Note that this can be called even if the internals have not been updated for electron e,
-        if epos differs from the current position of electron e."""
+        """Compute the gradient of the bosonic wave function
+        This is typically called in the block of VMC and DMC, where the inverse is not updated
+        """
         s = int(e >= self._nelec[0])
         aograd = self.orbitals.aos("GTOval_sph_deriv1", epos)
         mograd = self.orbitals.mos(aograd, s)
         mograd_vals = mograd[:, :, self._det_occup[s]]
         
-
+        # Derivative of the determinant is calculated using Jacobi's formula
+        # https://en.wikipedia.org/wiki/Jacobi%27s_formula
+        # likely this will now work only for the single determinant calculation
+        # kayahans
+        # import pdb
+        # pdb.set_trace()
         jacobi = gpu.cp.einsum(
             "ei...dj,idj...->ei...d",
             mograd_vals,
@@ -244,16 +282,27 @@ class BosonWF:
         detsq_dn = self._detsq[1][:, self._det_map[1]]
         
         det_coeff = self.parameters["det_coeff"]
+        
+        # Derivative of \phi
+        # \phi' = \sqrt{\sum{\psi}^2} = \sum{\psi' * \psi} / \psi 
         numer = gpu.cp.einsum("d,id,id,eid->ei",det_coeff, detsq_up, detsq_dn, jacobi[..., self._det_map[s]])
+        values = gpu.cp.einsum("id,d->i",jacobi[0],self.parameters["det_coeff"])
+
+        # values = \phi(R)
         if configs is not None:
+            # calculate \phi with R'
             cf = configs.copy()
             cf.configs[:,e,:] = epos.configs
-            sign, values = self.recompute(cf)
+            sign, psi = self.value_updated(cf)        
         else:
-            sign, values = self.value()
+            # calculate \phi with R
+            sign, psi = self.value()        
         
-        grad = numer[1:]/values
-        # print("Grad max ", np.max(grad))
+        grad = numer[1:]/psi
         grad[~np.isfinite(grad)] = 0.0
-        values[~np.isfinite(values)] = 1.0
-        return grad, values, (aograd[:, 0], mograd[0])
+        psi[~np.isfinite(psi)] = 1.0
+        # import pdb
+        # pdb.set_trace()
+        # jacobi[0] is the ratio of \psi: (\psi^-1(R) * \psi(R or R'))
+        # The inverse is not updated until accept/reject (R: forward, R':backward)
+        return grad, values, (aograd[:, 0], mograd[0], sign, psi)

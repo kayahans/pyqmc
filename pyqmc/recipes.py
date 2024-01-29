@@ -19,7 +19,7 @@ import pandas as pd
 import copy
 import accumulators
 import os
-from accumulators import ABDMCEnergyAccumulator
+from accumulators import ABQMCEnergyAccumulator
 
 
 def OPTIMIZE(
@@ -132,8 +132,10 @@ def VMC(
     jastrow_kws=None,
     slater_kws=None,
     accumulators=None,
+    seed=None,
     **vmc_kws,
 ):
+    
     vmc_kws["hdf_file"] = output
     wf, configs, acc = initialize_qmc_objects(
         dft_checkfile,
@@ -144,9 +146,10 @@ def VMC(
         jastrow_kws=jastrow_kws,
         slater_kws=slater_kws,
         accumulators=accumulators,
+        seed=seed,
     )
 
-    pyqmc.mc.vmc(wf, configs, accumulators=acc, **vmc_kws)
+    mc.vmc(wf, configs, accumulators=acc, **vmc_kws)
 
 def DMC(
     dft_checkfile,
@@ -182,6 +185,7 @@ def initialize_qmc_objects(
     jastrow_kws: dict|None = None,
     slater_kws:  dict|None = None,
     accumulators: list|None=None,
+    seed: int|None=None,
     opt_wf=False,
     target_root=0,
     nodal_cutoff=1e-3,
@@ -214,13 +218,24 @@ def initialize_qmc_objects(
 
     if S is not None:
         mol = supercell.get_supercell(mol, np.asarray(S))
-    wf, to_opt = wftools.generate_wf(
-        mol, mf, mc=mc, jastrow_kws=jastrow_kws, slater_kws=slater_kws
-    )
+    
+    if load_parameters is None:
+        wf, to_opt = wftools.generate_wf(
+            mol, mf, mc=mc, jastrow = None, jastrow_kws=jastrow_kws, slater_kws=slater_kws
+        )
+    else:
+        wf, to_opt = wftools.generate_wf(
+            mol, mf, mc=mc, jastrow_kws=jastrow_kws, slater_kws=slater_kws
+        )
+
     if load_parameters is not None:
         wftools.read_wf(wf, load_parameters)
-
-    configs = pyqmc.mc.initial_guess(mol, nconfig)
+    
+    # configs = pyqmc.mc.initial_guess(mol, nconfig)
+    # from mc import fixed_initial_guess
+    # configs = fixed_initial_guess(mol, nconfig)
+    from mc import initial_guess
+    configs = initial_guess(mol, nconfig,seed=seed)
     if opt_wf:
         acc = pyqmc.accumulators.gradient_generator(
             mol, wf, to_opt, nodal_cutoff=nodal_cutoff
@@ -350,6 +365,7 @@ def ABVMC(
     jastrow_kws: list|None = None,
     slater_kws:  list|None = None,
     accumulators: list|None = None,
+    seed: int|None=None,
     **vmc_kws,
 ):
     """Auxiliary Boson VMC recipe
@@ -375,6 +391,7 @@ def ABVMC(
         jastrow_kws=jastrow_kws,
         slater_kws=slater_kws,
         accumulators=accumulators,
+        seed=seed,
     )
     mc.abvmc(wf, configs, accumulators=acc, **vmc_kws)
 
@@ -427,7 +444,9 @@ def initialize_boson_qmc_objects(
     slater_kws=None,
     accumulators=None,
     opt_wf=False,
-):
+    seed = None,
+):  
+    
     target_root=0
     nodal_cutoff=1e-3    
     if ci_checkfile is None:
@@ -440,15 +459,22 @@ def initialize_boson_qmc_objects(
 
     if S is not None:
         mol = supercell.get_supercell(mol, np.asarray(S))
-
-    wf, to_opt = wftools.generate_boson_wf(
-        mol, mf, mc=mc, jastrow_kws=jastrow_kws, slater_kws=slater_kws
-    )
+    if load_parameters is None:
+        wf, to_opt = wftools.generate_boson_wf(
+            mol, mf, mc=mc, jastrow = None, jastrow_kws=jastrow_kws, slater_kws=slater_kws
+        )
+    else:
+        wf, to_opt = wftools.generate_boson_wf(
+            mol, mf, mc=mc, jastrow_kws=jastrow_kws, slater_kws=slater_kws
+        )
     if load_parameters is not None:
         wftools.read_wf(wf, load_parameters)    
     # from mc import fixed_initial_guess
     # configs = fixed_initial_guess(mol, nconfig)
-    configs = pyqmc.mc.initial_guess(mol, nconfig)
+    print('Using spherical guess')
+    # configs = pyqmc.initial_guess(mol, nconfig)
+    from mc import initial_guess
+    configs = initial_guess(mol, nconfig,seed=seed)
 
     if opt_wf:
         accumulators = pyqmc.accumulators.gradient_generator(
@@ -460,6 +486,6 @@ def initialize_boson_qmc_objects(
             twist = slater_kws["twist"]
         else:
             twist = 0
-        accumulators['energy'] = ABDMCEnergyAccumulator(mf)
+        accumulators['energy'] = ABQMCEnergyAccumulator(mf)
         # acc = generate_accumulators(mol, mf, twist=twist, **accumulators)
     return wf, configs, accumulators

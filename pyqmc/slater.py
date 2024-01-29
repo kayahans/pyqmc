@@ -296,7 +296,6 @@ class Slater:
             vec,
             self._inverse[s][..., e - s * self._nelec[0]],
         )
-
         upref = gpu.cp.amax(self._dets[0][1]).real
         dnref = gpu.cp.amax(self._dets[1][1]).real
 
@@ -353,6 +352,7 @@ class Slater:
         if epos differs from the current position of electron e."""
         s = int(e >= self._nelec[0])
         aograd = self.orbitals.aos("GTOval_sph_deriv1", epos)
+
         mograd = self.orbitals.mos(aograd, s)
 
         mograd_vals = mograd[:, :, self._det_occup[s]]
