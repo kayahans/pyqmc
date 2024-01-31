@@ -443,7 +443,7 @@ def runabdmc(
             if verbose:
                 print(f"Restarting calculation {continue_from} from step {stepoffset}")
     else:  
-        df, configs = mc.vmc(
+        df, configs = mc.abvmc(
             wf,
             configs,
             client=client,

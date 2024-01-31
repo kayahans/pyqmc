@@ -165,7 +165,8 @@ class Slater:
         ) = pyqmc.orbitals.choose_evaluator_from_pyscf(
             mol, mf, mc, twist=twist, determinants=determinants, tol=self.tol
         )
-
+        num_det = len(self.myparameters["det_coeff"])
+        print('Number of determinants in the Fermionic wavefunction=', num_det)
         self.parameters = JoinParameters([self.myparameters, self.orbitals.parameters])
 
         iscomplex = self.orbitals.mo_dtype == complex or bool(
@@ -177,7 +178,6 @@ class Slater:
     def recompute(self, configs):
         """This computes the value from scratch. Returns the logarithm of the wave function as
         (phase,logdet). If the wf is real, phase will be +/- 1."""
-
         nconf, nelec, ndim = configs.configs.shape
         aos = self.orbitals.aos("GTOval_sph", configs)
         self._aovals = aos.reshape(-1, nconf, nelec, aos.shape[-1])
@@ -290,6 +290,7 @@ class Slater:
 
     def _testrowderiv(self, e, vec, spin=None):
         """vec is a nconfig,nmo vector which replaces row e"""
+
         s = int(e >= self._nelec[0]) if spin is None else spin
         ratios = gpu.cp.einsum(
             "ei...dj,idj...->ei...d",
@@ -298,7 +299,7 @@ class Slater:
         )
         upref = gpu.cp.amax(self._dets[0][1]).real
         dnref = gpu.cp.amax(self._dets[1][1]).real
-
+ 
         det_array = (
             self._dets[0][0, :, self._det_map[0]]
             * self._dets[1][0, :, self._det_map[1]]
@@ -320,7 +321,6 @@ class Slater:
             self.parameters["det_coeff"],
             det_array,
         )
-        # curr_val = self.value()
 
         if len(numer.shape) == 3:
             denom = denom[gpu.cp.newaxis, :, gpu.cp.newaxis]
@@ -355,7 +355,7 @@ class Slater:
         mograd = self.orbitals.mos(aograd, s)
 
         mograd_vals = mograd[:, :, self._det_occup[s]]
-        
+
         ratios = gpu.asnumpy(self._testrowderiv(e, mograd_vals))
         derivatives = ratios[1:] / ratios[0]
         derivatives[~np.isfinite(derivatives)] = 0.0

@@ -102,7 +102,7 @@ class MultiplyWF:
     def gradient_value(self, e, epos, configs=None):
         grad_vals = [wf.gradient_value(e, epos, configs) for wf in self.wf_factors]
         grads, vals, saved_values = list(zip(*grad_vals))
-        return np.sum(grads, axis=0), np.prod(vals, axis=0), saved_values, grad_vals
+        return np.sum(grads, axis=0), np.prod(vals, axis=0), saved_values
 
     def gradient_laplacian(self, e, epos):
         grad_laps = [wf.gradient_laplacian(e, epos) for wf in self.wf_factors]
@@ -123,7 +123,9 @@ class MultiplyWF:
 #kayahan edited below
 class MultiplyBosonWF(MultiplyWF):
     """
-    A general representation of a BOSONIC wavefunction as a product of multiple wf_factors
+    A general representation of a Bosonic wavefunction as a product of multiple wf_factors
+    Eq. 4 in doi: 10.1063/5.0155513
+
     """
     
     def recompute(self, configs):
@@ -134,28 +136,50 @@ class MultiplyBosonWF(MultiplyWF):
             signs *= results[0]
             vals  *= results[1]
         return signs, vals
-
+    
+    # MultiplyWF
+    # def value(self):
+    #     results = [wf.value() for wf in self.wf_factors]
+    #     results = np.array([*results])
+    #     return np.prod(results[:, 0, :], axis=0), np.sum(results[:, 1, :], axis=0)
+    
     def value(self):
-        print("Not implemented")
-        exit()
-
+        results = [wf.value() for wf in self.wf_factors]
+        results = np.array([*results])
+        return np.prod(results[:, 0, :], axis=0), np.prod(results[:, 1, :], axis=0)
+    
     def gradient(self, e, epos):
-        # grads = [wf.gradient(e, epos) for wf in self.wf_factors]
-        # return np.prod(grads, axis=0)
-        print('Not implemented')
-        exit() 
-
+        grads = [wf.gradient(e, epos) for wf in self.wf_factors]
+        return np.prod(grads, axis=0)
+    
+    # MultiplyWF
+    # def gradient_value(self, e, epos, configs=None):
+    #     grad_vals = [wf.gradient_value(e, epos, configs) for wf in self.wf_factors]
+    #     grads, vals, saved_values = list(zip(*grad_vals))
+    #     return np.sum(grads, axis=0), np.prod(vals, axis=0), saved_values
+    
     def gradient_value(self, e, epos, configs=None):  
-        import pdb
-        pdb.set_trace()  
+
         assert len(self.wf_factors) == 2, "MultiplyBosonWF only accepts SJ type wavefunctions"
         grad_vals = [wf.gradient_value(e, epos, configs) for wf in self.wf_factors]
         grads, vals, saved_values = list(zip(*grad_vals))
-        grads_r = grads[0]*vals[1] + grads[1]*vals[0]
-        vals  = vals[0]*vals[1]
-        # return np.sum(grads, axis=0), np.prod(vals, axis=0), saved_values
-        return grads_r, vals, saved_values, grad_vals
 
+        phi0 = saved_values[0]['sign']*saved_values[0]['psi'] #sign0*psi0
+        phi1 = saved_values[1]['sign']*saved_values[1]['psi']
+        
+        grads_mult = grads[0]*phi1 + grads[1]*phi0
+
+        # import pdb
+        # pdb.set_trace()
+        phi = phi0*phi1
+        sign = np.sign(phi)
+        saved_values = {'values':[saved_values[0]['values'], saved_values[1]['values']],
+                        'sign':sign,
+                        'psi':phi/sign}
+        
+        return grads_mult, np.prod(vals, axis=0), saved_values
+        
+        
     def gradient_laplacian(self, e, epos):      
         # grad_laps = [wf.gradient_laplacian(e, epos) for wf in self.wf_factors]
         # grads, laps = list(zip(*grad_laps))

@@ -238,6 +238,7 @@ class JastrowSpin:
 
     def value(self):
         """Compute the current log value of the wavefunction"""
+        # \ln \Psi_J = \ln e^{J} = J, J = \sum_l c_l \left(\sum_{j > e} \nabla_e b_l(r_{ej}) + \sum_{i < e} \nabla_e b_l(r_{ie})\right)
         u = gpu.cp.sum(self._bvalues * self.parameters["bcoeff"], axis=(2, 1))
         u += gpu.cp.einsum("ijkl,jkl->i", self._avalues, self.parameters["acoeff"])
         return (np.ones(len(u)), gpu.asnumpy(u))
@@ -280,7 +281,8 @@ class JastrowSpin:
         r""""""
         nconf, nelec = self._configscurrent.configs.shape[:2]
         nup = self._mol.nelec[0]
-
+        # import pdb
+        # pdb.set_trace()
         # Get e-e and e-ion distances2
         not_e = np.arange(nelec) != e
         dnew = gpu.cp.asarray(
@@ -314,7 +316,7 @@ class JastrowSpin:
             agrad, aval = a.gradient_value(dinew, rinew)
             grad += gpu.cp.einsum("j,ijk->ki", c, agrad)
             a_partial_e[..., k] = aval
-
+        # pdb.set_trace()
         deltaa = a_partial_e - self._a_partial[e]
         a_val = gpu.cp.einsum(
             "...jk,jk->...", deltaa, self.parameters["acoeff"][..., edown]
@@ -689,14 +691,87 @@ class BosonJastrowSpin:
         #    self._b_partial[e, :, l, 0][mask] = bval[:, :sep].sum(axis=1)
         #    self._b_partial[e, :, l, 1][mask] = bval[:, sep:].sum(axis=1)
 
-    # def value(self):
-    #     """Compute the current log value of the wavefunction"""
-    #     u = gpu.cp.sum(self._bvalues * self.parameters["bcoeff"], axis=(2, 1))
-    #     u += gpu.cp.einsum("ijkl,jkl->i", self._avalues, self.parameters["acoeff"])
-    #     return (np.ones(len(u)), gpu.asnumpy(u))
+    def value(self):
+        """Compute the current log value of the wavefunction"""
+        u = gpu.cp.sum(self._bvalues * self.parameters["bcoeff"], axis=(2, 1))
+        u += gpu.cp.einsum("ijkl,jkl->i", self._avalues, self.parameters["acoeff"])
+        # Bosonic modification: 
+        #start
+        u = np.exp(u)
+        #end 
+        return (np.ones(len(u)), gpu.asnumpy(u))
+    # The original from JastrowSpin 
+    # def gradient(self, e, epos):
+    #     r"""We compute the gradient for electron e as
+    #     :math:`\nabla_e \ln \Psi_J = \sum_l c_l \left(\sum_{j > e} \nabla_e b_l(r_{ej}) + \sum_{i < e} \nabla_e b_l(r_{ie})\right)`
+    #     So we need to compute the gradient of the b's for these indices.
+    #     Note that we need to compute distances between electron position given and the current electron distances.
+    #     We will need this for laplacian() as well"""
+    #     nconf, nelec = self._configscurrent.configs.shape[:2]
+    #     nup = self._mol.nelec[0]
 
+    #     # Get e-e and e-ion distances
+    #     not_e = np.arange(nelec) != e
+    #     dnew = gpu.cp.asarray(
+    #         epos.dist.dist_i(self._configscurrent.configs, epos.configs)[:, not_e]
+    #     )
+    #     dinew = gpu.cp.asarray(epos.dist.dist_i(self._mol.atom_coords(), epos.configs))
+    #     rnew = gpu.cp.linalg.norm(dnew, axis=-1)
+    #     rinew = gpu.cp.linalg.norm(dinew, axis=-1)
+
+    #     grad = gpu.cp.zeros((3, nconf))
+
+    #     # Check if selected electron is spin up or down
+    #     eup = int(e < nup)
+    #     edown = int(e >= nup)
+
+    #     for c, b in zip(self.parameters["bcoeff"], self.b_basis):
+    #         bgrad = b.gradient(dnew, rnew)
+    #         grad += c[edown] * gpu.cp.sum(bgrad[:, : nup - eup], axis=1).T
+    #         grad += c[1 + edown] * gpu.cp.sum(bgrad[:, nup - eup :], axis=1).T
+
+    #     for c, a in zip(self.parameters["acoeff"].transpose()[edown], self.a_basis):
+    #         grad += gpu.cp.einsum("j,ijk->ki", c, a.gradient(dinew, rinew))
+
+    #     return gpu.asnumpy(grad)
+
+    def gradient(self, e, epos):
+        r"""We compute the gradient for electron e as
+        :math:`\nabla_e \ln \Psi_J = \sum_l c_l \left(\sum_{j > e} \nabla_e b_l(r_{ej}) + \sum_{i < e} \nabla_e b_l(r_{ie})\right)`
+        So we need to compute the gradient of the b's for these indices.
+        Note that we need to compute distances between electron position given and the current electron distances.
+        We will need this for laplacian() as well"""
+        nconf, nelec = self._configscurrent.configs.shape[:2]
+        nup = self._mol.nelec[0]
+
+        # Get e-e and e-ion distances
+        not_e = np.arange(nelec) != e
+        dnew = gpu.cp.asarray(
+            epos.dist.dist_i(self._configscurrent.configs, epos.configs)[:, not_e]
+        )
+        dinew = gpu.cp.asarray(epos.dist.dist_i(self._mol.atom_coords(), epos.configs))
+        rnew = gpu.cp.linalg.norm(dnew, axis=-1)
+        rinew = gpu.cp.linalg.norm(dinew, axis=-1)
+
+        grad = gpu.cp.zeros((3, nconf))
+
+        # Check if selected electron is spin up or down
+        eup = int(e < nup)
+        edown = int(e >= nup)
+
+        for c, b in zip(self.parameters["bcoeff"], self.b_basis):
+            bgrad = b.gradient(dnew, rnew)
+            grad += c[edown] * gpu.cp.sum(bgrad[:, : nup - eup], axis=1).T
+            grad += c[1 + edown] * gpu.cp.sum(bgrad[:, nup - eup :], axis=1).T
+
+        for c, a in zip(self.parameters["acoeff"].transpose()[edown], self.a_basis):
+            grad += gpu.cp.einsum("j,ijk->ki", c, a.gradient(dinew, rinew))
+
+        return gpu.asnumpy(grad)
+        
     def gradient_value(self, e, epos, configs=None):
-        r""""""
+        r"""
+        Differences with respect to the original Jastrow spin code is commented"""
         nconf, nelec = self._configscurrent.configs.shape[:2]
         nup = self._mol.nelec[0]
 
@@ -706,8 +781,8 @@ class BosonJastrowSpin:
             epos.dist.dist_i(self._configscurrent.configs[:, not_e], epos.configs)
         )
         dinew = gpu.cp.asarray(epos.dist.dist_i(self._mol.atom_coords(), epos.configs))
-        rnew = gpu.cp.linalg.norm(dnew, axis=-1)
-        rinew = gpu.cp.linalg.norm(dinew, axis=-1)
+        rnew = gpu.cp.linalg.norm(dnew, axis=-1) # e-e
+        rinew = gpu.cp.linalg.norm(dinew, axis=-1) #e-i
 
         grad = gpu.cp.zeros((3, nconf))
 
@@ -742,45 +817,93 @@ class BosonJastrowSpin:
         b_val = gpu.cp.einsum(
             "...jk,jk->...", deltab, self.parameters["bcoeff"][:, edown : edown + 2]
         )
-        # import pdb
-        # pdb.set_trace()
         val = gpu.cp.exp(b_val + a_val)
-        return gpu.asnumpy(grad)*val, gpu.asnumpy(val), (a_partial_e, b_partial_e, bvals)
+        #Bosonic modification:
+        #start
+        a_val_partial = gpu.cp.einsum(
+            "...jk,jk->...", a_partial_e, self.parameters["acoeff"][..., edown]
+        )
+        b_val_partial = gpu.cp.einsum(
+            "...jk,jk->...", b_partial_e, self.parameters["bcoeff"][:, edown : edown + 2]
+        )
+        val_partial = gpu.cp.exp(b_val_partial + a_val_partial)
 
+        saved_values = {'values':(a_partial_e, b_partial_e, bvals),
+                        'sign':np.ones(len(val_partial)),
+                        'psi':val_partial}
+        return gpu.asnumpy(grad)*val_partial, gpu.asnumpy(val), saved_values 
+        #end 
+
+    # The original from JastrowSpin 
     # def gradient_laplacian(self, e, epos):
-        # """ """
-        # nconf, nelec = self._configscurrent.configs.shape[:2]
-        # nup = self._mol.nelec[0]
+    #     """ """
+    #     nconf, nelec = self._configscurrent.configs.shape[:2]
+    #     nup = self._mol.nelec[0]
 
-        # # Get e-e and e-ion distances
-        # not_e = np.arange(nelec) != e
-        # dnew = gpu.cp.asarray(
-        #     epos.dist.dist_i(self._configscurrent.configs, epos.configs)[:, not_e]
-        # )
-        # dinew = gpu.cp.asarray(epos.dist.dist_i(self._mol.atom_coords(), epos.configs))
-        # rnew = gpu.cp.linalg.norm(dnew, axis=-1)
-        # rinew = gpu.cp.linalg.norm(dinew, axis=-1)
+    #     # Get e-e and e-ion distances
+    #     not_e = np.arange(nelec) != e
+    #     dnew = gpu.cp.asarray(
+    #         epos.dist.dist_i(self._configscurrent.configs, epos.configs)[:, not_e]
+    #     )
+    #     dinew = gpu.cp.asarray(epos.dist.dist_i(self._mol.atom_coords(), epos.configs))
+    #     rnew = gpu.cp.linalg.norm(dnew, axis=-1)
+    #     rinew = gpu.cp.linalg.norm(dinew, axis=-1)
 
-        # eup = int(e < nup)
-        # edown = int(e >= nup)
+    #     eup = int(e < nup)
+    #     edown = int(e >= nup)
 
-        # grad = gpu.cp.zeros((3, nconf))
-        # lap = gpu.cp.zeros(nconf)
-        # # a-value component
-        # for c, a in zip(self.parameters["acoeff"].transpose()[edown], self.a_basis):
-        #     g, l = a.gradient_laplacian(dinew, rinew)
-        #     grad += gpu.cp.einsum("j,ijk->ki", c, g)
-        #     lap += gpu.cp.einsum("j,ijk->i", c, l)
+    #     grad = gpu.cp.zeros((3, nconf))
+    #     lap = gpu.cp.zeros(nconf)
+    #     # a-value component
+    #     for c, a in zip(self.parameters["acoeff"].transpose()[edown], self.a_basis):
+    #         g, l = a.gradient_laplacian(dinew, rinew)
+    #         grad += gpu.cp.einsum("j,ijk->ki", c, g)
+    #         lap += gpu.cp.einsum("j,ijk->i", c, l)
 
-        # # b-value component
-        # for c, b in zip(self.parameters["bcoeff"], self.b_basis):
-        #     bgrad, blap = b.gradient_laplacian(dnew, rnew)
+    #     # b-value component
+    #     for c, b in zip(self.parameters["bcoeff"], self.b_basis):
+    #         bgrad, blap = b.gradient_laplacian(dnew, rnew)
 
-        #     grad += c[edown] * gpu.cp.sum(bgrad[:, : nup - eup], axis=1).T
-        #     grad += c[1 + edown] * gpu.cp.sum(bgrad[:, nup - eup :], axis=1).T
-        #     lap += c[edown] * gpu.cp.sum(blap[:, : nup - eup], axis=(1, 2))
-        #     lap += c[1 + edown] * gpu.cp.sum(blap[:, nup - eup :], axis=(1, 2))
-        # return gpu.asnumpy(grad), gpu.asnumpy(lap + gpu.cp.sum(grad**2, axis=0))
+    #         grad += c[edown] * gpu.cp.sum(bgrad[:, : nup - eup], axis=1).T
+    #         grad += c[1 + edown] * gpu.cp.sum(bgrad[:, nup - eup :], axis=1).T
+    #         lap += c[edown] * gpu.cp.sum(blap[:, : nup - eup], axis=(1, 2))
+    #         lap += c[1 + edown] * gpu.cp.sum(blap[:, nup - eup :], axis=(1, 2))
+    #     return gpu.asnumpy(grad), gpu.asnumpy(lap + gpu.cp.sum(grad**2, axis=0))
+    
+    def gradient_laplacian(self, e, epos):
+        """ """
+        nconf, nelec = self._configscurrent.configs.shape[:2]
+        nup = self._mol.nelec[0]
+
+        # Get e-e and e-ion distances
+        not_e = np.arange(nelec) != e
+        dnew = gpu.cp.asarray(
+            epos.dist.dist_i(self._configscurrent.configs, epos.configs)[:, not_e]
+        )
+        dinew = gpu.cp.asarray(epos.dist.dist_i(self._mol.atom_coords(), epos.configs))
+        rnew = gpu.cp.linalg.norm(dnew, axis=-1)
+        rinew = gpu.cp.linalg.norm(dinew, axis=-1)
+
+        eup = int(e < nup)
+        edown = int(e >= nup)
+
+        grad = gpu.cp.zeros((3, nconf))
+        lap = gpu.cp.zeros(nconf)
+        # a-value component
+        for c, a in zip(self.parameters["acoeff"].transpose()[edown], self.a_basis):
+            g, l = a.gradient_laplacian(dinew, rinew)
+            grad += gpu.cp.einsum("j,ijk->ki", c, g)
+            lap += gpu.cp.einsum("j,ijk->i", c, l)
+
+        # b-value component
+        for c, b in zip(self.parameters["bcoeff"], self.b_basis):
+            bgrad, blap = b.gradient_laplacian(dnew, rnew)
+
+            grad += c[edown] * gpu.cp.sum(bgrad[:, : nup - eup], axis=1).T
+            grad += c[1 + edown] * gpu.cp.sum(bgrad[:, nup - eup :], axis=1).T
+            lap += c[edown] * gpu.cp.sum(blap[:, : nup - eup], axis=(1, 2))
+            lap += c[1 + edown] * gpu.cp.sum(blap[:, nup - eup :], axis=(1, 2))
+        return gpu.asnumpy(grad), gpu.asnumpy(lap + gpu.cp.sum(grad**2, axis=0))
 
     # def laplacian(self, e, epos):
     #     return self.gradient_laplacian(e, epos)[1]

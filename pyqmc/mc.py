@@ -93,9 +93,6 @@ def vmc_worker(wf, configs, tstep, nsteps, accumulators, bosonic=False):
     Run VMC for nsteps.
 
     :return: a dictionary of averages from each accumulator.
-
-    Updated to handle bosonic wavefunctions
-
     """
     nconf, nelec, _ = configs.configs.shape
     block_avg = {}
@@ -104,95 +101,63 @@ def vmc_worker(wf, configs, tstep, nsteps, accumulators, bosonic=False):
         acc = 0.0
         
         for e in range(nelec):
-            # Acceptance
-            if bosonic:
-                # Propose move
-                g1, val, _ = wf.gradient_value(e, configs.electron(e))
-                lng1 = g1/np.tile(new_val, (3,1))
-                limdb1 = limdrift(np.real(lng1.T))
-
-                grad = - limdb1 * np.tile(val, (3,1)).T
-
-                gauss = np.random.normal(scale=np.sqrt(tstep), size=(nconf, 3))
-                newcoorde = configs.configs[:, e, :] + gauss + grad * tstep
-                newcoorde = configs.make_irreducible(e, newcoorde)
-
-                # Compute reverse move
-                g2, new_val, saved = wf.gradient_value(e, newcoorde, configs=configs)
-                lng2 = g2/np.tile(new_val, (3,1))
-                limdb2 = limdrift(np.real(lng2.T))
-                
-                new_grad = - limdb2 * np.tile(new_val, (3,1)).T
-
-                forward = np.exp(np.sum(-gauss**2, axis=1))
-                backward = np.exp(np.sum(-(gauss + tstep * (grad + new_grad)) ** 2, axis=1)) 
-
-                t_prob = forward/backward
-                ratio = (new_val/val)**2  * t_prob
-            else:
-                # Propose move
-                # sign, vali = wf.recompute(configs)
-                
-                g1, _, _ = wf.gradient_value(e, configs.electron(e))
-                # sign, valj = wf.recompute(configs)
-                # import matplotlib.pyplot as plt
-                # # plt.plot(g1[2,:], '-ok')
-                # plt.plot(np.gradient(val), '-oy')
-                # plt.show()
-                # import pdb
-                # pdb.set_trace()                
-                grad = - limdrift(np.real(g1.T))
-                rng = np.random #.RandomState(1)
-                gauss = rng.normal(scale=np.sqrt(tstep), size=(nconf, 3))
-                tt = configs.configs[:, e, :]
-                newcoorde = configs.configs[:, e, :] + gauss + grad * tstep
-                newcoorde = configs.make_irreducible(e, newcoorde)
-                index = 30
-                # print('='*30, '\n', 'wf_inv1', wf._inverse[0][index])
-                # Compute reverse move
-                # import pdb
-                # pdb.set_trace()
-                # import pdb
-                # pdb.set_trace()
-                g2, new_val, saved = wf.gradient_value(e, newcoorde, configs=configs)
-                new_grad = - limdrift(np.real(g2.T))
-                forward = np.sum(gauss**2, axis=1)
-                backward = np.sum((gauss + tstep * (grad + new_grad)) ** 2, axis=1)
-                # print('wf_inv2', wf._inverse[0][index])
-                t_prob = np.exp(1 / (2 * tstep) * (forward - backward))
-                ratio = np.abs(new_val) ** 2 * t_prob
-                
+            # Propose move
+            import pdb
+            pdb.set_trace()
+            g1, _, _ = wf.gradient_value(e, configs.electron(e))
             
+            grad = - limdrift(np.real(g1.T))
+            import pdb
+            pdb.set_trace()
+            rng = np.random.RandomState(i)
+            gauss = rng.normal(scale=np.sqrt(tstep), size=(nconf, 3))
+            
+            newcoorde = configs.configs[:, e, :] + gauss + grad * tstep
+            newcoorde = configs.make_irreducible(e, newcoorde)
+
+            index = 30
+            print('='*30, '\n', 'wf_inv1', wf._inverse[0][index])
+
+            # Compute reverse move
+            g2, new_val, saved = wf.gradient_value(e, newcoorde, configs=configs)
+            new_grad = - limdrift(np.real(g2.T))
+            forward = np.sum(gauss**2, axis=1)
+            backward = np.sum((gauss + tstep * (grad + new_grad)) ** 2, axis=1)
+            
+            t_prob = np.exp(1 / (2 * tstep) * (forward - backward))
+            ratio = np.abs(new_val) ** 2 * t_prob
+
             accept = ratio > np.random.rand(nconf)
             
-            # print(
-            #     i, '\n',
-            #       e, '\n',
+            print('wf_inv2', wf._inverse[0][index])
+            print(
+                i, '\n',
+                  e, '\n',
                   
-            #     #   vali[index], '\n',
-            #     #   val[index], '\n',
-            #     #   valj[index], '\n',
-            #       g1.T[index], '\n',
-            #       newcoorde.configs[index], '\n',
-            #     #   val[index], '\n',
-            #     #   grad[index], '\n',
-            #     #   gauss[index], '\n',
-            #     #   tt[index], '\n',
-            #     #   tstep, '\n',
-            #     #   configs.electron(e).configs[index], '\n',
-            #     #   newcoorde.configs[index], '\n',
-            #     # new_val[index], '\n',
-            #       g2.T[index], '\n',
-            #       new_grad[index], '\n',
-            #       t_prob[index], '\n',
-            #       ratio[index], '\n',
-            #     # wf._inverse[index], '\n',
-            #       new_val[index], '\n'
-            #     #   accept[0], 
-            #     #   
-            #       )
-            # from sys import exit
-            # exit()
+                #   vali[index], '\n',
+                #   val[index], '\n',
+                #   valj[index], '\n',
+                  g1.T[index], '\n',
+                  newcoorde.configs[index], '\n',
+                #   val[index], '\n',
+                #   grad[index], '\n',
+                #   gauss[index], '\n',
+                #   tt[index], '\n',
+                #   tstep, '\n',
+                #   configs.electron(e).configs[index], '\n',
+                #   newcoorde.configs[index], '\n',
+                # new_val[index], '\n',
+                  g2.T[index], '\n',
+                  new_grad[index], '\n',
+                  t_prob[index], '\n',
+                  ratio[index], '\n',
+                # wf._inverse[index], '\n',
+                  new_val[index], '\n'
+                #   accept[0], 
+                #   
+                  )
+            from sys import exit
+            exit()
             # Update wave function
             configs.move(e, newcoorde, accept)
             wf.updateinternals(e, newcoorde, configs, mask=accept, saved_values=saved)
@@ -208,6 +173,54 @@ def vmc_worker(wf, configs, tstep, nsteps, accumulators, bosonic=False):
                     block_avg[k + m] += res / nsteps
         block_avg["acceptance"] = acc
     return block_avg, configs
+
+
+# def vmc_worker(wf, configs, tstep, nsteps, accumulators):
+#     """
+#     Run VMC for nsteps.
+
+#     :return: a dictionary of averages from each accumulator.
+#     """
+#     nconf, nelec, _ = configs.configs.shape
+#     block_avg = {}
+#     wf.recompute(configs)
+
+#     for _ in range(nsteps):
+#         acc = 0.0
+#         for e in range(nelec):
+#             # Propose move
+#             g, _, _ = wf.gradient_value(e, configs.electron(e))
+#             grad = limdrift(np.real(g.T))
+#             gauss = np.random.normal(scale=np.sqrt(tstep), size=(nconf, 3))
+#             newcoorde = configs.configs[:, e, :] + gauss + grad * tstep
+#             newcoorde = configs.make_irreducible(e, newcoorde)
+
+#             # Compute reverse move
+#             g, new_val, saved = wf.gradient_value(e, newcoorde)
+#             new_grad = limdrift(np.real(g.T))
+#             forward = np.sum(gauss**2, axis=1)
+#             backward = np.sum((gauss + tstep * (grad + new_grad)) ** 2, axis=1)
+
+#             # Acceptance
+#             t_prob = np.exp(1 / (2 * tstep) * (forward - backward))
+#             ratio = np.abs(new_val) ** 2 * t_prob
+#             accept = ratio > np.random.rand(nconf)
+
+#             # Update wave function
+#             configs.move(e, newcoorde, accept)
+#             wf.updateinternals(e, newcoorde, configs, mask=accept, saved_values=saved)
+#             acc += np.mean(accept) / nelec
+
+#         # Rolling average on step
+#         for k, accumulator in accumulators.items():
+#             dat = accumulator.avg(configs, wf)
+#             for m, res in dat.items():
+#                 if k + m not in block_avg:
+#                     block_avg[k + m] = res / nsteps
+#                 else:
+#                     block_avg[k + m] += res / nsteps
+#         block_avg["acceptance"] = acc
+#     return block_avg, configs
 
 
 def vmc_parallel(
@@ -425,13 +438,11 @@ def abvmc(
 
 def abvmc_worker(wf, configs, tstep, nsteps, accumulators):
     """
-    Run VMC for nsteps.
+    Run ABVMC for nsteps.
 
     :return: a dictionary of averages from each accumulator.
 
-    Updated to handle bosonic wavefunctions
-
-    Some of the values needs to be renormalized to agree with the regular VMC 
+    Reuses much of the code in vmc_worker
 
     """
     
@@ -443,81 +454,87 @@ def abvmc_worker(wf, configs, tstep, nsteps, accumulators):
         acc = 0.0
         
         for e in range(nelec):
-            # Acceptance
             # Propose move
-            # sign, vali = wf.recompute(configs)
-            g1, _, __ = wf.gradient_value(e, configs.electron(e))
-            _, psi1 = wf.value()
+            g1, _, _ = wf.gradient_value(e, configs.electron(e))
+            _, psi1, _ = wf.value()
+
             # g1 is the forward x,y,z gradient
             # val is the value of the A(R)^-1 * A(R) here, so it is always 1 in the forward step
             # A is defined as \psi = det(A(R)), where A is the matrix constructing the slater determinant
             # if \psi is a single determinant wavefunction
             # So the charge density is n(R) = \sum(A(R))**2 
-            # import pdb
-            # pdb.set_trace()
+            
+            # lng1 = gradient of ln(\psi)
+            # Below a bit hacky way to avoid properly renormalizing 
+            # the \psi to generate steps and calculate accept/recept ratios
+            # directly using the bosonic wavefunction.
+            # Here, we calculate the derivative of ln(\psi)=lng1, so that
+            # we cam use the vmc_worker code here with no modification
             lng1 = g1/np.tile(psi1, (3,1))
             grad = - limdrift(np.real(lng1.T))
-            rng = np.random #.RandomState(1)
+            import pdb
+            pdb.set_trace()
+            rng = np.random.RandomState(i)
             gauss = rng.normal(scale=np.sqrt(tstep), size=(nconf, 3))
-            tt = configs.configs[:, e, :]
+            
             newcoorde = configs.configs[:, e, :] + gauss + grad * tstep
             newcoorde = configs.make_irreducible(e, newcoorde)
-
-            # Compute reverse move
-            # import pdb
-            # pdb.set_trace()
+            
             index = 30
-            # print('='*30, '\n', 'wf_inv1', wf._inverse[0][index])
-            g2, new_val, saved = wf.gradient_value(e, newcoorde, configs=configs)  
-            psi2 = saved[3]          
+            print('='*30, '\n', 'wf_inv1', wf._inverse[0][index])
+            
+            # Now compute reverse move
+            # For the backwards move, configs are passed to gradient_value.
+            g2, new_val, saved = wf.gradient_value(e, newcoorde, configs=configs) 
+
+            psi2 = saved['psi']          
 
             # g2 is the backward x,y,z gradient
             # new_val here is A(R)^-1 * A(R'), because the A(R)^-1 is not updated with R' yet
-            # Therefore the ratio below becomes
-            # ratio = np.abs(new_val) ** 2 * t_prob
-            # equal to \sum(A(R'))**2 
+            # Therefore the np.abs(new_val) below becomes equal to \sum(A(R')/A(R))**2 
+
             lng2 = g2/np.tile(psi2, (3,1))
             new_grad = -limdrift(np.real(lng2.T))
             forward = np.sum(gauss**2, axis=1)
             backward = np.sum((gauss + tstep * (grad + new_grad)) ** 2, axis=1)
-            # print('wf_inv2', wf._inverse[0][index])
+            
             t_prob = np.exp(1 / (2 * tstep) * (forward - backward))
-            
             ratio = np.abs(new_val) ** 2 * t_prob
-            accept = ratio > np.random.rand(nconf)
-            
-            # print(
-            #       i, '\n',
-            #       e, '\n',
-                  
-            #     #   val1[index], '\n',
-            #     #   np.log(val2[index]), '\n',
-            #     #   np.log(valj[index]), '\n',
-            #       lng1.T[index], '\n',
-            #       newcoorde.configs[index], '\n',
-            #     #   val[index], '\n',
-            #     #   grad[index], '\n',
-            #     #   gauss[index], '\n',
-            #     #   tt[index], '\n',
-            #     #   tstep, '\n',
-            #     #   configs.electron(e).configs[index], '\n',
-            #     #   newcoorde.configs[index], '\n',
-            #     # new_val[index], '\n',
-                
-            #       lng2.T[index], '\n',
-            #       new_grad[index], '\n',
-            #       t_prob[index], '\n',
-            #       ratio[index], '\n', 
-            #       new_val[index], '\n'
 
-            #     #   accept[0], 
-            #     #   gauss[0], 
-            #       )
-            # from sys import exit
-            # exit()
+            accept = ratio > np.random.rand(nconf)
+            print('wf_inv2', wf._inverse[0][index])
+            print(
+                  i, '\n',
+                  e, '\n',
+                  
+                #   val1[index], '\n',
+                #   np.log(val2[index]), '\n',
+                #   np.log(valj[index]), '\n',
+                  lng1.T[index], '\n',
+                  newcoorde.configs[index], '\n',
+                #   val[index], '\n',
+                #   grad[index], '\n',
+                #   gauss[index], '\n',
+                #   tt[index], '\n',
+                #   tstep, '\n',
+                #   configs.electron(e).configs[index], '\n',
+                #   newcoorde.configs[index], '\n',
+                # new_val[index], '\n',
+                
+                  lng2.T[index], '\n',
+                  new_grad[index], '\n',
+                  t_prob[index], '\n',
+                  ratio[index], '\n', 
+                  new_val[index], '\n'
+
+                #   accept[0], 
+                #   gauss[0], 
+                  )
+            from sys import exit
+            exit()
             # Update wave function
             configs.move(e, newcoorde, accept)
-            wf.updateinternals(e, newcoorde, configs, mask=accept, saved_values=saved[0:2])
+            wf.updateinternals(e, newcoorde, configs, mask=accept, saved_values=saved['values'])
             # update internals runs the sherman morrison update in block
             # this updates the determinant inverse based on the electronic update
             # without fully updating the inverse matrix. 
@@ -537,13 +554,8 @@ def abvmc_worker(wf, configs, tstep, nsteps, accumulators):
 def fixed_initial_guess(mol, nconfig, r=1.0):
 
 
-    """Generate an initial guess by distributing electrons near atoms
-    proportional to their charge.
-
-    assign electrons to atoms based on atom charges
-    assign the minimum number first, and assign the leftover ones randomly
-    this algorithm chooses atoms *with replacement* to assign leftover electrons
-
+    """
+    Ideally works for H2 molecule with H-H aligned over z-axis and H1 at origin, H2 at [0,0,2]
     :parameter mol: A PySCF-like molecule object. Should have atom_charges(), atom_coords(), and nelec
     :parameter nconfig: How many configurations to generate.
     :parameter r: How far from the atoms to distribute the electrons
@@ -566,10 +578,11 @@ def fixed_initial_guess(mol, nconfig, r=1.0):
         )  # fraction of electron unassigned on each atom
         nassigned = np.sum(neach)  # number of electrons assigned
         totleft = int(mol.nelec[s] - nassigned)  # number of electrons not yet assigned
+        # 
         max = 3
         min = -1 
         if ind0 > 0:
-            max = -0.5
+            max = -1.5
             min = max
         epos[:, ind0, :] = np.linspace([-0.1,-0.1+ind0,min], [-0.1,-0.1+ind0,max], num=nconfig)
         ind0 += 1
@@ -587,7 +600,7 @@ def fixed_initial_guess(mol, nconfig, r=1.0):
 
     # epos += r * np.random.randn(*epos.shape)  # random shifts from atom positions
     # epos = np.linspace(0, 2, num=nconfig)
-    print(epos)
+    # print(epos)
     if hasattr(mol, "a"):
         epos = PeriodicConfigs(epos, mol.lattice_vectors())
     else:

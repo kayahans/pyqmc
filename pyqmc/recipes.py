@@ -218,10 +218,10 @@ def initialize_qmc_objects(
 
     if S is not None:
         mol = supercell.get_supercell(mol, np.asarray(S))
-    
+
     if load_parameters is None:
         wf, to_opt = wftools.generate_wf(
-            mol, mf, mc=mc, jastrow = None, jastrow_kws=jastrow_kws, slater_kws=slater_kws
+            mol, mf, mc=mc, jastrow=None, slater_kws=slater_kws
         )
     else:
         wf, to_opt = wftools.generate_wf(
@@ -472,9 +472,9 @@ def initialize_boson_qmc_objects(
     # from mc import fixed_initial_guess
     # configs = fixed_initial_guess(mol, nconfig)
     print('Using spherical guess')
-    # configs = pyqmc.initial_guess(mol, nconfig)
-    from mc import initial_guess
-    configs = initial_guess(mol, nconfig,seed=seed)
+    configs = pyqmc.initial_guess(mol, nconfig)
+    # from mc import initial_guess
+    # configs = initial_guess(mol, nconfig,seed=seed)
 
     if opt_wf:
         accumulators = pyqmc.accumulators.gradient_generator(
