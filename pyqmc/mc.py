@@ -582,7 +582,7 @@ def fixed_initial_guess(mol, nconfig, r=1.0):
         max = 3
         min = -1 
         if ind0 > 0:
-            max = -1.5
+            max = -10
             min = max
         epos[:, ind0, :] = np.linspace([-0.1,-0.1+ind0,min], [-0.1,-0.1+ind0,max], num=nconfig)
         ind0 += 1

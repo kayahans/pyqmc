@@ -148,11 +148,8 @@ class BosonWF:
             end = self._nelec[0] + self._nelec[1] * s
             mo = self.orbitals.mos(self._aovals[:, :, begin:end, :], s)
             mo_vals = gpu.cp.swapaxes(mo[:, :, self._det_occup[s]], 1, 2)
-            det = np.linalg.det(mo_vals) 
-            import pdb
-            pdb.set_trace()
-            detsq = gpu.cp.asarray(det * np.conjugate(det), dtype=float)
-            
+            det = gpu.cp.asarray(np.linalg.det(mo_vals))
+            detsq = gpu.cp.asarray(det * np.conjugate(det), dtype=float)            
             self._dets.append(det)
             self._detsq.append(detsq)
             
@@ -171,8 +168,8 @@ class BosonWF:
                 )
         self._configs = configs
         
-        self._dets = gpu.cp.array(self._dets)
-        self._detsq = gpu.cp.array(self._detsq)
+        # self._dets = gpu.cp.array(self._dets)
+        # self._detsq = gpu.cp.array(self._detsq)
         # self._inverse = gpu.cp.array(self._inverse)
         return self.value()
 
@@ -289,19 +286,21 @@ class BosonWF:
         # TODO(kayahans): Check this again 
 
     def value(self):
-        """Returns the value of the bosonic wavefunction
+        """Returns the sign and value of the bosonic wavefunction
 
         Returns:
             _type_: _description_
         """
-        det_coeff = self.parameters["det_coeff"]
-        updetsq = self._detsq[0][:, self._det_map[0]]
-        dndetsq = self._detsq[1][:, self._det_map[1]]
-        valsqd = gpu.cp.einsum("id,id,d->id", updetsq, dndetsq, det_coeff)
-        valsq = gpu.cp.einsum("id->i", valsqd)
-        val = np.sqrt(valsq)
-        vald = np.sqrt(valsqd)
+        det_coeff = self.parameters["det_coeff"] # C_d
+        updetsq = self._detsq[0][:, self._det_map[0]] # |{D_{di}^{up}}|^2
+        dndetsq = self._detsq[1][:, self._det_map[1]] # |{D_{di}^{dn}}|^2
+        valsqd = gpu.cp.einsum("id,id->id", updetsq, dndetsq) # |{D_{di}^{up}}|^2*|{D_{di}^{dn}}|^2
+        valsq = gpu.cp.einsum("d, id->i", det_coeff, valsqd)  # \sum_d{C_d*|{D_{di}^{up}}|^2*|{D_{di}^{dn}}|^2}
+        
+        val = np.sqrt(valsq) # \psi_{i}=\sqrt{\sum_d{C_d*|{D_{di}^{up}}|^2*|{D_{di}^{dn}}|^2}}
+        vald = np.sqrt(valsqd) # \psi_{id}=\sqrt{|{D_{di}^{up}}|^2*|{D_{di}^{dn}}|^2}
         sign = np.ones(val.shape[0]) # bosonic wavefunction always have sign +1 
+
         return sign, val, vald
 
     def value_old(self):
@@ -347,21 +346,24 @@ class BosonWF:
             self._inverse[s][..., e - s * self._nelec[0]],
         )
 
-        detsq_up = self._detsq[0][:, self._det_map[0]]
-        detsq_dn = self._detsq[1][:, self._det_map[1]]
-        
         det_up = self._dets[0][:, self._det_map[0]]
         det_dn = self._dets[1][:, self._det_map[1]]
         
         det_coeff = self.parameters["det_coeff"]
         
+        updetsq = self._detsq[0][:, self._det_map[0]] # |{D_{di}^{up}}|^2
+        dndetsq = self._detsq[1][:, self._det_map[1]] # |{D_{di}^{dn}}|^2
+        valsqd = gpu.cp.einsum("id,id->id", updetsq, dndetsq) # |{D_{di}^{up}}|^2*|{D_{di}^{dn}}|^2
+        vald = np.sqrt(valsqd) # \psi_{id}=\sqrt{|{D_{di}^{up}}|^2*|{D_{di}^{dn}}|^2}
+
         # Derivative of \phi
         # \phi' = \sqrt{\sum{\psi}^2} = \sum{\psi' * \psi} / \psi 
         # numer = gpu.cp.einsum("d,id,id,eid->eid",det_coeff, detsq_up, detsq_dn, jacobi[..., self._det_map[s]])
-        numer2 = gpu.cp.einsum("d,id,id,eid->eid",det_coeff, det_up, det_dn, jacobi[..., self._det_map[s]])
-        values = gpu.cp.einsum("id,d->id",jacobi[..., self._det_map[s]][0],self.parameters["det_coeff"])
-        # import pdb
-        # pdb.set_trace()
+        # numer2 = gpu.cp.einsum("id,id,eid->eid",det_up, det_dn, jacobi[..., self._det_map[s]])
+        numer3 = gpu.cp.einsum("id,eid->eid",vald, jacobi[..., self._det_map[s]])
+        
+        import pdb
+        pdb.set_trace()
         # values = \phi(R)
         if configs is not None:
             # calculate \phi with R'
@@ -371,10 +373,8 @@ class BosonWF:
         else:
             # calculate \phi with R
             sign, psi, psid = self.value()        
-        # import pdb
-        # pdb.set_trace()        
         # grad = numer[1:]/psi
-        nom = gpu.cp.einsum("gid,id->gi", numer2[1:], psid)
+        nom = gpu.cp.einsum("d,gid,id->gi", det_coeff, numer3[1:], psid)
         grad = gpu.cp.einsum("gi,i->gi", nom, 1./psi)
         grad[~np.isfinite(grad)] = 0.0
         psi[~np.isfinite(psi)] = 1.0
@@ -385,6 +385,8 @@ class BosonWF:
         saved_values = {'values':(aograd[:, 0], mograd[0]),
                         'sign':sign,
                         'psi':psi}
+        
+        values = gpu.cp.einsum("id,d->id",jacobi[..., self._det_map[s]][0],self.parameters["det_coeff"])
         return grad, values, saved_values
 
     # Saved Jan 31 afternoon working with single determinant
