@@ -315,8 +315,6 @@ def generate_boson_wf(
 
     if slater_kws is None:
         slater_kws = {}
-    import pdb
-    pdb.set_trace()
     if jastrow == None:
         wf, to_opt1 = generate_boson(mol, mf, mc=mc, **slater_kws)
         to_opt = {"wf1" + k: v for k, v in to_opt1.items()}

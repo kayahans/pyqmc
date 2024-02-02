@@ -102,13 +102,9 @@ def vmc_worker(wf, configs, tstep, nsteps, accumulators, bosonic=False):
         
         for e in range(nelec):
             # Propose move
-            import pdb
-            pdb.set_trace()
             g1, _, _ = wf.gradient_value(e, configs.electron(e))
             
             grad = - limdrift(np.real(g1.T))
-            import pdb
-            pdb.set_trace()
             rng = np.random.RandomState(i)
             gauss = rng.normal(scale=np.sqrt(tstep), size=(nconf, 3))
             
@@ -472,16 +468,14 @@ def abvmc_worker(wf, configs, tstep, nsteps, accumulators):
             # we cam use the vmc_worker code here with no modification
             lng1 = g1/np.tile(psi1, (3,1))
             grad = - limdrift(np.real(lng1.T))
-            import pdb
-            pdb.set_trace()
-            rng = np.random.RandomState(i)
+            rng = np.random #.RandomState(i)
             gauss = rng.normal(scale=np.sqrt(tstep), size=(nconf, 3))
             
             newcoorde = configs.configs[:, e, :] + gauss + grad * tstep
             newcoorde = configs.make_irreducible(e, newcoorde)
             
             index = 30
-            print('='*30, '\n', 'wf_inv1', wf._inverse[0][index])
+            # print('='*30, '\n', 'wf_inv1', wf._inverse[0][index])
             
             # Now compute reverse move
             # For the backwards move, configs are passed to gradient_value.
@@ -502,36 +496,36 @@ def abvmc_worker(wf, configs, tstep, nsteps, accumulators):
             ratio = np.abs(new_val) ** 2 * t_prob
 
             accept = ratio > np.random.rand(nconf)
-            print('wf_inv2', wf._inverse[0][index])
-            print(
-                  i, '\n',
-                  e, '\n',
+            # print('wf_inv2', wf._inverse[0][index])
+            # print(
+            #       i, '\n',
+            #       e, '\n',
                   
-                #   val1[index], '\n',
-                #   np.log(val2[index]), '\n',
-                #   np.log(valj[index]), '\n',
-                  lng1.T[index], '\n',
-                  newcoorde.configs[index], '\n',
-                #   val[index], '\n',
-                #   grad[index], '\n',
-                #   gauss[index], '\n',
-                #   tt[index], '\n',
-                #   tstep, '\n',
-                #   configs.electron(e).configs[index], '\n',
-                #   newcoorde.configs[index], '\n',
-                # new_val[index], '\n',
+            #     #   val1[index], '\n',
+            #     #   np.log(val2[index]), '\n',
+            #     #   np.log(valj[index]), '\n',
+            #       lng1.T[index], '\n',
+            #       newcoorde.configs[index], '\n',
+            #     #   val[index], '\n',
+            #     #   grad[index], '\n',
+            #     #   gauss[index], '\n',
+            #     #   tt[index], '\n',
+            #     #   tstep, '\n',
+            #     #   configs.electron(e).configs[index], '\n',
+            #     #   newcoorde.configs[index], '\n',
+            #     # new_val[index], '\n',
                 
-                  lng2.T[index], '\n',
-                  new_grad[index], '\n',
-                  t_prob[index], '\n',
-                  ratio[index], '\n', 
-                  new_val[index], '\n'
+            #       lng2.T[index], '\n',
+            #       new_grad[index], '\n',
+            #       t_prob[index], '\n',
+            #       ratio[index], '\n', 
+            #       new_val[index], '\n'
 
-                #   accept[0], 
-                #   gauss[0], 
-                  )
-            from sys import exit
-            exit()
+            #     #   accept[0], 
+            #     #   gauss[0], 
+            #       )
+            # from sys import exit
+            # exit()
             # Update wave function
             configs.move(e, newcoorde, accept)
             wf.updateinternals(e, newcoorde, configs, mask=accept, saved_values=saved['values'])
@@ -607,4 +601,3 @@ def fixed_initial_guess(mol, nconfig, r=1.0):
         epos = OpenConfigs(epos)
     
     return epos
-

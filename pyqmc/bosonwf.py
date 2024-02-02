@@ -135,8 +135,6 @@ class BosonWF:
         Returns:
             _type_: _description_
         """
-        import pdb
-        pdb.set_trace()
         nconf, nelec, ndim = configs.configs.shape
         aos = self.orbitals.aos("GTOval_sph", configs)
         self._aovals = aos.reshape(-1, nconf, nelec, aos.shape[-1])
@@ -243,9 +241,11 @@ class BosonWF:
         updetsq = detsq[0][:, self._det_map[0]]
         dndetsq = detsq[1][:, self._det_map[1]]
         valsq = gpu.cp.einsum("id,id,d->i", updetsq, dndetsq, det_coeff)
+        valsqd = gpu.cp.einsum("id,id,d->id", updetsq, dndetsq, det_coeff)
         val = np.sqrt(valsq)
+        vald = np.sqrt(valsqd)
         sign = np.ones(val.shape[0]) # bosonic wavefunction always have sign +1 
-        return sign, val        
+        return sign, val, vald        
 
     def updateinternals(self, e:int, epos, configs, mask: list=None, saved_values=None):
         """Update any internals given that electron e moved to epos. 
@@ -362,14 +362,12 @@ class BosonWF:
         # numer2 = gpu.cp.einsum("id,id,eid->eid",det_up, det_dn, jacobi[..., self._det_map[s]])
         numer3 = gpu.cp.einsum("id,eid->eid",vald, jacobi[..., self._det_map[s]])
         
-        import pdb
-        pdb.set_trace()
         # values = \phi(R)
         if configs is not None:
             # calculate \phi with R'
             cf = configs.copy()
             cf.configs[:,e,:] = epos.configs
-            sign, psi = self.value_updated(cf)        
+            sign, psi, psid = self.value_updated(cf)        
         else:
             # calculate \phi with R
             sign, psi, psid = self.value()        
@@ -378,17 +376,15 @@ class BosonWF:
         grad = gpu.cp.einsum("gi,i->gi", nom, 1./psi)
         grad[~np.isfinite(grad)] = 0.0
         psi[~np.isfinite(psi)] = 1.0
-        # import pdb
-        # pdb.set_trace()
         # jacobi[0] is the ratio of \psi: (\psi^-1(R) * \psi(R or R'))
         # The inverse is not updated until accept/reject (R: forward, R':backward)
         saved_values = {'values':(aograd[:, 0], mograd[0]),
                         'sign':sign,
                         'psi':psi}
         
-        values = gpu.cp.einsum("id,d->id",jacobi[..., self._det_map[s]][0],self.parameters["det_coeff"])
+        values = gpu.cp.einsum("id,d->i",jacobi[..., self._det_map[s]][0],self.parameters["det_coeff"])
         return grad, values, saved_values
-
+    
     # Saved Jan 31 afternoon working with single determinant
     def gradient_value_old(self, e, epos, configs=None):
         """Compute the gradient of the bosonic wave function
@@ -419,8 +415,6 @@ class BosonWF:
         # \phi = \sqrt{\sum{\psi}^2}, \phi' = \sum{\psi' * \psi} / \phi 
         numer = gpu.cp.einsum("d,id,id,eid->ei",det_coeff, detsq_up, detsq_dn, jacobi[..., self._det_map[s]])
         values = gpu.cp.einsum("id,d->i",jacobi[..., self._det_map[s]][0],self.parameters["det_coeff"])
-        import pdb
-        pdb.set_trace()
         # values = \phi(R)
         if configs is not None:
             # calculate \phi with R'

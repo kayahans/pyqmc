@@ -472,9 +472,8 @@ def initialize_boson_qmc_objects(
     # from mc import fixed_initial_guess
     # configs = fixed_initial_guess(mol, nconfig)
     print('Using spherical guess')
-    configs = pyqmc.initial_guess(mol, nconfig)
-    # from mc import initial_guess
-    # configs = initial_guess(mol, nconfig,seed=seed)
+    from mc import initial_guess
+    configs = initial_guess(mol, nconfig,seed=seed)
 
     if opt_wf:
         accumulators = pyqmc.accumulators.gradient_generator(
