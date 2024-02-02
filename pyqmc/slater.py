@@ -166,7 +166,7 @@ class Slater:
             mol, mf, mc, twist=twist, determinants=determinants, tol=self.tol
         )
         num_det = len(self.myparameters["det_coeff"])
-        print('Number of determinants in the Fermionic wavefunction=', num_det)
+        
         self.parameters = JoinParameters([self.myparameters, self.orbitals.parameters])
 
         iscomplex = self.orbitals.mo_dtype == complex or bool(

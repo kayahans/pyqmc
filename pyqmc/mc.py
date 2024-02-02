@@ -105,14 +105,14 @@ def vmc_worker(wf, configs, tstep, nsteps, accumulators, bosonic=False):
             g1, _, _ = wf.gradient_value(e, configs.electron(e))
             
             grad = - limdrift(np.real(g1.T))
-            rng = np.random.RandomState(i)
+            rng = np.random #.RandomState(i)
             gauss = rng.normal(scale=np.sqrt(tstep), size=(nconf, 3))
             
             newcoorde = configs.configs[:, e, :] + gauss + grad * tstep
             newcoorde = configs.make_irreducible(e, newcoorde)
 
             index = 30
-            print('='*30, '\n', 'wf_inv1', wf._inverse[0][index])
+            # print('='*30, '\n', 'wf_inv1', wf._inverse[0][index])
 
             # Compute reverse move
             g2, new_val, saved = wf.gradient_value(e, newcoorde, configs=configs)
@@ -125,35 +125,6 @@ def vmc_worker(wf, configs, tstep, nsteps, accumulators, bosonic=False):
 
             accept = ratio > np.random.rand(nconf)
             
-            print('wf_inv2', wf._inverse[0][index])
-            print(
-                i, '\n',
-                  e, '\n',
-                  
-                #   vali[index], '\n',
-                #   val[index], '\n',
-                #   valj[index], '\n',
-                  g1.T[index], '\n',
-                  newcoorde.configs[index], '\n',
-                #   val[index], '\n',
-                #   grad[index], '\n',
-                #   gauss[index], '\n',
-                #   tt[index], '\n',
-                #   tstep, '\n',
-                #   configs.electron(e).configs[index], '\n',
-                #   newcoorde.configs[index], '\n',
-                # new_val[index], '\n',
-                  g2.T[index], '\n',
-                  new_grad[index], '\n',
-                  t_prob[index], '\n',
-                  ratio[index], '\n',
-                # wf._inverse[index], '\n',
-                  new_val[index], '\n'
-                #   accept[0], 
-                #   
-                  )
-            from sys import exit
-            exit()
             # Update wave function
             configs.move(e, newcoorde, accept)
             wf.updateinternals(e, newcoorde, configs, mask=accept, saved_values=saved)
@@ -169,55 +140,6 @@ def vmc_worker(wf, configs, tstep, nsteps, accumulators, bosonic=False):
                     block_avg[k + m] += res / nsteps
         block_avg["acceptance"] = acc
     return block_avg, configs
-
-
-# def vmc_worker(wf, configs, tstep, nsteps, accumulators):
-#     """
-#     Run VMC for nsteps.
-
-#     :return: a dictionary of averages from each accumulator.
-#     """
-#     nconf, nelec, _ = configs.configs.shape
-#     block_avg = {}
-#     wf.recompute(configs)
-
-#     for _ in range(nsteps):
-#         acc = 0.0
-#         for e in range(nelec):
-#             # Propose move
-#             g, _, _ = wf.gradient_value(e, configs.electron(e))
-#             grad = limdrift(np.real(g.T))
-#             gauss = np.random.normal(scale=np.sqrt(tstep), size=(nconf, 3))
-#             newcoorde = configs.configs[:, e, :] + gauss + grad * tstep
-#             newcoorde = configs.make_irreducible(e, newcoorde)
-
-#             # Compute reverse move
-#             g, new_val, saved = wf.gradient_value(e, newcoorde)
-#             new_grad = limdrift(np.real(g.T))
-#             forward = np.sum(gauss**2, axis=1)
-#             backward = np.sum((gauss + tstep * (grad + new_grad)) ** 2, axis=1)
-
-#             # Acceptance
-#             t_prob = np.exp(1 / (2 * tstep) * (forward - backward))
-#             ratio = np.abs(new_val) ** 2 * t_prob
-#             accept = ratio > np.random.rand(nconf)
-
-#             # Update wave function
-#             configs.move(e, newcoorde, accept)
-#             wf.updateinternals(e, newcoorde, configs, mask=accept, saved_values=saved)
-#             acc += np.mean(accept) / nelec
-
-#         # Rolling average on step
-#         for k, accumulator in accumulators.items():
-#             dat = accumulator.avg(configs, wf)
-#             for m, res in dat.items():
-#                 if k + m not in block_avg:
-#                     block_avg[k + m] = res / nsteps
-#                 else:
-#                     block_avg[k + m] += res / nsteps
-#         block_avg["acceptance"] = acc
-#     return block_avg, configs
-
 
 def vmc_parallel(
     wf, configs, tstep, nsteps_per_block, accumulators, client, npartitions
@@ -414,8 +336,6 @@ def abvmc(
             block_avg, configs = abvmc_worker(
                 wf, configs, tstep, nsteps_per_block, accumulators
             )
-            # import pdb
-            # pdb.set_trace()
         else:
             print("Parallel not yet implemented")
             exit()
@@ -498,8 +418,8 @@ def abvmc_worker(wf, configs, tstep, nsteps, accumulators):
             accept = ratio > np.random.rand(nconf)
             # print('wf_inv2', wf._inverse[0][index])
             # print(
-            #       i, '\n',
-            #       e, '\n',
+            #     #   i, '\n',
+            #     #   e, '\n',
                   
             #     #   val1[index], '\n',
             #     #   np.log(val2[index]), '\n',
