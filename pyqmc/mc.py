@@ -361,7 +361,7 @@ def abvmc_worker(wf, configs, tstep, nsteps, accumulators):
     Reuses much of the code in vmc_worker
 
     """
-    
+    # tstep = 1
     nconf, nelec, _ = configs.configs.shape
     block_avg = {}
     wf.recompute(configs)
@@ -371,15 +371,10 @@ def abvmc_worker(wf, configs, tstep, nsteps, accumulators):
         
         for e in range(nelec):
             # Propose move
-            g1, _, _ = wf.gradient_value(e, configs.electron(e))
-            _, psi1, _ = wf.value()
+            g1, saved1 = wf.gradient_value(e, configs.electron(e))
+            psi1 = saved1['psi']
 
-            # g1 is the forward x,y,z gradient
-            # val is the value of the A(R)^-1 * A(R) here, so it is always 1 in the forward step
-            # A is defined as \psi = det(A(R)), where A is the matrix constructing the slater determinant
-            # if \psi is a single determinant wavefunction
-            # So the charge density is n(R) = \sum(A(R))**2 
-            
+            # g1 is the forward x,y,z gradient            
             # lng1 = gradient of ln(\psi)
             # Below a bit hacky way to avoid properly renormalizing 
             # the \psi to generate steps and calculate accept/recept ratios
@@ -394,27 +389,24 @@ def abvmc_worker(wf, configs, tstep, nsteps, accumulators):
             newcoorde = configs.configs[:, e, :] + gauss + grad * tstep
             newcoorde = configs.make_irreducible(e, newcoorde)
             
-            index = 30
+            # index = 30
             # print('='*30, '\n', 'wf_inv1', wf._inverse[0][index])
             
             # Now compute reverse move
             # For the backwards move, configs are passed to gradient_value.
-            g2, new_val, saved = wf.gradient_value(e, newcoorde, configs=configs) 
-
-            psi2 = saved['psi']          
+            g2, saved2 = wf.gradient_value(e, newcoorde, configs=configs) 
+            psi2 = saved2['psi']          
 
             # g2 is the backward x,y,z gradient
-            # new_val here is A(R)^-1 * A(R'), because the A(R)^-1 is not updated with R' yet
-            # Therefore the np.abs(new_val) below becomes equal to \sum(A(R')/A(R))**2 
-
+            # import pdb
+            # pdb.set_trace()
             lng2 = g2/np.tile(psi2, (3,1))
             new_grad = -limdrift(np.real(lng2.T))
             forward = np.sum(gauss**2, axis=1)
             backward = np.sum((gauss + tstep * (grad + new_grad)) ** 2, axis=1)
             
             t_prob = np.exp(1 / (2 * tstep) * (forward - backward))
-            ratio = np.abs(new_val) ** 2 * t_prob
-
+            ratio = (psi2/psi1)**2 * t_prob
             accept = ratio > np.random.rand(nconf)
             # print('wf_inv2', wf._inverse[0][index])
             # print(
@@ -448,7 +440,7 @@ def abvmc_worker(wf, configs, tstep, nsteps, accumulators):
             # exit()
             # Update wave function
             configs.move(e, newcoorde, accept)
-            wf.updateinternals(e, newcoorde, configs, mask=accept, saved_values=saved['values'])
+            wf.updateinternals(e, newcoorde, configs, mask=accept, saved_values=saved2['values'])
             # update internals runs the sherman morrison update in block
             # this updates the determinant inverse based on the electronic update
             # without fully updating the inverse matrix. 

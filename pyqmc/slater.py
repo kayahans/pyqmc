@@ -198,7 +198,6 @@ class Slater:
                 warnings.warn(
                     f"A wave function is zero. Found this proportion: {is_zero/nconf}"
                 )
-                # print(configs.configs[])
                 print(f"zero {is_zero/np.prod(compute.shape)}")
             self._inverse.append(gpu.cp.zeros(mo_vals.shape, dtype=mo_vals.dtype))
             for d in range(compute.shape[1]):

@@ -138,7 +138,8 @@ class BosonWF:
         nconf, nelec, ndim = configs.configs.shape
         aos = self.orbitals.aos("GTOval_sph", configs)
         self._aovals = aos.reshape(-1, nconf, nelec, aos.shape[-1])
-        self._dets = []
+        # Logdets are not used outside this function unlike in the slater.py
+        slogdets = []
         self._detsq = []
         self._inverse = []
         for s in [0, 1]:
@@ -146,29 +147,28 @@ class BosonWF:
             end = self._nelec[0] + self._nelec[1] * s
             mo = self.orbitals.mos(self._aovals[:, :, begin:end, :], s)
             mo_vals = gpu.cp.swapaxes(mo[:, :, self._det_occup[s]], 1, 2)
+            slogdet = gpu.cp.asarray(np.linalg.slogdet(mo_vals)) # Spin, (sign, val), nconf, [ndet_up, ndet_dn]
+            
             det = gpu.cp.asarray(np.linalg.det(mo_vals))
             detsq = gpu.cp.asarray(det * np.conjugate(det), dtype=float)            
-            self._dets.append(det)
+            
+            slogdets.append(slogdet)
             self._detsq.append(detsq)
             
-            is_zero = np.sum(np.abs(self._detsq[s]) < det_zero_tol)
-            compute = np.isfinite(self._detsq[s])
-            # zero_pct = is_zero/np.prod(compute.shape)
-            # if is_zero > 0 and zero_pct > 0.01:
-            #     warnings.warn(
-            #         f"A wave function is zero. Found this proportion: {is_zero/nconf}"
-            #     )
-            #     print(f"zero {is_zero/np.prod(compute.shape)}")
+            is_zero = np.sum(np.abs(slogdets[s][0]) < det_zero_tol)
+            compute = np.isfinite(slogdets[s][1])
+            zero_pct = is_zero/np.prod(compute.shape)
+            if is_zero > 0 and zero_pct > 0.01:
+                warnings.warn(
+                    f"A wave function is zero. Found this proportion: {is_zero/nconf}"
+                )
+                print(f"zero {is_zero/np.prod(compute.shape)}")
             self._inverse.append(gpu.cp.zeros(mo_vals.shape, dtype=mo_vals.dtype))
             for d in range(compute.shape[1]):
                 self._inverse[s][compute[:, d], d, :, :] = gpu.cp.linalg.inv(
                     mo_vals[compute[:, d], d, :, :]
                 )
-        self._configs = configs
-        
-        # self._dets = gpu.cp.array(self._dets)
-        # self._detsq = gpu.cp.array(self._detsq)
-        # self._inverse = gpu.cp.array(self._inverse)
+            # spin, Nconf, [ndet_up, ndet_dn], nelec, nelec
         return self.value()
 
     def value_updated(self, configs, det_zero_tol=1e-16):
@@ -176,8 +176,6 @@ class BosonWF:
         aos = self.orbitals.aos("GTOval_sph", configs)
         aovals = aos.reshape(-1, nconf, nelec, aos.shape[-1])
         detsq = []
-        import pdb
-        pdb.set_trace()
         for s in [0, 1]:
             begin = self._nelec[0] * s
             end = self._nelec[0] + self._nelec[1] * s
@@ -185,29 +183,16 @@ class BosonWF:
             mo_vals = gpu.cp.swapaxes(mo[:, :, self._det_occup[s]], 1, 2)
             det = np.linalg.det(mo_vals)
             detsq_s = gpu.cp.asarray(det * np.conjugate(det), dtype=float)
-            #TODO: does not work for multiuple atoms 
             detsq.append(detsq_s)
-
-            is_zero = np.sum(np.abs(detsq[s]) < det_zero_tol)
-            compute = np.isfinite(detsq[s])
-            # zero_pct = is_zero/np.prod(compute.shape)
-            # if is_zero > 0 and zero_pct > 0.01:
-            #     warnings.warn(
-            #         f"A wave function is zero. Found this proportion: {is_zero/nconf}"
-            #     )
-            #     print(f"zero {is_zero/np.prod(compute.shape)}")
-        import pdb
-        pdb.set_trace()
-        detsq = gpu.cp.array(detsq)
         det_coeff = self.parameters["det_coeff"]
         updetsq = detsq[0][:, self._det_map[0]]
         dndetsq = detsq[1][:, self._det_map[1]]
         valsq = gpu.cp.einsum("id,id,d->i", updetsq, dndetsq, det_coeff)
-        valsqd = gpu.cp.einsum("id,id,d->id", updetsq, dndetsq, det_coeff)
         val = np.sqrt(valsq)
-        vald = np.sqrt(valsqd)
+        # valsqd = gpu.cp.einsum("id,id,d->id", updetsq, dndetsq, det_coeff)
+        # vald = np.sqrt(valsqd)
         sign = np.ones(val.shape[0]) # bosonic wavefunction always have sign +1 
-        return sign, val, vald        
+        return sign, val   
 
     def updateinternals(self, e:int, epos, configs, mask: list=None, saved_values=None):
         """Update any internals given that electron e moved to epos. 
@@ -260,16 +245,16 @@ class BosonWF:
         valsq = gpu.cp.einsum("d, id->i", det_coeff, valsqd)  # \sum_d{C_d*|{D_{di}^{up}}|^2*|{D_{di}^{dn}}|^2}
         
         val = np.sqrt(valsq) # \psi_{i}=\sqrt{\sum_d{C_d*|{D_{di}^{up}}|^2*|{D_{di}^{dn}}|^2}}
-        vald = np.sqrt(valsqd) # \psi_{id}=\sqrt{|{D_{di}^{up}}|^2*|{D_{di}^{dn}}|^2}
+        # vald = np.sqrt(valsqd) # \psi_{id}=\sqrt{|{D_{di}^{up}}|^2*|{D_{di}^{dn}}|^2}
         sign = np.ones(val.shape[0]) # bosonic wavefunction always have sign +1 
 
-        return sign, val, vald
+        return sign, val
             
     def gradient(self, e, epos):
         """Compute the gradient of the log wave function
         Note that this can be called even if the internals have not been updated for electron e,
         if epos differs from the current position of electron e."""
-        grad, _, _ = self.gradient_value(e, epos)
+        grad, _ = self.gradient_value(e, epos)
         #TODO: gradient is shortcut, but check if using the original version has any computational advantage
         return grad
 
@@ -286,7 +271,6 @@ class BosonWF:
         # https://en.wikipedia.org/wiki/Jacobi%27s_formula
         # https://courses.physics.illinois.edu/phys466/fa2016/projects/1999/team4/webpage/local_energy/node4.html
         # likely this will now work only for the single determinant calculation
-        # kayahans
         
         jacobi = gpu.cp.einsum(
             "ei...dj,idj...->ei...d",
@@ -310,69 +294,19 @@ class BosonWF:
             # calculate \phi with R'
             cf = configs.copy()
             cf.configs[:,e,:] = epos.configs
-            sign, psi, psid = self.value_updated(cf)        
-        else:
-            # calculate \phi with R
-            sign, psi, psid = self.value()        
-        # grad = numer[1:]/psi
-        nom = gpu.cp.einsum("d,gid,id->gi", det_coeff, numer[1:], psid)
-        grad = gpu.cp.einsum("gi,i->gi", nom, 1./psi)
-        grad[~np.isfinite(grad)] = 0.0
-        psi[~np.isfinite(psi)] = 1.0
-        # jacobi[0] is the ratio of \psi: (\psi^-1(R) * \psi(R or R'))
-        # The inverse is not updated until accept/reject (R: forward, R':backward)
-        saved_values = {'values':(aograd[:, 0], mograd[0]),
-                        'sign':sign,
-                        'psi':psi}
-        
-        values = gpu.cp.einsum("id,d->i",jacobi[..., self._det_map[s]][0],self.parameters["det_coeff"])
-        return grad, values, saved_values
-        """Compute the gradient of the bosonic wave function
-        This is typically called in the block of VMC and DMC, where the inverse is not updated
-        """
-        s = int(e >= self._nelec[0])
-        aograd = self.orbitals.aos("GTOval_sph_deriv1", epos)
-        mograd = self.orbitals.mos(aograd, s)
-        mograd_vals = mograd[:, :, self._det_occup[s]]
-        
-        # Derivative of the determinant is calculated using Jacobi's formula
-        # https://en.wikipedia.org/wiki/Jacobi%27s_formula
-        # https://courses.physics.illinois.edu/phys466/fa2016/projects/1999/team4/webpage/local_energy/node4.html
-        # likely this will now work only for the single determinant calculation
-        # kayahans
-        
-        jacobi = gpu.cp.einsum(
-            "ei...dj,idj...->ei...d",
-            mograd_vals,
-            self._inverse[s][..., e - s * self._nelec[0]],
-        )
-        detsq_up = self._detsq[0][:, self._det_map[0]]
-        detsq_dn = self._detsq[1][:, self._det_map[1]]
-        
-        det_coeff = self.parameters["det_coeff"]
-        
-        # Derivative of \phi
-        # \phi = \sqrt{\sum{\psi}^2}, \phi' = \sum{\psi' * \psi} / \phi 
-        numer = gpu.cp.einsum("d,id,id,eid->ei",det_coeff, detsq_up, detsq_dn, jacobi[..., self._det_map[s]])
-        values = gpu.cp.einsum("id,d->i",jacobi[..., self._det_map[s]][0],self.parameters["det_coeff"])
-        # values = \phi(R)
-        if configs is not None:
-            # calculate \phi with R'
-            cf = configs.copy()
-            cf.configs[:,e,:] = epos.configs
             sign, psi = self.value_updated(cf)        
         else:
             # calculate \phi with R
-            sign, psi = self.value_old()        
+            sign, psi = self.value()        
         
-        grad = numer[1:]/psi
+        grad = gpu.cp.einsum("d,gid,i->gi", det_coeff, numer[1:], 1./psi)
         grad[~np.isfinite(grad)] = 0.0
         psi[~np.isfinite(psi)] = 1.0
-        # import pdb
-        # pdb.set_trace()
-        # jacobi[0] is the ratio of \psi: (\psi^-1(R) * \psi(R or R'))
-        # The inverse is not updated until accept/reject (R: forward, R':backward)
+
         saved_values = {'values':(aograd[:, 0], mograd[0]),
                         'sign':sign,
                         'psi':psi}
-        return grad, values, saved_values
+        
+        return grad, saved_values
+    
+    
