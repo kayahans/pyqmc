@@ -234,8 +234,6 @@ def vmc(
     for block in range(nblocks):
         if verbose:
             print(f"-", end="", flush=True)
-        # import pdb
-        # pdb.set_trace()            
         if client is None:
             block_avg, configs = vmc_worker(
                 wf, configs, tstep, nsteps_per_block, accumulators
@@ -388,18 +386,13 @@ def abvmc_worker(wf, configs, tstep, nsteps, accumulators):
             
             newcoorde = configs.configs[:, e, :] + gauss + grad * tstep
             newcoorde = configs.make_irreducible(e, newcoorde)
-            
-            # index = 30
-            # print('='*30, '\n', 'wf_inv1', wf._inverse[0][index])
-            
+                        
             # Now compute reverse move
             # For the backwards move, configs are passed to gradient_value.
             g2, saved2 = wf.gradient_value(e, newcoorde, configs=configs) 
             psi2 = saved2['psi']          
 
             # g2 is the backward x,y,z gradient
-            # import pdb
-            # pdb.set_trace()
             lng2 = g2/np.tile(psi2, (3,1))
             new_grad = -limdrift(np.real(lng2.T))
             forward = np.sum(gauss**2, axis=1)
@@ -408,36 +401,7 @@ def abvmc_worker(wf, configs, tstep, nsteps, accumulators):
             t_prob = np.exp(1 / (2 * tstep) * (forward - backward))
             ratio = (psi2/psi1)**2 * t_prob
             accept = ratio > np.random.rand(nconf)
-            # print('wf_inv2', wf._inverse[0][index])
-            # print(
-            #     #   i, '\n',
-            #     #   e, '\n',
-                  
-            #     #   val1[index], '\n',
-            #     #   np.log(val2[index]), '\n',
-            #     #   np.log(valj[index]), '\n',
-            #       lng1.T[index], '\n',
-            #       newcoorde.configs[index], '\n',
-            #     #   val[index], '\n',
-            #     #   grad[index], '\n',
-            #     #   gauss[index], '\n',
-            #     #   tt[index], '\n',
-            #     #   tstep, '\n',
-            #     #   configs.electron(e).configs[index], '\n',
-            #     #   newcoorde.configs[index], '\n',
-            #     # new_val[index], '\n',
-                
-            #       lng2.T[index], '\n',
-            #       new_grad[index], '\n',
-            #       t_prob[index], '\n',
-            #       ratio[index], '\n', 
-            #       new_val[index], '\n'
 
-            #     #   accept[0], 
-            #     #   gauss[0], 
-            #       )
-            # from sys import exit
-            # exit()
             # Update wave function
             configs.move(e, newcoorde, accept)
             wf.updateinternals(e, newcoorde, configs, mask=accept, saved_values=saved2['values'])
@@ -445,7 +409,6 @@ def abvmc_worker(wf, configs, tstep, nsteps, accumulators):
             # this updates the determinant inverse based on the electronic update
             # without fully updating the inverse matrix. 
             acc += np.mean(accept) / nelec
-        # print(" ")
         # Rolling average on step
         for k, accumulator in accumulators.items():
             dat = accumulator.avg(configs, wf)

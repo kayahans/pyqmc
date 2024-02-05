@@ -189,8 +189,6 @@ class BosonWF:
         dndetsq = detsq[1][:, self._det_map[1]]
         valsq = gpu.cp.einsum("id,id,d->i", updetsq, dndetsq, det_coeff)
         val = np.sqrt(valsq)
-        # valsqd = gpu.cp.einsum("id,id,d->id", updetsq, dndetsq, det_coeff)
-        # vald = np.sqrt(valsqd)
         sign = np.ones(val.shape[0]) # bosonic wavefunction always have sign +1 
         return sign, val   
 
