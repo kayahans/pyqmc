@@ -285,7 +285,7 @@ class BosonWF:
 
         # Derivative of \phi
         # \phi' = \sqrt{\sum{\psi}^2} = \sum{\psi' * \psi} / \psi 
-        numer = gpu.cp.einsum("id,eid->eid",vald, jacobi[..., self._det_map[s]])
+        numer = gpu.cp.einsum("d,id,id,gid->gi",det_coeff, vald, vald, jacobi[..., self._det_map[s]])
         
         # values = \phi(R)
         if configs is not None:
@@ -296,8 +296,9 @@ class BosonWF:
         else:
             # calculate \phi with R
             sign, psi = self.value()        
-        
-        grad = gpu.cp.einsum("d,gid,i->gi", det_coeff, numer[1:], 1./psi)
+        # import pdb
+        # pdb.set_trace()
+        grad = gpu.cp.einsum("gi,i->gi", numer[1:], 1./psi)
         grad[~np.isfinite(grad)] = 0.0
         psi[~np.isfinite(psi)] = 1.0
 

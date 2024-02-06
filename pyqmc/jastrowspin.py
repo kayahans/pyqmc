@@ -831,7 +831,7 @@ class BosonJastrowSpin:
         saved_values = {'values':(a_partial_e, b_partial_e, bvals),
                         'sign':np.ones(len(val_partial)),
                         'psi':val_partial}
-        return gpu.asnumpy(grad)*val_partial, gpu.asnumpy(val), saved_values 
+        return gpu.asnumpy(grad)*val_partial, saved_values 
         #end 
 
     # The original from JastrowSpin 

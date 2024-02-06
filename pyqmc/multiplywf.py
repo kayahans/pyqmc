@@ -162,8 +162,7 @@ class MultiplyBosonWF(MultiplyWF):
 
         assert len(self.wf_factors) == 2, "MultiplyBosonWF only accepts SJ type wavefunctions"
         grad_vals = [wf.gradient_value(e, epos, configs) for wf in self.wf_factors]
-        grads, vals, saved_values = list(zip(*grad_vals))
-
+        grads, saved_values = list(zip(*grad_vals))
         phi0 = saved_values[0]['sign']*saved_values[0]['psi'] #sign0*psi0
         phi1 = saved_values[1]['sign']*saved_values[1]['psi']
         
@@ -177,7 +176,7 @@ class MultiplyBosonWF(MultiplyWF):
                         'sign':sign,
                         'psi':phi/sign}
         
-        return grads_mult, np.prod(vals, axis=0), saved_values
+        return grads_mult, saved_values
         
         
     def gradient_laplacian(self, e, epos):      

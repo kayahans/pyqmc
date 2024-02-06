@@ -219,14 +219,15 @@ def initialize_qmc_objects(
     if S is not None:
         mol = supercell.get_supercell(mol, np.asarray(S))
 
-    if load_parameters is None:
-        wf, to_opt = wftools.generate_wf(
-            mol, mf, mc=mc, jastrow=None, slater_kws=slater_kws
-        )
-    else:
-        wf, to_opt = wftools.generate_wf(
-            mol, mf, mc=mc, jastrow_kws=jastrow_kws, slater_kws=slater_kws
-        )
+    # Use when testing HF
+    # if load_parameters is None:
+    #     wf, to_opt = wftools.generate_wf(
+    #         mol, mf, mc=mc, jastrow=None, slater_kws=slater_kws
+    #     )
+    # else:
+    wf, to_opt = wftools.generate_wf(
+        mol, mf, mc=mc, jastrow_kws=jastrow_kws, slater_kws=slater_kws
+    )
 
     if load_parameters is not None:
         wftools.read_wf(wf, load_parameters)

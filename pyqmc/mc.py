@@ -371,7 +371,6 @@ def abvmc_worker(wf, configs, tstep, nsteps, accumulators):
             # Propose move
             g1, saved1 = wf.gradient_value(e, configs.electron(e))
             psi1 = saved1['psi']
-
             # g1 is the forward x,y,z gradient            
             # lng1 = gradient of ln(\psi)
             # Below a bit hacky way to avoid properly renormalizing 
