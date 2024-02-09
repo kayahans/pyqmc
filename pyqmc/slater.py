@@ -460,7 +460,6 @@ class Slater:
             ao = self._aovals[
                 :, :, s * self._nelec[0] : self._nelec[s] + s * self._nelec[0], :
             ]
-
             split, aos = self.orbitals.pgradient(ao, s)
             mos = gpu.cp.split(gpu.cp.arange(split[-1]), gpu.asnumpy(split).astype(int))
             # Compute dj Diu/Diu

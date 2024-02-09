@@ -390,7 +390,6 @@ def abvmc_worker(wf, configs, tstep, nsteps, accumulators):
             # For the backwards move, configs are passed to gradient_value.
             g2, saved2 = wf.gradient_value(e, newcoorde, configs=configs) 
             psi2 = saved2['psi']          
-
             # g2 is the backward x,y,z gradient
             lng2 = g2/np.tile(psi2, (3,1))
             new_grad = -limdrift(np.real(lng2.T))
@@ -409,7 +408,10 @@ def abvmc_worker(wf, configs, tstep, nsteps, accumulators):
             # without fully updating the inverse matrix. 
             acc += np.mean(accept) / nelec
         # Rolling average on step
+        
         for k, accumulator in accumulators.items():
+            # import pdb
+            # pdb.set_trace()
             dat = accumulator.avg(configs, wf)
             for m, res in dat.items():
                 if k + m not in block_avg:
@@ -450,7 +452,7 @@ def fixed_initial_guess(mol, nconfig, r=1.0):
         max = 3
         min = -1 
         if ind0 > 0:
-            max = -10
+            max = -1
             min = max
         epos[:, ind0, :] = np.linspace([-0.1,-0.1+ind0,min], [-0.1,-0.1+ind0,max], num=nconfig)
         ind0 += 1

@@ -692,7 +692,7 @@ class BosonJastrowSpin:
         #    self._b_partial[e, :, l, 1][mask] = bval[:, sep:].sum(axis=1)
 
     def value(self):
-        """Compute the current log value of the wavefunction"""
+        """Compute the current value of the wavefunction"""
         u = gpu.cp.sum(self._bvalues * self.parameters["bcoeff"], axis=(2, 1))
         u += gpu.cp.einsum("ijkl,jkl->i", self._avalues, self.parameters["acoeff"])
         # Bosonic modification: 
@@ -826,11 +826,14 @@ class BosonJastrowSpin:
         b_val_partial = gpu.cp.einsum(
             "...jk,jk->...", b_partial_e, self.parameters["bcoeff"][:, edown : edown + 2]
         )
+        #TODO: not the right expression for the jastrow value, read the code again later
         val_partial = gpu.cp.exp(b_val_partial + a_val_partial)
 
         saved_values = {'values':(a_partial_e, b_partial_e, bvals),
                         'sign':np.ones(len(val_partial)),
-                        'psi':val_partial}
+                        'psi':self.value()[1],
+                        # 'psi':val_partial
+                        }
         return gpu.asnumpy(grad)*val_partial, saved_values 
         #end 
 
@@ -905,6 +908,18 @@ class BosonJastrowSpin:
             lap += c[1 + edown] * gpu.cp.sum(blap[:, nup - eup :], axis=(1, 2))
         return gpu.asnumpy(grad), gpu.asnumpy(lap + gpu.cp.sum(grad**2, axis=0))
 
+    def pgradient(self):
+        """Given the b sums, this is pretty trivial for the coefficient derivatives."""
+        sign, val = self.value()
+        # return {
+        #     "bcoeff": gpu.cp.einsum('i..., i->i...', self._bvalues, val), 
+        #     "acoeff": gpu.cp.einsum('i..., i->i...', self._avalues, val),
+        # }
+        return {
+            "bcoeff": gpu.asnumpy(self._bvalues),
+            "acoeff": gpu.asnumpy(self._avalues),
+        }
+
     # def laplacian(self, e, epos):
     #     return self.gradient_laplacian(e, epos)[1]
 
@@ -971,14 +986,6 @@ class BosonJastrowSpin:
     #         ratios[:, ind] = val
     #     return gpu.asnumpy(ratios)
 
-    # def pgradient(self):
-    #     """Given the b sums, this is pretty trivial for the coefficient derivatives.
-    #     For the derivatives of basis functions, we will have to compute the derivative
-    #     of all the b's and redo the sums, similar to recompute()"""
-    #     return {
-    #         "bcoeff": gpu.asnumpy(self._bvalues),
-    #         "acoeff": gpu.asnumpy(self._avalues),
-    #     }
 
     # def u_components(self, rvec, r):
     #     """Given positions rvec and their magnitudes r, returns

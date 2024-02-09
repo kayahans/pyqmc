@@ -268,7 +268,6 @@ class BosonWF:
         # Derivative of the determinant is calculated using Jacobi's formula
         # https://en.wikipedia.org/wiki/Jacobi%27s_formula
         # https://courses.physics.illinois.edu/phys466/fa2016/projects/1999/team4/webpage/local_energy/node4.html
-        # likely this will now work only for the single determinant calculation
         
         jacobi = gpu.cp.einsum(
             "ei...dj,idj...->ei...d",
@@ -283,8 +282,11 @@ class BosonWF:
         valsqd = gpu.cp.einsum("id,id->id", updetsq, dndetsq) # |{D_{di}^{up}}|^2*|{D_{di}^{dn}}|^2
         vald = np.sqrt(valsqd) # \psi_{id}=\sqrt{|{D_{di}^{up}}|^2*|{D_{di}^{dn}}|^2}
 
-        # Derivative of \phi
-        # \phi' = \sqrt{\sum{\psi}^2} = \sum{\psi' * \psi} / \psi 
+        # Derivative of \Phi
+        # \Phi' = \sqrt{\sum_i{\psi_i}^2}' = \sum{\psi' * \psi} / \Phi 
+        # \psi = det(D_di), where D_di is the Slater determinant matrix
+        # \psi' is calculated using the jacobi theorem described above
+        # \psi x derivative, \psi_x = det(A)*tr[A^-1 * \del_x(A)] (x is a Cartesian axis)
         numer = gpu.cp.einsum("d,id,id,gid->gi",det_coeff, vald, vald, jacobi[..., self._det_map[s]])
         
         # values = \phi(R)
@@ -296,8 +298,6 @@ class BosonWF:
         else:
             # calculate \phi with R
             sign, psi = self.value()        
-        # import pdb
-        # pdb.set_trace()
         grad = gpu.cp.einsum("gi,i->gi", numer[1:], 1./psi)
         grad[~np.isfinite(grad)] = 0.0
         psi[~np.isfinite(psi)] = 1.0
@@ -307,5 +307,191 @@ class BosonWF:
                         'psi':psi}
         
         return grad, saved_values
-    
-    
+
+    def gradient_laplacian(self, e, epos, configs = None):
+        print('Not implemented')
+        exit()            
+        # s = int(e >= self._nelec[0])
+        # ao = self.orbitals.aos("GTOval_sph_deriv2", epos)
+        
+        # aograd = ao[:, 1:4, :, :] #dx, dy, dz
+        # aolap = ao[:, [9], :, :] #dxx, dyy, dzz
+        # import pdb
+        # pdb.set_trace()
+        # molap = self.orbitals.mos(aolap, s)
+        # molap_vals = molap[:, :, self._det_occup[s]]
+
+        # mograd = self.orbitals.mos(aograd, s)
+        # mograd_vals = mograd[:, :, self._det_occup[s]]
+
+        # import pdb
+        # pdb.set_trace()
+
+        # jacobidel = gpu.cp.einsum(
+        #     "ei...dj,idj...->ei...d",
+        #     mograd_vals,
+        #     self._inverse[s][..., e - s * self._nelec[0]],
+        # )
+
+        # jacobilap = gpu.cp.einsum(
+        #     "ei...dj,idj...->ei...d",
+        #     molap_vals,
+        #     self._inverse[s][..., e - s * self._nelec[0]],
+        # )
+
+        # jacobidelsq = gpu.cp.einsum(
+        #     "ei...dj,idj...,ei...dj,idj...->ei...d",
+        #     mograd_vals,
+        #     self._inverse[s][..., e - s * self._nelec[0]],
+        #     mograd_vals,
+        #     self._inverse[s][..., e - s * self._nelec[0]],
+        # )
+
+        # # For a single determinant, det(A)
+        # # del_\alpha\beta (det(A)) = det(A) * {Tr[A^-1 del_\alpha A] * Tr[A^-1 del_\beta A] 
+        # #                                      + Tr[A^-1 del_\alpha\beta A]
+        # #                                      - Tr[A^-1 del_\alpha A A^-1 del_\beta A]}
+        # # For \alpha = \beta
+        # # del_\alpha\alpha (det(A)) = det(A) * {Tr[A^-1 del_\alpha A]^2
+        # #                                      + Tr[A^-1 del_\alpha\alpha A]
+        # #                                      - Tr[(A^-1 del_\alpha A)^2]}
+
+        # # del_\alpha\alpha (det(A)) = det(A) * {tra+trb-trc}
+        # # lap (det(A)) = det(A) * \sum_xyz{tra+trb-trc}
+
+        # det_coeff = self.parameters["det_coeff"]
+        
+        # updetsq = self._detsq[0][:, self._det_map[0]] # |{D_{di}^{up}}|^2
+        # dndetsq = self._detsq[1][:, self._det_map[1]] # |{D_{di}^{dn}}|^2
+        # valsqd = gpu.cp.einsum("id,id->id", updetsq, dndetsq) # |{D_{di}^{up}}|^2*|{D_{di}^{dn}}|^2
+        # vald = np.sqrt(valsqd) # \psi_{id}=\sqrt{|{D_{di}^{up}}|^2*|{D_{di}^{dn}}|^2}        
+
+        # # values = \phi(R)
+        # if configs is not None:
+        #     # calculate \phi with R'
+        #     cf = configs.copy()
+        #     cf.configs[:,e,:] = epos.configs
+        #     sign, psi = self.value_updated(cf)        
+        # else:
+        #     # calculate \phi with R
+        #     sign, psi = self.value()   
+
+        # tra = gpu.cp.einsum('eid,eid->eid',jacobidel[..., self._det_map[s]], jacobidel[..., self._det_map[s]])
+        # trb = jacobilap[..., self._det_map[s]]
+        # trc = jacobidelsq[..., self._det_map[s]]
+        # lapd = gpu.cp.einsum('id, eid->id', vald, tra+trb) #-trc)
+
+        # gradgd = gpu.cp.einsum("id,gid->gid",vald, jacobidel[..., self._det_map[s]])
+        # grad_numer = gpu.cp.einsum("d,id,gid->gi",det_coeff, vald, gradgd)
+        
+        # grad = gpu.cp.einsum("gi,i->gi", grad_numer, 1./psi)
+        
+        # lap_numer_a1 = gpu.cp.einsum("id,id->id",lapd, vald)
+        # lap_numer_a2 = gpu.cp.einsum("eid,eid->id",gradgd, gradgd)
+        # lap_numer_a = gpu.cp.einsum("id,i,i->id", (lap_numer_a1 + lap_numer_a2),psi,psi)
+
+        # #TODO here delPhiB is sum over all determinants
+        # lap_numer_b = gpu.cp.einsum("d,id,id,id->id",det_coeff,lap_numer_a2,vald,vald)
+        # lap_numer = lap_numer_a - lap_numer_b
+        # invpsi=1./psi
+        # # lap = gpu.cp.einsum("d,id,i,i,i->i", det_coeff, lap_numer,invpsi,invpsi,invpsi)
+        # lap = gpu.cp.einsum("id->i", lapd)
+        # saved_values = {'grad':grad,
+        #                 'sign':sign,
+        #                 'psi':psi,
+        #                 'vald':vald,
+        #                 'tra':tra,
+        #                 'trb':trb,
+        #                 'trc':trc,}
+        
+        return lap, saved_values
+
+
+    def _testcol(self, det, i, s, vec):
+        """vec is a nconfig,nmo vector which replaces column i
+        of spin s in determinant det"""
+
+        return gpu.cp.einsum(
+            "ij...,ij->i...", vec, self._inverse[s][:, det, i, :], optimize="greedy"
+        )
+
+
+    def pgradient(self):
+        """Compute the parameter gradient of Phi.
+        Returns :math:`\partial_p \Phi` as a dictionary of numpy arrays,
+        which correspond to the parameter dictionary.
+
+        The wave function is given by PhiB = \sqrt(\sum(ci Di^2)), with an implicit sum
+
+        We have two sets of parameters:
+
+        Determinant coefficients:
+        di PhiB = 1/2 (Dui Ddi)^2 / Phi
+
+        Orbital coefficients assuming orbital corresponds to an up determinant:
+        dj PhiB = ci (Dui Ddi)^2 tr[Dui^-1 dj(Dui)]/PhiB
+
+        Using the Determinant coefficient expression
+
+        dj PhiB = ci * 
+
+        Let's suppose that j corresponds to an up orbital coefficient. Then
+        dj (Dui Ddi) = (dj Dui)/Dui Dui Ddi/psi = (dj Dui)/Dui di psi/psi
+        where di psi/psi is the derivative defined above.
+        """
+        d = {}
+
+        # Determinant coefficients
+        curr_val = self.value() #sign, val
+        # detsq[spin][configuration, determinant]
+        detsq = (
+            self._detsq[0][:, self._det_map[0]],
+            self._detsq[1][:, self._det_map[1]],
+        )
+
+        d["det_coeff"] = gpu.cp.zeros(detsq[0].shape[1:], dtype=detsq[0].dtype)
+        #sgn(Dup)*sgn(Ddn)*exp(Dup+Ddn)/[sgn(psi)*exp(logval)]
+        d["det_coeff"] = 1./2 * (
+            detsq[0] * detsq[1] 
+            ) / gpu.cp.array(curr_val[1][:, np.newaxis])
+        
+        # Orbital coefficients
+        for s, parm in zip([0, 1], ["mo_coeff_alpha", "mo_coeff_beta"]):
+            ao = self._aovals[
+                :, :, s * self._nelec[0] : self._nelec[s] + s * self._nelec[0], :
+            ]
+            # Derivatives wrt molecular orbital coefficients 
+            split, aos = self.orbitals.pgradient(ao, s)
+            mos = gpu.cp.split(gpu.cp.arange(split[-1]), gpu.asnumpy(split).astype(int))
+            # Compute dj Diu/Diu
+            nao = aos[0].shape[-1]
+            nconf = aos[0].shape[0]
+            nmo = int(split[-1])
+            deriv = gpu.cp.zeros(
+                (len(self._det_occup[s]), nconf, nao, nmo), dtype=curr_val[0].dtype
+            )
+            for det, occ in enumerate(self._det_occup[s]):
+                for ao, mo in zip(aos, mos):
+                    for i in mo:
+                        if i in occ:
+                            col = occ.index(i)
+                            deriv[det, :, :, i] = self._testcol(det, col, s, ao)
+
+            # now we reduce over determinants
+            d[parm] = gpu.cp.zeros(deriv.shape[1:], dtype=curr_val[0].dtype)
+            for di, coeff in enumerate(self.parameters["det_coeff"]):
+                whichdet = self._det_map[s][di]
+                d[parm] += (
+                    deriv[whichdet]
+                    * coeff
+                    * 2 * d["det_coeff"][:, di, np.newaxis, np.newaxis]
+                )
+
+        for k, v in d.items():
+            d[k] = gpu.asnumpy(v)
+
+        for k in list(d.keys()):
+            if np.prod(d[k].shape) == 0:
+                del d[k]
+
+        return d

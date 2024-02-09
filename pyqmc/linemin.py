@@ -4,7 +4,7 @@ import scipy
 import h5py
 import os
 import pyqmc.mc
-
+import mc
 
 def sr_update(pgrad, Sij, step, eps=0.1):
     invSij = np.linalg.inv(Sij + eps * np.eye(Sij.shape[0]))
@@ -104,6 +104,7 @@ def line_minimization(
     hdf_file=None,
     client=None,
     npartitions=None,
+    function = mc.vmc
 ):
     """Optimizes energy by determining gradients with stochastic reconfiguration
         and minimizing the energy along gradient directions using correlated sampling.
@@ -147,7 +148,7 @@ def line_minimization(
     else:  # not restarting -- VMC warm up period
         if verbose:
             print("starting warmup")
-        _, coords = pyqmc.mc.vmc(
+        _, coords = function(
             wf,
             coords,
             accumulators={},
@@ -161,11 +162,11 @@ def line_minimization(
     # Attributes for linemin
     attr = dict(max_iterations=max_iterations, npts=npts, steprange=steprange)
 
-    def gradient_energy_function(x, coords):
+    def gradient_energy_function(x, coords, function = mc.vmc):
         newparms = pgrad_acc.transform.deserialize(wf, x)
         for k in newparms:
             wf.parameters[k] = newparms[k]
-        df, coords = pyqmc.mc.vmc(
+        df, coords = function(
             wf,
             coords,
             accumulators={"pgrad": pgrad_acc},
@@ -194,7 +195,8 @@ def line_minimization(
     # Gradient descent cycles
     for it in range(max_iterations):
         # Calculate gradient accurately
-        coords, pgrad, Sij, en, en_err, sigma = gradient_energy_function(x0, coords)
+
+        coords, pgrad, Sij, en, en_err, sigma = gradient_energy_function(x0, coords, function=function)
         step_data = {}
         step_data["energy"] = en
         step_data["energy_error"] = en_err
@@ -206,6 +208,9 @@ def line_minimization(
         if verbose:
             print("descent en", en, en_err, " estimated sigma ", sigma)
             print("descent |grad|", np.linalg.norm(pgrad), flush=True)
+            # print(pgrad)
+            # print('a', wf.parameters.data['wf2']['acoeff'])
+            # print('b', wf.parameters.data['wf2']['bcoeff'])
 
         xfit = []
         yfit = []

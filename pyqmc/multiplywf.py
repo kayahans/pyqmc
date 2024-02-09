@@ -161,6 +161,20 @@ class MultiplyBosonWF(MultiplyWF):
     def gradient_value(self, e, epos, configs=None):  
 
         assert len(self.wf_factors) == 2, "MultiplyBosonWF only accepts SJ type wavefunctions"
+
+        # from bosonwf import BosonWF
+        # from jastrowspin import BosonJastrowSpin
+        # for wave in wave_functions:
+        #     if isinstance(wave, BosonWF):
+        #         boson_wf = wave
+        #     if isinstance(wave, BosonJastrowSpin):
+        #         jastrow_wf = wave
+        # grad_bos, saved_bos = boson_wf.gradient_value(e, epos, configs)
+        # grad_j, saved_j = jastrow_wf.gradient_value(e, epos, configs)
+        # phi_bos = saved_bos[0]['sign']*saved_bos[0]['psi']
+        # phi_j = saved_j[0]['sign']*saved_j[0]['psi']
+        # grads_mult = grad_bos*phi_j + grad_j*phi_bos
+
         grad_vals = [wf.gradient_value(e, epos, configs) for wf in self.wf_factors]
         grads, saved_values = list(zip(*grad_vals))
         phi0 = saved_values[0]['sign']*saved_values[0]['psi'] #sign0*psi0
@@ -168,8 +182,6 @@ class MultiplyBosonWF(MultiplyWF):
         
         grads_mult = grads[0]*phi1 + grads[1]*phi0
 
-        # import pdb
-        # pdb.set_trace()
         phi = phi0*phi1
         sign = np.sign(phi)
         saved_values = {'values':[saved_values[0]['values'], saved_values[1]['values']],
@@ -198,7 +210,20 @@ class MultiplyBosonWF(MultiplyWF):
 
 
     def pgradient(self):
-        return Parameters([wf.pgradient() for wf in self.wf_factors])
+        from bosonwf import BosonWF
+        from jastrowspin import BosonJastrowSpin
+        wave_functions = self.wf_factors        
+        for wave in wave_functions:
+            if isinstance(wave, BosonWF):
+                boson_wf = wave
+            if isinstance(wave, BosonJastrowSpin):
+                jastrow_wf = wave
+        
+        #TODO: restore
+        bb = Parameters([wf.pgradient() for wf in self.wf_factors])
+        del bb.data['wf1']
+        return bb
+        # return Parameters([wf.pgradient() for wf in self.wf_factors])
     
 
 def test_parameters():

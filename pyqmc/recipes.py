@@ -337,7 +337,7 @@ def ABOPTIMIZE(
     )
 
     if anchors is None:
-        linemin.line_minimization(wf, configs, acc, **linemin_kws)
+        wf, df = linemin.line_minimization(wf, configs, acc, function=mc.abvmc, **linemin_kws)
     # else:
     #     wfs = []
     #     for i, a in enumerate(anchors):
@@ -355,6 +355,7 @@ def ABOPTIMIZE(
     #     # wfs = [wftools.read_wf(copy.deepcopy(wf), a) for a in anchors]
     #     wfs.append(wf)
     #     optimize_ortho.optimize_orthogonal(wfs, configs, acc, **linemin_kws)
+    return wf, df
 
 def ABVMC(
     dft_checkfile: str,
@@ -460,14 +461,16 @@ def initialize_boson_qmc_objects(
 
     if S is not None:
         mol = supercell.get_supercell(mol, np.asarray(S))
-    if load_parameters is None:
-        wf, to_opt = wftools.generate_boson_wf(
-            mol, mf, mc=mc, jastrow = None, jastrow_kws=jastrow_kws, slater_kws=slater_kws
-        )
-    else:
-        wf, to_opt = wftools.generate_boson_wf(
-            mol, mf, mc=mc, jastrow_kws=jastrow_kws, slater_kws=slater_kws
-        )
+    
+    # Use when testing HF
+    # if load_parameters is None:
+    #     wf, to_opt = wftools.generate_boson_wf(
+    #         mol, mf, mc=mc, jastrow = None, jastrow_kws=jastrow_kws, slater_kws=slater_kws
+    #     )
+    # else:
+    wf, to_opt = wftools.generate_boson_wf(
+        mol, mf, mc=mc, jastrow_kws=jastrow_kws, slater_kws=slater_kws
+    )
     if load_parameters is not None:
         wftools.read_wf(wf, load_parameters)    
     # from mc import fixed_initial_guess
@@ -477,8 +480,8 @@ def initialize_boson_qmc_objects(
     configs = initial_guess(mol, nconfig,seed=seed)
 
     if opt_wf:
-        accumulators = pyqmc.accumulators.gradient_generator(
-            mol, wf, to_opt, nodal_cutoff=nodal_cutoff
+        accumulators = accumulators.boson_gradient_generator(
+            mf, wf, to_opt, nodal_cutoff=nodal_cutoff
         )
     else:
         accumulators = {}

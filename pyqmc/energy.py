@@ -85,7 +85,8 @@ def dft_energy(mf, configs, nup_dn):
 
 def boson_kinetic(configs, wf):
     '''
-    Returns the jastrow laplacian and the bosonic drift terms in Eq. 21 in doi: 10.1063/5.0155513. 
+    Returns the jastrow laplacian (lap_j) and the bosonic drift (drift_b) terms 
+    in Eq. 21 in doi: 10.1063/5.0155513. 
     '''
     nconf, nelec, ndim = configs.configs.shape
     ke = np.zeros(nconf)
@@ -107,17 +108,23 @@ def boson_kinetic(configs, wf):
     
     lap_j = np.zeros(nconf)
     drift_b = np.zeros(nconf)
+    grad2 = np.zeros(nconf)
     if has_jastrow:
+        # If no jastrows (HF), then these terms are zero
         for e in range(nelec):
-            grad_j, lap = jastrow_wf.gradient_laplacian(e, configs.electron(e))
+            _, val_j = jastrow_wf.value()
+            grad_j, lap_je = jastrow_wf.gradient_laplacian(e, configs.electron(e))
             # Convert to exp form of jastrow gradients from the jastrow log wavefunction
             # \frac{\nabla{e^{-U(r)}}}{e^{-U(r)}} = {\nabla^2}U(r) + ({\nabla}U(r))^2
-            lap_j += -0.5  * (lap.real + np.einsum("di,di->i",grad_j,np.conjugate(grad_j)))
+            lap_j += -0.5 * (lap_je.real)
+            # lap_j += 0.5  * (lap_je.real + np.einsum("di,di->i",grad_j,np.conjugate(grad_j)))
             grad_b = boson_wf.gradient(e, configs.electron(e))
-            drift_b += np.einsum("di,di->i", -grad_j, grad_b)/boson_wf.value()[1]
-            # TODO: check if division is required
+            grad = wf.gradient(e, configs.electron(e))
+            grad2 += np.sum(np.abs(grad) ** 2, axis=0)
+            phi = boson_wf.value()[1]
+            drift_b += np.einsum("di,di->i", -grad_j, grad_b)/phi
         # ke = lap_j + drift_b
-    return lap_j , drift_b
+    return lap_j, drift_b, grad2
 
 # def boson_drift(configs, wf):
 #     # TODO: Check where this is used
