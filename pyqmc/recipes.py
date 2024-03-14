@@ -79,7 +79,6 @@ def OPTIMIZE(
         # wfs = [wftools.read_wf(copy.deepcopy(wf), a) for a in anchors]
         wfs.append(wf)
         optimize_ortho.optimize_orthogonal(wfs, configs, acc, **linemin_kws)
-
 def generate_accumulators(
     mol, mf, energy=True, rdm1=False, extra_accumulators=None, twist=0
 ):
@@ -337,7 +336,7 @@ def ABOPTIMIZE(
     )
 
     if anchors is None:
-        wf, df = linemin.line_minimization(wf, configs, acc, function=mc.abvmc, **linemin_kws)
+        wf, df = linemin.line_minimization(wf, configs, acc, function=mc.abvmc, correlated_compute_function=linemin.correlated_compute_boson, **linemin_kws)
     # else:
     #     wfs = []
     #     for i, a in enumerate(anchors):

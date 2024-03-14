@@ -281,8 +281,6 @@ class JastrowSpin:
         r""""""
         nconf, nelec = self._configscurrent.configs.shape[:2]
         nup = self._mol.nelec[0]
-        # import pdb
-        # pdb.set_trace()
         # Get e-e and e-ion distances2
         not_e = np.arange(nelec) != e
         dnew = gpu.cp.asarray(
@@ -700,74 +698,10 @@ class BosonJastrowSpin:
         u = np.exp(u)
         #end 
         return (np.ones(len(u)), gpu.asnumpy(u))
-    # The original from JastrowSpin 
-    # def gradient(self, e, epos):
-    #     r"""We compute the gradient for electron e as
-    #     :math:`\nabla_e \ln \Psi_J = \sum_l c_l \left(\sum_{j > e} \nabla_e b_l(r_{ej}) + \sum_{i < e} \nabla_e b_l(r_{ie})\right)`
-    #     So we need to compute the gradient of the b's for these indices.
-    #     Note that we need to compute distances between electron position given and the current electron distances.
-    #     We will need this for laplacian() as well"""
-    #     nconf, nelec = self._configscurrent.configs.shape[:2]
-    #     nup = self._mol.nelec[0]
-
-    #     # Get e-e and e-ion distances
-    #     not_e = np.arange(nelec) != e
-    #     dnew = gpu.cp.asarray(
-    #         epos.dist.dist_i(self._configscurrent.configs, epos.configs)[:, not_e]
-    #     )
-    #     dinew = gpu.cp.asarray(epos.dist.dist_i(self._mol.atom_coords(), epos.configs))
-    #     rnew = gpu.cp.linalg.norm(dnew, axis=-1)
-    #     rinew = gpu.cp.linalg.norm(dinew, axis=-1)
-
-    #     grad = gpu.cp.zeros((3, nconf))
-
-    #     # Check if selected electron is spin up or down
-    #     eup = int(e < nup)
-    #     edown = int(e >= nup)
-
-    #     for c, b in zip(self.parameters["bcoeff"], self.b_basis):
-    #         bgrad = b.gradient(dnew, rnew)
-    #         grad += c[edown] * gpu.cp.sum(bgrad[:, : nup - eup], axis=1).T
-    #         grad += c[1 + edown] * gpu.cp.sum(bgrad[:, nup - eup :], axis=1).T
-
-    #     for c, a in zip(self.parameters["acoeff"].transpose()[edown], self.a_basis):
-    #         grad += gpu.cp.einsum("j,ijk->ki", c, a.gradient(dinew, rinew))
-
-    #     return gpu.asnumpy(grad)
 
     def gradient(self, e, epos):
-        r"""We compute the gradient for electron e as
-        :math:`\nabla_e \ln \Psi_J = \sum_l c_l \left(\sum_{j > e} \nabla_e b_l(r_{ej}) + \sum_{i < e} \nabla_e b_l(r_{ie})\right)`
-        So we need to compute the gradient of the b's for these indices.
-        Note that we need to compute distances between electron position given and the current electron distances.
-        We will need this for laplacian() as well"""
-        nconf, nelec = self._configscurrent.configs.shape[:2]
-        nup = self._mol.nelec[0]
-
-        # Get e-e and e-ion distances
-        not_e = np.arange(nelec) != e
-        dnew = gpu.cp.asarray(
-            epos.dist.dist_i(self._configscurrent.configs, epos.configs)[:, not_e]
-        )
-        dinew = gpu.cp.asarray(epos.dist.dist_i(self._mol.atom_coords(), epos.configs))
-        rnew = gpu.cp.linalg.norm(dnew, axis=-1)
-        rinew = gpu.cp.linalg.norm(dinew, axis=-1)
-
-        grad = gpu.cp.zeros((3, nconf))
-
-        # Check if selected electron is spin up or down
-        eup = int(e < nup)
-        edown = int(e >= nup)
-
-        for c, b in zip(self.parameters["bcoeff"], self.b_basis):
-            bgrad = b.gradient(dnew, rnew)
-            grad += c[edown] * gpu.cp.sum(bgrad[:, : nup - eup], axis=1).T
-            grad += c[1 + edown] * gpu.cp.sum(bgrad[:, nup - eup :], axis=1).T
-
-        for c, a in zip(self.parameters["acoeff"].transpose()[edown], self.a_basis):
-            grad += gpu.cp.einsum("j,ijk->ki", c, a.gradient(dinew, rinew))
-
-        return gpu.asnumpy(grad)
+        grad, _ = self.gradient_value(e, epos)
+        return grad 
         
     def gradient_value(self, e, epos, configs=None):
         r"""
@@ -874,7 +808,7 @@ class BosonJastrowSpin:
     #     return gpu.asnumpy(grad), gpu.asnumpy(lap + gpu.cp.sum(grad**2, axis=0))
     
     def gradient_laplacian(self, e, epos):
-        """ """
+        """ \lap log(exp(J)) = \lap J"""
         nconf, nelec = self._configscurrent.configs.shape[:2]
         nup = self._mol.nelec[0]
 
@@ -910,7 +844,7 @@ class BosonJastrowSpin:
 
     def pgradient(self):
         """Given the b sums, this is pretty trivial for the coefficient derivatives."""
-        sign, val = self.value()
+        # sign, val = self.value()
         # return {
         #     "bcoeff": gpu.cp.einsum('i..., i->i...', self._bvalues, val), 
         #     "acoeff": gpu.cp.einsum('i..., i->i...', self._avalues, val),

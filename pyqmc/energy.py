@@ -122,7 +122,7 @@ def boson_kinetic(configs, wf):
             grad = wf.gradient(e, configs.electron(e))
             grad2 += np.sum(np.abs(grad) ** 2, axis=0)
             phi = boson_wf.value()[1]
-            drift_b += np.einsum("di,di->i", -grad_j, grad_b)/phi
+            drift_b += np.einsum("di,di,i->i", -grad_j, grad_b,1./phi)
         # ke = lap_j + drift_b
     return lap_j, drift_b, grad2
 

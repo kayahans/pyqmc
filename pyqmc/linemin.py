@@ -104,7 +104,8 @@ def line_minimization(
     hdf_file=None,
     client=None,
     npartitions=None,
-    function = mc.vmc
+    function = mc.vmc,
+    correlated_compute_function = None
 ):
     """Optimizes energy by determining gradients with stochastic reconfiguration
         and minimizing the energy along gradient directions using correlated sampling.
@@ -190,13 +191,16 @@ def line_minimization(
 
         return coords, grad, Sij, en, en_err, sigma
     x0 = pgrad_acc.transform.serialize_parameters(wf.parameters)
-
+    
     df = []
     # Gradient descent cycles
     for it in range(max_iterations):
         # Calculate gradient accurately
-
+        print('it', it, '='*20)
+        print('x0', x0)
         coords, pgrad, Sij, en, en_err, sigma = gradient_energy_function(x0, coords, function=function)
+        print('en', en, 'en_err', en_err)
+        print('pgrad', pgrad)
         step_data = {}
         step_data["energy"] = en
         step_data["energy_error"] = en_err
@@ -220,8 +224,13 @@ def line_minimization(
         # doing correlated sampling.
         steps = np.linspace(-steprange / (npts - 2), steprange, npts)
         params = [x0 + update(pgrad, Sij, step, **update_kws) for step in steps]
+        print('params', params)
+        if correlated_compute_function is None:
+            correlated_compute_function = correlated_compute
+        # import pdb
+        # pdb.set_trace()
         if client is None:
-            stepsdata = correlated_compute(wf, coords, params, pgrad_acc)
+            stepsdata = correlated_compute_function(wf, coords, params, pgrad_acc)
         else:
             stepsdata = correlated_compute_parallel(
                 wf, coords, params, pgrad_acc, client, npartitions
@@ -234,6 +243,7 @@ def line_minimization(
         yfit.extend(en)
         xfit.extend(steps)
         est_min = stable_fit(xfit, yfit)
+        print('est_min', est_min)
         x0 += update(pgrad, Sij, est_min, **update_kws)
         step_data["tau"] = xfit
         step_data["yfit"] = yfit
@@ -275,6 +285,48 @@ def correlated_compute(wf, configs, params, pgrad_acc):
             wf.parameters[k] = newparms[k]
         psi = wf.recompute(configs)[1]  # recompute gives logdet
         rawweights = np.exp(2 * (psi - psi0))  # convert from log(|psi|) to |psi|**2
+        df = pgrad_acc.enacc(configs, wf)
+        df["weight"] = rawweights
+        data.append(df)
+    data_ret = {}
+    for k in data[0].keys():
+        data_ret[k] = np.asarray([d[k] for d in data])
+    return data_ret
+
+def correlated_compute_boson(wf, configs, params, pgrad_acc):
+    """
+    Evaluates accumulator on the same set of configs for correlated sampling of different wave function parameters
+
+    :parameter wf: wave function object
+    :parameter configs: (nconf, nelec, 3) array
+    :parameter params: (nsteps, nparams) array
+        list of arrays of parameters (serialized) at each step
+    :parameter pgrad_acc: PGradAccumulator
+    :returns: a single dict with indices [parameter, values]
+
+    """
+
+    data = []
+    print('Boson correlated')
+    from bosonwf import BosonWF
+    from jastrowspin import BosonJastrowSpin
+
+
+    jastrow_wf = None
+
+    for wave in wf.wf_factors:
+        if isinstance(wave, BosonJastrowSpin):
+            jastrow_wf = wave    
+    psi0 = jastrow_wf.recompute(configs)[1]  # recompute gives det
+
+    current_state = np.random.get_state()
+    for p in params:
+        np.random.set_state(current_state)
+        newparms = pgrad_acc.transform.deserialize(wf, p)
+        for k in newparms:
+            wf.parameters[k] = newparms[k]
+        psi = jastrow_wf.recompute(configs)[1]  # recompute gives det
+        rawweights = (psi/psi0)**2
         df = pgrad_acc.enacc(configs, wf)
         df["weight"] = rawweights
         data.append(df)

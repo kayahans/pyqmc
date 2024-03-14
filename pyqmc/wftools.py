@@ -193,6 +193,8 @@ def read_wf(wf, wf_file):
         grp = hdf["wf"]
         for k in grp.keys():
             new_parms = gpu.cp.array(grp[k])
+            import pdb
+            pdb.set_trace()
             if wf.parameters[k].shape != new_parms.shape:
                 raise Exception(
                     f"For wave function parameter {k}, shape in {wf_file} is {new_parms.shape}, while current shape is {wf.parameters[k].shape}"
@@ -324,8 +326,8 @@ def generate_boson_wf(
             jastrow_kws = [jastrow_kws]
 
         wf1, to_opt1 = generate_boson(mol, mf, mc=mc, **slater_kws)
-        # to_opt = {"wf1" + k: v for k, v in to_opt1.items()}
-        to_opt = {}
+        to_opt = {"wf1" + k: v for k, v in to_opt1.items()}
+        # to_opt = {}
         pack = [jast(mol, **kw) for jast, kw in zip(jastrow, jastrow_kws)]
         wfs = [p[0] for p in pack]
         to_opts = [p[1] for p in pack]
