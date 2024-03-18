@@ -340,7 +340,7 @@ class Slater:
             det_array,
         )
         # curr_val = self.value()
-
+        
         if len(numer.shape) == 3:
             denom = denom[gpu.cp.newaxis, :, gpu.cp.newaxis]
         return numer / denom

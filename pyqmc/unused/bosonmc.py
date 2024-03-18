@@ -80,8 +80,6 @@ def abvmc(
             block_avg, configs = abvmc_worker(
                 wf, configs, tstep, nsteps_per_block, accumulators
             )
-            # import pdb
-            # pdb.set_trace()
         else:
             print("Parallel not yet implemented")
             exit()
@@ -157,8 +155,6 @@ def abvmc_worker(wf, configs, tstep, nsteps, accumulators):
             # without fully updating the inverse matrix. 
             acc += np.mean(accept) / nelec
         # Rolling average on step
-        # import pdb
-        # pdb.set_trace()
         for k, accumulator in accumulators.items():
             dat = accumulator.avg(configs, wf)
             dats.append(dat)
@@ -169,8 +165,6 @@ def abvmc_worker(wf, configs, tstep, nsteps, accumulators):
                     block_avg[k + m] += res / nsteps
         block_avg["acceptance"] = acc
     # dat_keys = dats[0].keys()
-    # import pdb
-    # pdb.set_trace()
     # for key in dat_keys:
     #     dat = np.array([x[key] for x in dats])
     #     # mean = np.mean(dat)

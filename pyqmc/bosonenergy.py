@@ -63,7 +63,7 @@ def boson_kinetic(configs, wf):
     if has_jastrow:
         # If no jastrows (HF), then these terms are zero
         for e in range(nelec):
-            _, val_j = jastrow_wf.value()
+            _, val_j = jastrow_wf.value()            
             grad_j, lap_je = jastrow_wf.gradient_laplacian(e, configs.electron(e))
             # Convert to exp form of jastrow gradients from the jastrow log wavefunction
             # \frac{\nabla{e^{-U(r)}}}{e^{-U(r)}} = {\nabla^2}U(r) + ({\nabla}U(r))^2
@@ -72,8 +72,7 @@ def boson_kinetic(configs, wf):
             grad_b = boson_wf.gradient(e, configs.electron(e))
             grad = wf.gradient(e, configs.electron(e))
             grad2 += np.sum(np.abs(grad) ** 2, axis=0)
-            phi = boson_wf.value()[1]
-            drift_b += np.einsum("di,di,i->i", -grad_j, grad_b,1./phi)
+            drift_b += np.einsum("di,di->i", -grad_j, grad_b)
         # ke = lap_j + drift_b
     return lap_j, drift_b, grad2
 

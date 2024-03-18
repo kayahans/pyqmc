@@ -5,9 +5,10 @@ import pyqmc.pyscftools as pyscftools
 import pyqmc.supercell as supercell
 import h5py
 import pandas as pd
-
-# import bosonlinemin
+import mc
+import linemin
 # import bosonmc
+import wftools
 import pyqmc
 import bosonaccumulators
 
@@ -65,9 +66,8 @@ def ABOPTIMIZE(
         slater_kws=slater_kws,
         accumulators=bosonaccumulators,
     )
-
     if anchors is None:
-        wf, df = bosonlinemin.line_minimization(wf, configs, acc, **linemin_kws)
+        wf, df = linemin.line_minimization(wf, configs, acc, **linemin_kws)
     # else:
     #     wfs = []
     #     for i, a in enumerate(anchors):
@@ -143,7 +143,7 @@ def ABOPTIMIZE2(
     )
 
     if anchors is None:
-        wf, df = bosonlinemin.line_minimization(wf, configs, acc, **linemin_kws)
+        wf, df = linemin.line_minimization(wf, configs, acc, **linemin_kws)
     # else:
     #     wfs = []
     #     for i, a in enumerate(anchors):
@@ -325,23 +325,20 @@ def initialize_boson_qmc_objects(
         mol = supercell.get_supercell(mol, np.asarray(S))
     
     # Use when testing HF
-    # if load_parameters is None:
-    #     wf, to_opt = wftools.generate_boson_wf(
-    #         mol, mf, mc=mc, jastrow = None, jastrow_kws=jastrow_kws, slater_kws=slater_kws
-    #     )
-    # else:
-    wf, to_opt = bosonwftools.generate_boson_wf(
-        mol, mf, mc=mc, jastrow_kws=jastrow_kws, slater_kws=slater_kws
-    )
+    if load_parameters is False:
+        wf, to_opt = bosonwftools.generate_boson_wf(
+            mol, mf, mc=mc, jastrow = None, jastrow_kws=jastrow_kws, slater_kws=slater_kws
+        )
+    else:
+        wf, to_opt = bosonwftools.generate_boson_wf(
+            mol, mf, mc=mc, jastrow_kws=jastrow_kws, slater_kws=slater_kws
+        )
     if load_parameters is not None:
         wftools.read_wf(wf, load_parameters)    
-    # from mc import fixed_initial_guess
-    # configs = fixed_initial_guess(mol, nconfig)
     print('Using spherical guess')
     configs = initial_guess(mol, nconfig,seed=seed)
-
     if opt_wf:
-        accumulators = accumulators.boson_gradient_generator(
+        accumulators = bosonaccumulators.boson_gradient_generator(
             mf, wf, to_opt, nodal_cutoff=nodal_cutoff
         )
     else:
@@ -351,7 +348,7 @@ def initialize_boson_qmc_objects(
         else:
             twist = 0
         accumulators['energy'] = bosonaccumulators.ABQMCEnergyAccumulator(mf)
-        # accumulators['excitations'] = bosonaccumulators.ABVMCMatrixAccumulator(mf, mc)
+        accumulators['excitations'] = bosonaccumulators.ABVMCMatrixAccumulator(mf, mc)
         # acc = generate_accumulators(mol, mf, twist=twist, **accumulators)
     return wf, configs, accumulators
 
