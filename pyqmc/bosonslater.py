@@ -88,8 +88,6 @@ def compute_boson_value(updets, dndets, det_coeffs):
     wf_sign = np.nan_to_num(wf_val / gpu.cp.abs(wf_val))
     wf_logval = 1./2 * np.nan_to_num(gpu.cp.log(gpu.cp.abs(wf_val)) + 2*(upref + dnref))
     return gpu.asnumpy(wf_sign), gpu.asnumpy(wf_logval)
-
-
 class BosonWF:
 
     def __init__(self, mol, mf, mc=None, tol=None, twist=None, determinants=None, eval_gto_precision=None):
@@ -256,7 +254,7 @@ class BosonWF:
         """Compute the gradient of the log wave function
         Note that this can be called even if the internals have not been updated for electron e,
         if epos differs from the current position of electron e."""
-        grad, _ = self.gradient_value(e, epos)
+        grad, _, _ = self.gradient_value(e, epos)
         #TODO: gradient is shortcut, but check if using the original version has any computational advantage
         return grad
     
@@ -360,7 +358,6 @@ class BosonWF:
 
         return numer / denom
     
-
     def gradient_value_log(self, e, epos):
         """Compute the gradient of the log wave function
         Note that this can be called even if the internals have not been updated for electron e,
@@ -378,6 +375,106 @@ class BosonWF:
         values[~np.isfinite(values)] = 1.0
         return derivatives, values, (aograd[:, 0], mograd[0])
 
-
     def gradient_value(self, e, epos, configs=None):
         return self.gradient_value_log(e, epos)
+
+    def _testcol(self, det, i, s, vec):
+        """vec is a nconfig,nmo vector which replaces column i
+        of spin s in determinant det"""
+
+        return gpu.cp.einsum(
+            "ij...,ij->i...", vec, self._inverse[s][:, det, i, :], optimize="greedy"
+        )
+    
+    def pgradient(self):
+        """Compute the parameter gradient of Phi.
+        Returns :math:`\partial_p \Phi` as a dictionary of numpy arrays,
+        which correspond to the parameter dictionary.
+
+        The wave function is given by PhiB = \sqrt(\sum(ci Di^2)), with an implicit sum
+
+        We have two sets of parameters:
+
+        Determinant coefficients:
+        di PhiB = 1/2 (Dui Ddi)^2 / Phi
+
+        Orbital coefficients assuming orbital corresponds to an up determinant:
+        dj PhiB = ci (Dui Ddi)^2 tr[Dui^-1 dj(Dui)]/PhiB
+
+        Using the Determinant coefficient expression
+
+        dj PhiB = ci *
+
+        Let's suppose that j corresponds to an up orbital coefficient. Then
+        dj (Dui Ddi) = (dj Dui)/Dui Dui Ddi/psi = (dj Dui)/Dui di psi/psi
+        where di psi/psi is the derivative defined above.
+        """
+        d = {}
+
+        curr_val = self.value() #sign, val
+        nonzero = curr_val[0] != 0.0
+        
+        # det[spin][configuration, determinant]
+        dets = (
+            self._dets[0][:, :, self._det_map[0]],
+            self._dets[1][:, :, self._det_map[1]],
+        )
+
+        # Determinant coefficients
+        d["det_coeff"] = gpu.cp.zeros(dets[0].shape[1:], dtype=dets[0].dtype)
+        # Modified wrt to the original pgradient
+        d["det_coeff"][nonzero, :] = (
+            1./2 *
+            dets[0][0, nonzero, :]
+            * dets[1][0, nonzero, :]
+            * gpu.cp.exp(
+                2*(dets[0][1, nonzero, :]
+                + dets[1][1, nonzero, :]
+                - gpu.cp.array(curr_val[1][nonzero, np.newaxis])
+                )
+            )
+        )
+
+        # Orbital coefficients
+        # The formula below applies to the \sum_i c_i * \Psi_i, but 
+        # it also works for \sqrt(\sum_i c_i * \Psi_i^2).
+        # Therefore, unchanged from the original pgradient.
+        for s, parm in zip([0, 1], ["mo_coeff_alpha", "mo_coeff_beta"]):
+            ao = self._aovals[
+                :, :, s * self._nelec[0] : self._nelec[s] + s * self._nelec[0], :
+            ]
+            # Derivatives wrt molecular orbital coefficients
+            split, aos = self.orbitals.pgradient(ao, s)
+            mos = gpu.cp.split(gpu.cp.arange(split[-1]), gpu.asnumpy(split).astype(int))
+            # Compute dj Diu/Diu
+            nao = aos[0].shape[-1]
+            nconf = aos[0].shape[0]
+            nmo = int(split[-1])
+            deriv = gpu.cp.zeros(
+                (len(self._det_occup[s]), nconf, nao, nmo), dtype=curr_val[0].dtype
+            )
+            for det, occ in enumerate(self._det_occup[s]):
+                for ao, mo in zip(aos, mos):
+                    for i in mo:
+                        if i in occ:
+                            col = occ.index(i)
+                            deriv[det, :, :, i] = self._testcol(det, col, s, ao)
+
+            # now we reduce over determinants
+            d[parm] = gpu.cp.zeros(deriv.shape[1:], dtype=curr_val[0].dtype)
+            for di, coeff in enumerate(self.parameters["det_coeff"]):
+                whichdet = self._det_map[s][di]
+                d[parm] += (
+                    deriv[whichdet]
+                    * coeff
+                    * d["det_coeff"][:, di, np.newaxis, np.newaxis]
+                )
+
+        for k, v in d.items():
+            d[k] = gpu.asnumpy(v)
+
+        for k in list(d.keys()):
+            if np.prod(d[k].shape) == 0:
+                del d[k]
+
+        return d

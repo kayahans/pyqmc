@@ -7,19 +7,19 @@ import pyqmc.eval_ecp as eval_ecp
 import copy
 
 from accumulators import LinearTransform
-from bosonslater import BosonWF
+import bosonslater
 # import bosonjastrowspin
-# from boson_stochastic_reconfiguration import StochasticReconfiguration
+from boson_stochastic_reconfiguration import StochasticReconfiguration
 from wftools import generate_wf
 
-# PGradTransform = StochasticReconfiguration
+PGradTransform = StochasticReconfiguration
 
-# def boson_gradient_generator(mf, wf, to_opt=None, nodal_cutoff=1e-3, **ewald_kwargs):
-#     return PGradTransform(
-#         ABQMCEnergyAccumulator(mf, **ewald_kwargs),
-#         LinearTransform(wf.parameters, to_opt),
-#         nodal_cutoff=nodal_cutoff,
-#     )
+def boson_gradient_generator(mf, wf, to_opt=None, nodal_cutoff=1e-3, **ewald_kwargs):
+    return PGradTransform(
+        ABQMCEnergyAccumulator(mf, **ewald_kwargs),
+        LinearTransform(wf.parameters, to_opt),
+        nodal_cutoff=nodal_cutoff,
+    )
 
 class ABQMCEnergyAccumulator:
     """Returns local energy of each configuration in a dictionary."""
@@ -40,12 +40,12 @@ class ABQMCEnergyAccumulator:
             nwf = len(wf.wf_factors)
         except:
             nwf = 1
-        
+
         if nwf == 1:
             nup_dn = wf._nelec
         else:
             for wfi in wf.wf_factors:
-                if isinstance(wfi, BosonWF):
+                if isinstance(wfi, bosonslater.BosonWF):
                     nup_dn = wfi._nelec
         vh,vxc,ecorr = bosonenergy.dft_energy(mf, configs, nup_dn)
         ke1, ke2, grad2 = bosonenergy.boson_kinetic(configs, wf)

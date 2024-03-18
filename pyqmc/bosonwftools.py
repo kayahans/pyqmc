@@ -1,12 +1,12 @@
 import bosonslater as slater
 #import pyqmc.slater as slater
 # import bosonmultiplywf as multiplywf
-# import bosonjastrowspin as jastrowspin
+import jastrowspin
 import multiplywf
 import pyqmc.gpu as gpu
 import numpy as np
 
-from wftools import default_jastrow_basis, read_wf
+from wftools import default_jastrow_basis, read_wf, generate_jastrow
 
 
 def generate_boson(
@@ -63,7 +63,7 @@ def generate_boson(
 #     else:
 #         assert isinstance(ion_cusp, list)
 #     abasis, bbasis = default_jastrow_basis(mol, len(ion_cusp) > 0, na, nb, rcut)
-#     jastrow = jastrowspin.BosonJastrowSpin(mol, a_basis=abasis, b_basis=bbasis)
+#     jastrow = jastrowspin.JastrowSpin(mol, a_basis=abasis, b_basis=bbasis)
 #     if len(ion_cusp) > 0:
 #         coefs = mol.atom_charges().copy()
 #         coefs[[l[0] not in ion_cusp for l in mol._atom]] = 0.0
@@ -78,11 +78,8 @@ def generate_boson(
 #     return jastrow, to_opt
 
 
-# def generate_boson_wf(
-#     mol, mf, jastrow=generate_boson_jastrow, jastrow_kws=None, slater_kws=None, mc = None, 
-# ):
 def generate_boson_wf(
-    mol, mf, jastrow=None, jastrow_kws=None, slater_kws=None, mc = None, 
+    mol, mf, jastrow=generate_jastrow, jastrow_kws=None, slater_kws=None, mc = None, 
 ):
     """
     """
@@ -105,7 +102,7 @@ def generate_boson_wf(
         pack = [jast(mol, **kw) for jast, kw in zip(jastrow, jastrow_kws)]
         wfs = [p[0] for p in pack]
         to_opts = [p[1] for p in pack]
-        wf = multiplywf.MultiplyBosonWF(wf1, *wfs)
+        wf = multiplywf.MultiplyWF(wf1, *wfs)
         for i, to_opt2 in enumerate(to_opts):
             to_opt.update({f"wf{i+2}" + k: v for k, v in to_opt2.items()})
     return wf, to_opt

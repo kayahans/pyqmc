@@ -256,7 +256,6 @@ def correlated_compute(
     :returns: a single dict with indices [parameter, values]
 
     """
-
     data = []
     wfs = [copy.deepcopy(wf) for i in [0, -1]]
     for p, wf_ in zip(params, wfs):
