@@ -24,6 +24,63 @@ import h5py
 import logging
 
 
+def fixed_initial_guess(mol, nconfig, r=1.0):
+
+
+    """
+    Ideally works for H2 molecule with H-H aligned over z-axis and H1 at origin, H2 at [0,0,2]
+    :parameter mol: A PySCF-like molecule object. Should have atom_charges(), atom_coords(), and nelec
+    :parameter nconfig: How many configurations to generate.
+    :parameter r: How far from the atoms to distribute the electrons
+    :returns: (nconfig,nelectrons,3) array of electron positions randomly distributed near the atoms.
+    :rtype: ndarray
+
+    """
+    from pyqmc.coord import OpenConfigs, PeriodicConfigs
+
+    epos = np.zeros((nconfig, np.sum(mol.nelec), 3))
+    wts = mol.atom_charges()
+    wts = wts / np.sum(wts)
+    ind0 = 0
+    for s in [0, 1]:
+        neach = np.array(
+            np.floor(mol.nelec[s] * wts), dtype=int
+        )  # integer number of elec on each atom
+        nleft = (
+            mol.nelec[s] * wts - neach
+        )  # fraction of electron unassigned on each atom
+        nassigned = np.sum(neach)  # number of electrons assigned
+        totleft = int(mol.nelec[s] - nassigned)  # number of electrons not yet assigned
+        # 
+        max = 3
+        min = -1 
+        if ind0 > 0:
+            max = -1
+            min = max
+        epos[:, ind0, :] = np.linspace([-0.1,-0.1+ind0,min], [-0.1,-0.1+ind0,max], num=nconfig)
+        ind0 += 1
+    #     np.repeat(
+    #         mol.atom_coords(), neach, axis=0
+    #     )  # assign core electrons
+    #     if totleft > 0:
+    #         bins = np.cumsum(nleft) / totleft
+    #         inds = np.argpartition(
+    #             np.random.random((nconfig, len(wts))), totleft, axis=1
+    #         )[:, :totleft]
+    #         epos[:, ind0 + nassigned : ind0 + mol.nelec[s], :] = mol.atom_coords()[
+    #             inds
+    #         ]  # assign remaining electrons
+
+    # epos += r * np.random.randn(*epos.shape)  # random shifts from atom positions
+    # epos = np.linspace(0, 2, num=nconfig)
+    # print(epos)
+    if hasattr(mol, "a"):
+        epos = PeriodicConfigs(epos, mol.lattice_vectors())
+    else:
+        epos = OpenConfigs(epos)
+    
+    return epos
+
 def initial_guess(mol, nconfig, r=1.0):
     """Generate an initial guess by distributing electrons near atoms
     proportional to their charge.

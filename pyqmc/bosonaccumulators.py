@@ -123,7 +123,7 @@ class ABVMCMatrixAccumulator:
         # wf_valr = boson_wf.value_real()
 
         # ovlp = np.einsum("ic,jc->cij", psi.conj(), psi / wf_val**2)
-        rho = np.mean(np.nan_to_num(np.exp(2 * (log_vals))), axis=0)
+        # rho = np.mean(np.nan_to_num(np.exp(2 * (log_vals))), axis=0)
         
         # Test 1
         # ref = np.max(log_vals, axis=0)  # for numerical stability

@@ -1,0 +1,22 @@
+Successfully running tests: 
+test-value-hf
+test-value-jastrow
+test-value-casci
+test-gradient-hf
+test-gradient-multideterminant
+test-optimize-single-determinant-He
+test-gradient-jastrow-singledeterminant
+test-gradient-jastrow-multideterminant
+
+Probably working, need ideas to check better:
+
+Needs checking:
+test-hf-vmc-timestep
+test-matrix-H2
+
+
+
+
+- How does CASCI work?
+Check pyqmc calculation with roots specified and not
+

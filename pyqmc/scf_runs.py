@@ -73,7 +73,7 @@ def run_lda_he(scf_checkfile="he.hdf5"):
     opt_checkfile = scf_checkfile.split('.hdf5')[0]+'-sj.hdf5'
     return scf_checkfile, opt_checkfile, mf
 
-def run_lda_h2(scf_checkfile):
+def run_lda_h2(scf_checkfile="h2.hdf5"):
     mol = gto.M(atom="H 0. 0. 0.; H 0. 0. 2", spin = 2, basis=f'ccecpccpvdz', unit='bohr')
     mf = dft.UKS(mol)
     # mf.verbose=6
@@ -82,7 +82,8 @@ def run_lda_h2(scf_checkfile):
     mf.xc='LDA, VWN'
     mf.kernel()    
     # mf.kernel(dm, xc='LDA,VWN')
-    return mf
+    opt_checkfile = scf_checkfile.split('.hdf5')[0]+'-sj.hdf5'
+    return scf_checkfile, opt_checkfile, mf
 
 def run_lda(scf_checkfile):
     mol = gto.M(atom="H 0. 0. 0.", spin=1,basis=f'ccecpccpvdz', unit='bohr')
@@ -104,14 +105,15 @@ def run_casscf(scf_checkfile, ci_checkfile):
         f["mcscf/ci"] = mc.ci
     return mc
 
-def run_casci(scf_chkfile, ncas = None, nroots=4):
+def run_casci(scf_chkfile, ncas = None, nroots=None):
     ci_chkfile = scf_chkfile.split('.hdf5')[0]+'-ci.hdf5'
     cell, mf = pyq.recover_pyscf(scf_chkfile, cancel_outputs=False)
     # ncas: orbitals
     # nelecas: electrons
     nelecas = mf.nelec
     mc = mcscf.CASCI(mf, ncas, nelecas)
-    mc.fcisolver.nroots = nroots
+    if nroots is not None:
+        mc.fcisolver.nroots = nroots
     for fname in [ci_chkfile]:
         if os.path.isfile(fname):
             os.remove(fname)   
@@ -124,7 +126,7 @@ def run_casci(scf_chkfile, ncas = None, nroots=4):
         f["ci/fci"] = mc.ci
         f["ci/ci"] = mc.ci
         f["ci/mo_coeff"] = mc.mo_coeff
-        # print("Available output from CASCI:", f["ci"].keys())
+        print("Available output from CASCI:", f["ci"].keys())
     return ci_chkfile, mc
 
 def make_wf_object(scf_checkfile, ci_checkfile):
