@@ -37,7 +37,7 @@ def nodal_regularization(grad2, nodal_cutoff=1e-3):
 
     return mask, f
 
-class StochasticReconfiguration:
+class BosonStochasticReconfiguration:
     """ 
     This class works as an accumulator, but has an extra method that computes the change in parameters
     given the averages given by avg() and __call__. 
@@ -55,11 +55,10 @@ class StochasticReconfiguration:
 
 
     def __call__(self, configs, wf):
-        pgrad = wf.pgradient_orig()
+        pgrad = wf.pgradient()
         d = self.enacc(configs, wf)
         energy = d["total"]
         dp = self.transform.serialize_gradients(pgrad)
-
         node_cut, f = nodal_regularization(d["grad2"], self.nodal_cutoff)
         dp_regularized = dp * f[:, np.newaxis]
 
@@ -78,7 +77,6 @@ class StochasticReconfiguration:
         if weights is None:
             weights = np.ones(nconf)
         weights = weights / np.sum(weights)
-
         pgrad = wf.pgradient()
         den = self.enacc(configs, wf)
         energy = den["total"]
@@ -142,5 +140,4 @@ class StochasticReconfiguration:
             print("Gradient norm: ", np.linalg.norm(pgrad))
             print("Dot product between gradient and SR step: ", report['SRdot'])
         return dp, report
-
 

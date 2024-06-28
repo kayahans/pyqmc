@@ -264,7 +264,6 @@ def initial_guess(mol, nconfig, r=1.0, seed = None):
         rng = np.random.RandomState(seed)
     else:
         rng = np.random
-
     epos = np.zeros((nconfig, np.sum(mol.nelec), 3))
     wts = mol.atom_charges()
     wts = wts / np.sum(wts)
@@ -321,9 +320,22 @@ def initialize_boson_qmc_objects(
             mc.fci = mc.ci
             mc.ci = mc.ci[target_root]
 
+    dm = mf.make_rdm1()
+    mf.dm = dm
+
+    if jastrow_kws == None:
+        jastrow_kws = dict()
+    
+    if "ion_cusp" in jastrow_kws.keys():
+        if jastrow_kws["ion_cusp"] != False:
+            print("WARNING: ion_cusp = True is not the default behavior")
+    else:
+        print("WARNING: Using ion_cusp = False as default")
+        jastrow_kws["ion_cusp"] = True
+    
+
     if S is not None:
         mol = supercell.get_supercell(mol, np.asarray(S))
-    
     # Use when testing HF
     if load_parameters is False:
         wf, to_opt = bosonwftools.generate_boson_wf(
@@ -333,6 +345,7 @@ def initialize_boson_qmc_objects(
         wf, to_opt = bosonwftools.generate_boson_wf(
             mol, mf, mc=mc, jastrow_kws=jastrow_kws, slater_kws=slater_kws
         )
+
     if load_parameters is not None:
         wftools.read_wf(wf, load_parameters)    
     print('Using spherical guess')

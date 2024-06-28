@@ -2,7 +2,7 @@ import numpy as np
 from pyscf.dft import numint, libxc
 
 #kayahan added below
-def dft_energy(mf, configs, nup_dn):
+def dft_energy(mol, dm, mo_energy, mo_occ, configs, nup_dn):
     '''
     Returns the KS related terms in  Eq. 21 in doi: 10.1063/5.0155513. 
     MF is assumed to be LDA ('LDA, VWN'), therefore, for another input DFT functional, 
@@ -13,17 +13,16 @@ def dft_energy(mf, configs, nup_dn):
         ecorr: sum of the occupied KS eigenvalues (E_0^MF)
     '''
     xc = 'LDA,VWN'
-    mol = mf.mol
+    mol = mol
     nconf, nelec, ndim = configs.configs.shape
     #Hartree potential
-    dm = mf.make_rdm1()
+    dm = dm
     vj = np.zeros(nconf)
     #Eigenvalue sum
-    ecorr = np.sum(mf.mo_energy*mf.mo_occ) 
+    ecorr = np.sum(mo_energy*mo_occ) 
     #Vxc potential
     vxc = np.zeros(nconf)
-    _ = mf.energy_tot()
-    dm = mf.make_rdm1()
+    # _ = mf.energy_tot() # Why do we need this? TODO: check later, disable now
     for e in range(nelec):
         s = int(e >= nup_dn[0])
         ao_value = numint.eval_ao(mol, configs.configs[:,e,:])
@@ -60,19 +59,24 @@ def boson_kinetic(configs, wf):
     lap_j = np.zeros(nconf)
     drift_b = np.zeros(nconf)
     grad2 = np.zeros(nconf)
+    # import pdb
+    # pdb.set_trace()
     if has_jastrow:
         # If no jastrows (HF), then these terms are zero
         for e in range(nelec):
-            _, val_j = jastrow_wf.value()            
-            grad_j, lap_je = jastrow_wf.gradient_laplacian(e, configs.electron(e))
+            _, val_je = jastrow_wf.value()            
+            grad_je, lap_je = jastrow_wf.gradient_laplacian(e, configs.electron(e))
             # Convert to exp form of jastrow gradients from the jastrow log wavefunction
-            # \frac{\nabla{e^{-U(r)}}}{e^{-U(r)}} = {\nabla^2}U(r) + ({\nabla}U(r))^2
-            lap_j += -0.5 * (lap_je.real)
+            # \frac{\nabla{e^{-U(r)}}}{e^{-U(r)}} = {\nabla^2}U(r) + {\nabla}U(r) (dot) {\nabla}U(r)}
+            # import pdb
+            # pdb.set_trace()
+            lap_j += -0.5 * (lap_je.real + np.sum((grad_je.real)**2, axis=0))
+            # lap_j += -0.5 * lap_je.real
             # lap_j += 0.5  * (lap_je.real + np.einsum("di,di->i",grad_j,np.conjugate(grad_j)))
             grad_b = boson_wf.gradient(e, configs.electron(e))
             grad = wf.gradient(e, configs.electron(e))
             grad2 += np.sum(np.abs(grad) ** 2, axis=0)
-            drift_b += np.einsum("di,di->i", -grad_j, grad_b)
+            drift_b += np.einsum("di,di->i", -grad_je, grad_b)
         # ke = lap_j + drift_b
     return lap_j, drift_b, grad2
 

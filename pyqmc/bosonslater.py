@@ -258,55 +258,55 @@ class BosonWF:
         #TODO: gradient is shortcut, but check if using the original version has any computational advantage
         return grad
     
-    def gradient_value_real(self, e, epos, configs=None):
-        """Compute the gradient of the bosonic wave function
-        This is typically called in the block of VMC and DMC, where the inverse is not updated
-        """
-        s = int(e >= self._nelec[0])
-        aograd = self.orbitals.aos("GTOval_sph_deriv1", epos)
-        mograd = self.orbitals.mos(aograd, s)
-        mograd_vals = mograd[:, :, self._det_occup[s]]
+    # def gradient_value_real(self, e, epos, configs=None):
+    #     """Compute the gradient of the bosonic wave function
+    #     This is typically called in the block of VMC and DMC, where the inverse is not updated
+    #     """
+    #     s = int(e >= self._nelec[0])
+    #     aograd = self.orbitals.aos("GTOval_sph_deriv1", epos)
+    #     mograd = self.orbitals.mos(aograd, s)
+    #     mograd_vals = mograd[:, :, self._det_occup[s]]
         
-        # Derivative of the determinant is calculated using Jacobi's formula
-        # https://en.wikipedia.org/wiki/Jacobi%27s_formula
-        # https://courses.physics.illinois.edu/phys466/fa2016/projects/1999/team4/webpage/local_energy/node4.html
+    #     # Derivative of the determinant is calculated using Jacobi's formula
+    #     # https://en.wikipedia.org/wiki/Jacobi%27s_formula
+    #     # https://courses.physics.illinois.edu/phys466/fa2016/projects/1999/team4/webpage/local_energy/node4.html
         
-        jacobi = gpu.cp.einsum(
-            "ei...dj,idj...->ei...d",
-            mograd_vals,
-            self._inverse[s][..., e - s * self._nelec[0]],
-        )
+    #     jacobi = gpu.cp.einsum(
+    #         "ei...dj,idj...->ei...d",
+    #         mograd_vals,
+    #         self._inverse[s][..., e - s * self._nelec[0]],
+    #     )
 
-        det_coeff = self.parameters["det_coeff"]
+    #     det_coeff = self.parameters["det_coeff"]
         
-        updetsq = self._detsq[0][:, self._det_map[0]] # |{D_{di}^{up}}|^2
-        dndetsq = self._detsq[1][:, self._det_map[1]] # |{D_{di}^{dn}}|^2
-        valsqd = gpu.cp.einsum("id,id->id", updetsq, dndetsq) # |{D_{di}^{up}}|^2*|{D_{di}^{dn}}|^2
-        vald = np.sqrt(valsqd) # \psi_{id}=\sqrt{|{D_{di}^{up}}|^2*|{D_{di}^{dn}}|^2}
+    #     updetsq = self._detsq[0][:, self._det_map[0]] # |{D_{di}^{up}}|^2
+    #     dndetsq = self._detsq[1][:, self._det_map[1]] # |{D_{di}^{dn}}|^2
+    #     valsqd = gpu.cp.einsum("id,id->id", updetsq, dndetsq) # |{D_{di}^{up}}|^2*|{D_{di}^{dn}}|^2
+    #     vald = np.sqrt(valsqd) # \psi_{id}=\sqrt{|{D_{di}^{up}}|^2*|{D_{di}^{dn}}|^2}
 
-        # Derivative of \Phi
-        # \Phi' = \sqrt{\sum_i{\psi_i}^2}' = \sum{\psi' * \psi} / \Phi 
-        # \psi = det(D_di), where D_di is the Slater determinant matrix
-        # \psi' is calculated using the jacobi theorem described above
-        # \psi x derivative, \psi_x = det(A)*tr[A^-1 * \del_x(A)] (x is a Cartesian axis)
-        numer = gpu.cp.einsum("d,id,id,gid->gi",det_coeff, vald, vald, jacobi[..., self._det_map[s]])
-        # values = \phi(R)
-        if configs is not None:
-            # calculate \phi with R'
-            cf = configs.copy()
-            cf.configs[:,e,:] = epos.configs
-            sign, psi = self.value_updated(cf)        
-        else:
-            # calculate \phi with R
-            psi = self.value_real()        
-        grad = gpu.cp.einsum("gi,i->gi", numer[1:], 1./psi)
-        grad[~np.isfinite(grad)] = 0.0
-        psi[~np.isfinite(psi)] = 1.0
+    #     # Derivative of \Phi
+    #     # \Phi' = \sqrt{\sum_i{\psi_i}^2}' = \sum{\psi' * \psi} / \Phi 
+    #     # \psi = det(D_di), where D_di is the Slater determinant matrix
+    #     # \psi' is calculated using the jacobi theorem described above
+    #     # \psi x derivative, \psi_x = det(A)*tr[A^-1 * \del_x(A)] (x is a Cartesian axis)
+    #     numer = gpu.cp.einsum("d,id,id,gid->gi",det_coeff, vald, vald, jacobi[..., self._det_map[s]])
+    #     # values = \phi(R)
+    #     if configs is not None:
+    #         # calculate \phi with R'
+    #         cf = configs.copy()
+    #         cf.configs[:,e,:] = epos.configs
+    #         sign, psi = self.value_updated(cf)        
+    #     else:
+    #         # calculate \phi with R
+    #         psi = self.value_real()        
+    #     grad = gpu.cp.einsum("gi,i->gi", numer[1:], 1./psi)
+    #     grad[~np.isfinite(grad)] = 0.0
+    #     psi[~np.isfinite(psi)] = 1.0
 
-        saved_values = {'values':(aograd[:, 0], mograd[0]),
-                        'psi':psi}
+    #     saved_values = {'values':(aograd[:, 0], mograd[0]),
+    #                     'psi':psi}
         
-        return grad, saved_values
+    #     return grad, saved_values
     
     def _testrowderiv(self, e, vec, spin=None):
         """vec is a nconfig,nmo vector which replaces row e"""

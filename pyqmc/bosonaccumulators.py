@@ -1,18 +1,17 @@
 import numpy as np
-import pyqmc.gpu as gpu
 import energy
 import bosonenergy
 import pyqmc.ewald as ewald
-import pyqmc.eval_ecp as eval_ecp
 import copy
 
 from accumulators import LinearTransform
 import bosonslater
 import jastrowspin
-from boson_stochastic_reconfiguration import StochasticReconfiguration
+from boson_stochastic_reconfiguration import BosonStochasticReconfiguration
+# from pyqmc.stochastic_reconfiguration import StochasticReconfiguration
 from wftools import generate_wf
 
-PGradTransform = StochasticReconfiguration
+PGradTransform = BosonStochasticReconfiguration
 
 def boson_gradient_generator(mf, wf, to_opt=None, nodal_cutoff=1e-3, **ewald_kwargs):
     return PGradTransform(
@@ -26,7 +25,10 @@ class ABQMCEnergyAccumulator:
 
     def __init__(self, mf, **kwargs):
         self.mol = mf.mol
-        self.mf = mf
+        self.dm = mf.dm
+        self.mo_energy = mf.mo_energy
+        self.mo_occ = mf.mo_occ
+        
 
         if hasattr(self.mol, "a"):
             self.coulomb = ewald.Ewald(self.mol, **kwargs)
@@ -35,7 +37,6 @@ class ABQMCEnergyAccumulator:
 
     def __call__(self, configs, wf):
         ee, ei, ii = self.coulomb.energy(configs)
-        mf = self.mf
         try:
             nwf = len(wf.wf_factors)
         except:
@@ -47,7 +48,7 @@ class ABQMCEnergyAccumulator:
             for wfi in wf.wf_factors:
                 if isinstance(wfi, bosonslater.BosonWF):
                     nup_dn = wfi._nelec
-        vh,vxc,ecorr = bosonenergy.dft_energy(mf, configs, nup_dn)
+        vh,vxc,ecorr = bosonenergy.dft_energy(self.mol, self.dm, self.mo_energy, self.mo_occ, configs, nup_dn)
         ke1, ke2, grad2 = bosonenergy.boson_kinetic(configs, wf)
         ke = ke1+ke2
         energies =  {
