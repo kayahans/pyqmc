@@ -99,7 +99,9 @@ class ABVMCMatrixAccumulator:
             mci.ci = fci
             wfi, _ = generate_wf(self.mol, self.mf, mc=mci, jastrow=None)
             wfs.append(wfi)
+        wfs2, _ = generate_wf(self.mol, self.mf, mc=self.mc.ci, jastrow=None)
         self.wfs = wfs
+        self.wfs2 = wfs2
 
     def __call__(self, configs, wf):
         nconf, nelec, _ = configs.configs.shape
@@ -116,8 +118,8 @@ class ABVMCMatrixAccumulator:
         phase, log_vals = [
             np.nan_to_num(np.array(x)) for x in zip(*[wfi.value() for wfi in self.wfs])
         ]
-        # import pdb
-        # pdb.set_trace()
+        import pdb
+        pdb.set_trace()
         psi = np.array(phase * np.nan_to_num(np.exp(log_vals)))
         
         # wf_val = np.nan_to_num(np.exp(wf_val))

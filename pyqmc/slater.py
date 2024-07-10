@@ -173,6 +173,8 @@ class Slater:
             self._nelec = mol.nelec
 
         self.eval_gto_precision = eval_gto_precision
+        import pdb
+        pdb.set_trace()
         self.myparameters = {}
         (
             self.myparameters["det_coeff"],
