@@ -361,7 +361,7 @@ def initialize_boson_qmc_objects(
         else:
             twist = 0
         accumulators['energy'] = bosonaccumulators.ABQMCEnergyAccumulator(mf)
-        accumulators['excitations'] = bosonaccumulators.ABVMCMatrixAccumulator(mf, mc)
+        accumulators['excitations'] = bosonaccumulators.ABVMCMatrixAccumulator()
         # acc = generate_accumulators(mol, mf, twist=twist, **accumulators)
     return wf, configs, accumulators
 

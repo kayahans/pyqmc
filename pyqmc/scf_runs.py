@@ -116,7 +116,7 @@ def run_lda_n(scf_checkfile):
     return mf
     
 def run_lda_h2(scf_checkfile="h2.hdf5"):
-    mol = gto.M(atom="H 0. 0. 0.; H 0. 0. 2", spin = 2, basis=f'ccecpccpvdz', unit='bohr')
+    mol = gto.M(atom="H 0. 0. 0.; H 0. 0. 2", spin = 0, basis=f'ccecpccpvdz', unit='bohr')
     mf = dft.UKS(mol)
     # mf.verbose=6
     mf.chkfile = scf_checkfile

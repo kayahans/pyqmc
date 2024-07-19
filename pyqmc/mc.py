@@ -167,7 +167,6 @@ def vmc_worker(wf, configs, tstep, nsteps, accumulators):
     nconf, nelec, _ = configs.configs.shape
     block_avg = {}
     wf.recompute(configs)
-
     for _ in range(nsteps):
         acc = 0.0
         for e in range(nelec):

@@ -96,7 +96,7 @@ def generate_jastrow(mol, ion_cusp=None, na=4, nb=3, rcut=None):
     if ion_cusp == False:
         ion_cusp = []
         if not mol.has_ecp():
-            print("Warning: using neither ECP nor ion_cusp")
+            print("Warning: not using ECP and ion_cusp")
     elif ion_cusp == True:
         ion_cusp = list(mol._basis.keys())
         if mol.has_ecp():

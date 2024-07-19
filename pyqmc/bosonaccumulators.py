@@ -89,38 +89,46 @@ class ABQMCEnergyAccumulator:
 class ABVMCMatrixAccumulator:
     """Returns local energy of each configuration in a dictionary."""
 
-    def __init__(self, mf, mc, **kwargs):
-        self.mol = mf.mol
-        self.mf = mf
-        self.mc = mc
-        wfs = []
-        for fci in self.mc.fci:
-            mci = copy.copy(self.mc)
-            mci.ci = fci
-            wfi, _ = generate_wf(self.mol, self.mf, mc=mci, jastrow=None)
-            wfs.append(wfi)
-        wfs2, _ = generate_wf(self.mol, self.mf, mc=self.mc.ci, jastrow=None)
-        self.wfs = wfs
-        self.wfs2 = wfs2
-
     def __call__(self, configs, wf):
-        nconf, nelec, _ = configs.configs.shape
+        # nconf, nelec, _ = configs.configs.shape
         wave_functions = wf.wf_factors
         for wave in wave_functions:
             if isinstance(wave, bosonslater.BosonWF):
                 boson_wf = wave
             if isinstance(wave, jastrowspin.JastrowSpin):
                 jastrow_wf = wave        
-
-        _ = [wfi.recompute(configs) for wfi in self.wfs]
-        _, wf_val = boson_wf.recompute(configs)
-
-        phase, log_vals = [
-            np.nan_to_num(np.array(x)) for x in zip(*[wfi.value() for wfi in self.wfs])
-        ]
         import pdb
         pdb.set_trace()
-        psi = np.array(phase * np.nan_to_num(np.exp(log_vals)))
+        boson_wf.recompute(configs)
+        updets = boson_wf._dets[0][:, :, boson_wf._det_map[0]]
+        dndets = boson_wf._dets[1][:, :, boson_wf._det_map[1]]
+        
+        nup = np.einsum('ni, ni, nj, nj->nij', updets[0], np.exp(updets[1]), updets[0], np.exp(updets[1]))
+        ndn = np.einsum('ni, ni, nj, nj->nij', dndets[0], np.exp(dndets[1]), dndets[0], np.exp(dndets[1]))
+
+        psi_i = np.einsum('ni, ni, ni, ni->ni', updets[0], np.exp(updets[1]), dndets[0], np.exp(dndets[1]))
+        rho = np.sum(psi_i**2, axis=1)
+        # rho = np.exp(wf.value()[1])**2
+
+        ovlp_ij  = nup * ndn 
+        ovlp_nom = np.einsum('nij, n->nij', ovlp_ij, rho)
+
+        ovlp_d1 = np.einsum('ni, ni, n->ni', psi_i, psi_i, rho)
+        
+        # print(boson_wf._det_map, updets.shape, dndets.shape, nup.shape, ndn.shape, ovlp.shape)
+        # _ = [wfi.recompute(configs) for wfi in self.wfs]
+        # _, wf_val = boson_wf.recompute(configs)
+        # self.wfs = None
+        # phase, log_vals = [
+        #     np.nan_to_num(np.array(x)) for x in zip(*[wfi.value() for wfi in self.wfs])
+        # ]
+        # import pdb
+        # pdb.set_trace()
+        # psi = np.array(phase * np.nan_to_num(np.exp(log_vals)))
+        
+        
+        
+        
         
         # wf_val = np.nan_to_num(np.exp(wf_val))
         # wf_valr = boson_wf.value_real()
@@ -134,11 +142,11 @@ class ABVMCMatrixAccumulator:
         # psi = phase * np.nan_to_num(np.exp(log_vals - ref)) 
         # ovlp2 = np.einsum("ic,jc->cij", psi.conj(), psi / rho)
         
-        # Test 2 
-        ref = np.max(log_vals, axis=0)  # for numerical stability
-        rho = np.mean(np.nan_to_num(np.exp(2 * (wf_val - ref))), axis=0)
-        psi = phase * np.nan_to_num(np.exp(log_vals - ref)) 
-        ovlp = np.einsum("ic,jc->cij", psi.conj(), psi / rho)
+        # Test 2 (last used)
+        # ref = np.max(log_vals, axis=0)  # for numerical stability
+        # rho = np.mean(np.nan_to_num(np.exp(2 * (wf_val - ref))), axis=0)
+        # psi = phase * np.nan_to_num(np.exp(log_vals - ref)) 
+        # ovlp = np.einsum("ic,jc->cij", psi.conj(), psi / rho)
 
 
         # Value 
@@ -155,8 +163,8 @@ class ABVMCMatrixAccumulator:
 
         # import pdb
         # pdb.set_trace()
-        delta = ovlp*0
-        wf_val = ovlp*0
+        delta = ovlp_nom*0
+        wf_val = ovlp_nom*0
         # sum over electrons for the gradient terms
         # numer_e = 0
         # from mc import limdrift
@@ -172,7 +180,7 @@ class ABVMCMatrixAccumulator:
         # numer  = gpu.cp.einsum("nc, lc ->cnl", psi, numer_e)
         # delta  = gpu.cp.einsum("cnl, c ->cnl", numer, 1./wf_val)
 
-        results = {'delta':delta, 'ovlp':ovlp, 'wf_val': wf_val, }
+        results = {'delta':delta, 'ovlp_nom':ovlp_nom, 'ovlp_d1':ovlp_d1, 'wf_val': wf_val, }
 
         return results 
 
