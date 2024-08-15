@@ -97,8 +97,8 @@ class ABVMCMatrixAccumulator:
                 boson_wf = wave
             if isinstance(wave, jastrowspin.JastrowSpin):
                 jastrow_wf = wave        
-        import pdb
-        pdb.set_trace()
+        # import pdb
+        # pdb.set_trace()
         boson_wf.recompute(configs)
         updets = boson_wf._dets[0][:, :, boson_wf._det_map[0]]
         dndets = boson_wf._dets[1][:, :, boson_wf._det_map[1]]
@@ -107,14 +107,16 @@ class ABVMCMatrixAccumulator:
         ndn = np.einsum('ni, ni, nj, nj->nij', dndets[0], np.exp(dndets[1]), dndets[0], np.exp(dndets[1]))
 
         psi_i = np.einsum('ni, ni, ni, ni->ni', updets[0], np.exp(updets[1]), dndets[0], np.exp(dndets[1]))
-        rho = np.sum(psi_i**2, axis=1)
+        psi_ij = np.sqrt(np.einsum('ni, ni, nj, nj ->nij', psi_i, psi_i, psi_i, psi_i))
+        # rho = np.sum(psi_i**2, axis=1)
         # rho = np.exp(wf.value()[1])**2
 
         ovlp_ij  = nup * ndn 
-        ovlp_nom = np.einsum('nij, n->nij', ovlp_ij, rho)
-
-        ovlp_d1 = np.einsum('ni, ni, n->ni', psi_i, psi_i, rho)
+        # ovlp_nom = np.einsum('nij, n->nij', ovlp_ij, rho)
+        ovlp_nom = ovlp_ij/psi_ij
+        # ovlp_d1 = np.einsum('ni, ni, n->ni', psi_i, psi_i, rho)
         
+
         # print(boson_wf._det_map, updets.shape, dndets.shape, nup.shape, ndn.shape, ovlp.shape)
         # _ = [wfi.recompute(configs) for wfi in self.wfs]
         # _, wf_val = boson_wf.recompute(configs)
@@ -180,7 +182,9 @@ class ABVMCMatrixAccumulator:
         # numer  = gpu.cp.einsum("nc, lc ->cnl", psi, numer_e)
         # delta  = gpu.cp.einsum("cnl, c ->cnl", numer, 1./wf_val)
 
-        results = {'delta':delta, 'ovlp_nom':ovlp_nom, 'ovlp_d1':ovlp_d1, 'wf_val': wf_val, }
+        results = {'delta':delta, 'ovlp_ij': ovlp_ij, 'psi_ij': psi_ij, 'ovlp_nom':ovlp_nom, 'wf_val': wf_val, 
+                #    'ovlp_d1':ovlp_d1,
+                   }
 
         return results 
 

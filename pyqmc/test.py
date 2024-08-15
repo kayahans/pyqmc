@@ -11,7 +11,7 @@ from scf_runs import run_lda_he, run_lda_li, run_lda_be, run_lda_b, run_lda_c, r
 
 
 if __name__=="__main__":
-    ncore = 2
+    ncore = 8
     
     # 1. DFT calculations
     # scf_checkfile, opt_checkfile, mf_lda = run_lda_li()
@@ -20,7 +20,7 @@ if __name__=="__main__":
     from scf_runs import run_lda_li, run_casci, run_lda_h2
     scf_checkfile, opt_checkfile, mf_lda = run_lda_h2()
     # scf_checkfile, opt_checkfile, mf_lda = run_lda_li()
-    ci_checkfile, mc = run_casci(scf_checkfile, nroots=12, ncas =3)
+    ci_checkfile, mc = run_casci(scf_checkfile, nroots=12, ncas =4)
     
     # for fname in ['sj.hdf5']:
     #     if os.path.isfile(fname):
@@ -80,30 +80,30 @@ if __name__=="__main__":
         if os.path.isfile(fname):
             os.remove(fname)
     # serial
-    bosonrecipes.ABVMC(scf_checkfile, 
-                    abvmc_file, 
-                    ci_checkfile = ci_checkfile,
-                    verbose = True,  
-                    jastrow_kws={"ion_cusp":False},
-                    tstep   = 0.3,
-                    nconfig = 1000,
-                    nblocks = 10,
-                    nsteps_per_block = 10,
-                    load_parameters = abvmcopt_file)
+    # bosonrecipes.ABVMC(scf_checkfile, 
+    #                 abvmc_file, 
+    #                 ci_checkfile = ci_checkfile,
+    #                 verbose = True,  
+    #                 jastrow_kws={"ion_cusp":False},
+    #                 tstep   = 0.3,
+    #                 nconfig = 1000,
+    #                 nblocks = 50,
+    #                 nsteps_per_block = 20,
+    #                 load_parameters = abvmcopt_file)
         
-    # with concurrent.futures.ProcessPoolExecutor(max_workers=ncore) as client:
-    #     bosonrecipes.ABVMC(scf_checkfile, 
-    #                     abvmc_file, 
-    #                     ci_checkfile = ci_checkfile,
-    #                     verbose = True,  
-    #                     jastrow_kws={"ion_cusp":False},
-    #                     tstep   = 0.3,
-    #                     nconfig = 1000,
-    #                     nblocks = 100,
-    #                     nsteps_per_block = 10,
-    #                     load_parameters = abvmcopt_file, 
-    #                     client = client, 
-    #                     npartitions=ncore)
+    with concurrent.futures.ProcessPoolExecutor(max_workers=ncore) as client:
+        bosonrecipes.ABVMC(scf_checkfile, 
+                        abvmc_file, 
+                        ci_checkfile = ci_checkfile,
+                        verbose = True,  
+                        jastrow_kws={"ion_cusp":False},
+                        tstep   = 0.3,
+                        nconfig = 1000,
+                        nblocks = 100,
+                        nsteps_per_block = 20,
+                        load_parameters = abvmcopt_file, 
+                        client = client, 
+                        npartitions=ncore)
 
 # with h5py.File("sj.hdf5") as f:
 #     print("keys", list(f.keys()))
