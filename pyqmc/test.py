@@ -80,30 +80,30 @@ if __name__=="__main__":
         if os.path.isfile(fname):
             os.remove(fname)
     # serial
-    # bosonrecipes.ABVMC(scf_checkfile, 
-    #                 abvmc_file, 
-    #                 ci_checkfile = ci_checkfile,
-    #                 verbose = True,  
-    #                 jastrow_kws={"ion_cusp":False},
-    #                 tstep   = 0.3,
-    #                 nconfig = 1000,
-    #                 nblocks = 50,
-    #                 nsteps_per_block = 20,
-    #                 load_parameters = abvmcopt_file)
+    bosonrecipes.ABVMC(scf_checkfile, 
+                    abvmc_file, 
+                    ci_checkfile = ci_checkfile,
+                    verbose = True,  
+                    jastrow_kws={"ion_cusp":False},
+                    tstep   = 0.3,
+                    nconfig = 1000,
+                    nblocks = 50,
+                    nsteps_per_block = 20,
+                    load_parameters = abvmcopt_file)
         
-    with concurrent.futures.ProcessPoolExecutor(max_workers=ncore) as client:
-        bosonrecipes.ABVMC(scf_checkfile, 
-                        abvmc_file, 
-                        ci_checkfile = ci_checkfile,
-                        verbose = True,  
-                        jastrow_kws={"ion_cusp":False},
-                        tstep   = 0.3,
-                        nconfig = 1000,
-                        nblocks = 100,
-                        nsteps_per_block = 20,
-                        load_parameters = abvmcopt_file, 
-                        client = client, 
-                        npartitions=ncore)
+    # with concurrent.futures.ProcessPoolExecutor(max_workers=ncore) as client:
+    #     bosonrecipes.ABVMC(scf_checkfile, 
+    #                     abvmc_file, 
+    #                     ci_checkfile = ci_checkfile,
+    #                     verbose = True,  
+    #                     jastrow_kws={"ion_cusp":False},
+    #                     tstep   = 0.3,
+    #                     nconfig = 1000,
+    #                     nblocks = 100,
+    #                     nsteps_per_block = 20,
+    #                     load_parameters = abvmcopt_file, 
+    #                     client = client, 
+    #                     npartitions=ncore)
 
 # with h5py.File("sj.hdf5") as f:
 #     print("keys", list(f.keys()))
