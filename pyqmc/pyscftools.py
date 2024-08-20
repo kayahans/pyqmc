@@ -167,7 +167,6 @@ def orbital_evaluator_from_pyscf(
     detcoeff, occup, det_map = determinant_tools.create_packed_objects(
         determinants, tol=tol
     )
-    print('kayahan', det_map)
     return detcoeff, occup, det_map, evaluator
 
 

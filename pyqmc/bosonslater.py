@@ -148,9 +148,6 @@ class BosonWF:
         
         self._dets = []
         self._inverse = []
-        import pdb
-        pdb.set_trace()
-
         # self._wfs = []
         for s in [0, 1]:
             begin = self._nelec[0] * s
