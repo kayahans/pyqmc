@@ -11,7 +11,7 @@ from scf_runs import run_lda_he, run_lda_li, run_lda_be, run_lda_b, run_lda_c, r
 
 
 if __name__=="__main__":
-    ncore = 8
+    ncore = 16
     
     # 1. DFT calculations
     # scf_checkfile, opt_checkfile, mf_lda = run_lda_li()
@@ -20,7 +20,7 @@ if __name__=="__main__":
     from scf_runs import run_lda_li, run_casci, run_lda_h2
     scf_checkfile, opt_checkfile, mf_lda = run_lda_h2()
     # scf_checkfile, opt_checkfile, mf_lda = run_lda_li()
-    ci_checkfile, mc = run_casci(scf_checkfile, nroots=12, ncas =4)
+    ci_checkfile, mc = run_casci(scf_checkfile, nroots=2, ncas =9)
     
     # for fname in ['sj.hdf5']:
     #     if os.path.isfile(fname):
@@ -48,28 +48,28 @@ if __name__=="__main__":
         num_int = 1
         # serial
 
-        # bosonrecipes.ABOPTIMIZE(scf_checkfile, 
-        #                         abvmcopt_file, 
-        #                         ci_checkfile   = ci_checkfile,
-        #                         max_iterations = num_int, 
-        #                         jastrow_kws    = {"ion_cusp":False},
-        #                         verbose        = True,                            
-        #                         nconfig        = 1000)  
+        bosonrecipes.ABOPTIMIZE(scf_checkfile, 
+                                abvmcopt_file, 
+                                ci_checkfile   = ci_checkfile,
+                                max_iterations = num_int, 
+                                jastrow_kws    = {"ion_cusp":False},
+                                verbose        = True,                            
+                                nconfig        = 1000)  
         
-        with concurrent.futures.ProcessPoolExecutor(max_workers=ncore) as client:
-            bosonrecipes.ABOPTIMIZE(scf_checkfile, 
-                            abvmcopt_file, 
-                            ci_checkfile = ci_checkfile,
-                            max_iterations=1, 
-                            verbose=True,  
-                            load_parameters = None, 
-                            # nblocks=nblocks, 
-                            # nsteps_per_block=nsteps_per_block,
-                            # tstep= tstep, 
-                            jastrow_kws={"ion_cusp":False},
-                            client = client, 
-                            npartitions=ncore,                            
-                            nconfig=1000)
+        # with concurrent.futures.ProcessPoolExecutor(max_workers=ncore) as client:
+        #     bosonrecipes.ABOPTIMIZE(scf_checkfile, 
+        #                     abvmcopt_file, 
+        #                     ci_checkfile = ci_checkfile,
+        #                     max_iterations=1, 
+        #                     verbose=True,  
+        #                     load_parameters = None, 
+        #                     # nblocks=nblocks, 
+        #                     # nsteps_per_block=nsteps_per_block,
+        #                     # tstep= tstep, 
+        #                     jastrow_kws={"ion_cusp":False},
+        #                     client = client, 
+        #                     npartitions=ncore,                            
+        #                     nconfig=1000)
         # Jastrow optimization results
         df = recipes.read_opt(abvmcopt_file)
         print(df)
@@ -87,7 +87,7 @@ if __name__=="__main__":
                     jastrow_kws={"ion_cusp":False},
                     tstep   = 0.3,
                     nconfig = 1000,
-                    nblocks = 50,
+                    nblocks = 10,
                     nsteps_per_block = 20,
                     load_parameters = abvmcopt_file)
         
@@ -99,8 +99,8 @@ if __name__=="__main__":
     #                     jastrow_kws={"ion_cusp":False},
     #                     tstep   = 0.3,
     #                     nconfig = 1000,
-    #                     nblocks = 100,
-    #                     nsteps_per_block = 20,
+    #                     nblocks = 1000,
+    #                     nsteps_per_block = 100,
     #                     load_parameters = abvmcopt_file, 
     #                     client = client, 
     #                     npartitions=ncore)

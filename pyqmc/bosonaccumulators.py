@@ -116,6 +116,23 @@ class ABVMCMatrixAccumulator:
         ovlp_nom = ovlp_ij/psi_ij
         # ovlp_d1 = np.einsum('ni, ni, n->ni', psi_i, psi_i, rho)
         
+        # Using different understanding of determinants (Incorrect)
+        # updet_sign, updet_val = boson_wf._dets[0]
+        # dndet_sign, dndet_val = boson_wf._dets[1]
+        # sign, logval = boson_wf.value()
+        # val = np.exp(logval)
+        # rho = val**2 
+
+        # nup = np.einsum('ni, ni, nj, nj->nij', updet_sign, np.exp(updet_val), updet_sign, np.exp(updet_val)) # ui * uj
+        # ndn = np.einsum('ni, ni, nj, nj->nij', dndet_sign, np.exp(dndet_val), dndet_sign, np.exp(dndet_val)) # di * dj 
+        # psi_i = np.einsum('ni, ni, ni, ni->ni', updet_sign, np.exp(updet_val), dndet_sign, np.exp(dndet_val)) # ui * di 
+
+        # ovlp_ij = np.einsum('nij, nij, n ->nij', nup, ndn, 1./rho) # w(R) * (ui * uj) * (di * dj), w = 1 / rho
+
+        # norm_i = np.einsum('ni, ni, n ->ni', psi_i, psi_i, 1./rho)
+        # norm_ij = np.sqrt(np.einsum('i, j ->ij', norm_i, norm_i))
+
+        # mat = ovlp_ij/norm_ij
 
         # print(boson_wf._det_map, updets.shape, dndets.shape, nup.shape, ndn.shape, ovlp.shape)
         # _ = [wfi.recompute(configs) for wfi in self.wfs]
@@ -165,8 +182,13 @@ class ABVMCMatrixAccumulator:
 
         # import pdb
         # pdb.set_trace()
+        
+        # delta = ovlp_ij*0
+        # wf_val = ovlp_ij*0
+
         delta = ovlp_nom*0
         wf_val = ovlp_nom*0
+        
         # sum over electrons for the gradient terms
         # numer_e = 0
         # from mc import limdrift
@@ -181,10 +203,10 @@ class ABVMCMatrixAccumulator:
 
         # numer  = gpu.cp.einsum("nc, lc ->cnl", psi, numer_e)
         # delta  = gpu.cp.einsum("cnl, c ->cnl", numer, 1./wf_val)
-
         results = {'delta':delta, 'ovlp_ij': ovlp_ij, 'psi_ij': psi_ij, 'ovlp_nom':ovlp_nom, 'wf_val': wf_val, 
                 #    'ovlp_d1':ovlp_d1,
                    }
+        # results = {'delta':delta, 'ovlp_ij': ovlp_ij, 'norm_i':norm_i}
 
         return results 
 
