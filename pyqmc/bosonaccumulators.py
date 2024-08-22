@@ -103,33 +103,37 @@ class ABVMCMatrixAccumulator:
         updets = boson_wf._dets[0][:, :, boson_wf._det_map[0]]
         dndets = boson_wf._dets[1][:, :, boson_wf._det_map[1]]
         
-        nup = np.einsum('ni, ni, nj, nj->nij', updets[0], np.exp(updets[1]), updets[0], np.exp(updets[1]))
-        ndn = np.einsum('ni, ni, nj, nj->nij', dndets[0], np.exp(dndets[1]), dndets[0], np.exp(dndets[1]))
+        # nup = np.einsum('ni, ni, nj, nj->nij', updets[0], np.exp(updets[1]), updets[0], np.exp(updets[1]))
+        # ndn = np.einsum('ni, ni, nj, nj->nij', dndets[0], np.exp(dndets[1]), dndets[0], np.exp(dndets[1]))
 
-        psi_i = np.einsum('ni, ni, ni, ni->ni', updets[0], np.exp(updets[1]), dndets[0], np.exp(dndets[1]))
-        psi_ij = np.sqrt(np.einsum('ni, ni, nj, nj ->nij', psi_i, psi_i, psi_i, psi_i))
+        # psi_i = np.einsum('ni, ni, ni, ni->ni', updets[0], np.exp(updets[1]), dndets[0], np.exp(dndets[1]))
+        # psi_ij = np.sqrt(np.einsum('ni, ni, nj, nj ->nij', psi_i, psi_i, psi_i, psi_i))
         # rho = np.sum(psi_i**2, axis=1)
         # rho = np.exp(wf.value()[1])**2
 
-        ovlp_ij  = nup * ndn 
+        # ovlp_ij  = nup * ndn 
         # ovlp_nom = np.einsum('nij, n->nij', ovlp_ij, rho)
-        ovlp_nom = ovlp_ij/psi_ij
+        # ovlp_nom = ovlp_ij/psi_ij
         # ovlp_d1 = np.einsum('ni, ni, n->ni', psi_i, psi_i, rho)
         
         # Using different understanding of determinants (Incorrect)
+        # Option 1 
         # updet_sign, updet_val = boson_wf._dets[0]
         # dndet_sign, dndet_val = boson_wf._dets[1]
-        # sign, logval = boson_wf.value()
-        # val = np.exp(logval)
-        # rho = val**2 
+        # Option 2 
+        updet_sign, updet_val = boson_wf._dets[0][:, :, boson_wf._det_map[0]]
+        dndet_sign, dndet_val = boson_wf._dets[1][:, :, boson_wf._det_map[1]]
+        sign, logval = boson_wf.value()
+        val = np.exp(logval)
+        rho = val**2 
 
-        # nup = np.einsum('ni, ni, nj, nj->nij', updet_sign, np.exp(updet_val), updet_sign, np.exp(updet_val)) # ui * uj
-        # ndn = np.einsum('ni, ni, nj, nj->nij', dndet_sign, np.exp(dndet_val), dndet_sign, np.exp(dndet_val)) # di * dj 
-        # psi_i = np.einsum('ni, ni, ni, ni->ni', updet_sign, np.exp(updet_val), dndet_sign, np.exp(dndet_val)) # ui * di 
+        nup = np.einsum('ni, ni, nj, nj->nij', updet_sign, np.exp(updet_val), updet_sign, np.exp(updet_val)) # ui * uj
+        ndn = np.einsum('ni, ni, nj, nj->nij', dndet_sign, np.exp(dndet_val), dndet_sign, np.exp(dndet_val)) # di * dj 
+        psi_i = np.einsum('ni, ni, ni, ni->ni', updet_sign, np.exp(updet_val), dndet_sign, np.exp(dndet_val)) # ui * di 
 
-        # ovlp_ij = np.einsum('nij, nij, n ->nij', nup, ndn, 1./rho) # w(R) * (ui * uj) * (di * dj), w = 1 / rho
+        ovlp_ij = np.einsum('nij, nij, n ->nij', nup, ndn, 1./rho) # w(R) * (ui * uj) * (di * dj), w = 1 / rho
 
-        # norm_i = np.einsum('ni, ni, n ->ni', psi_i, psi_i, 1./rho)
+        norm_i = np.einsum('ni, ni, n ->ni', psi_i, psi_i, 1./rho)
         # norm_ij = np.sqrt(np.einsum('i, j ->ij', norm_i, norm_i))
 
         # mat = ovlp_ij/norm_ij
@@ -183,11 +187,11 @@ class ABVMCMatrixAccumulator:
         # import pdb
         # pdb.set_trace()
         
-        # delta = ovlp_ij*0
-        # wf_val = ovlp_ij*0
+        delta = ovlp_ij*0
+        wf_val = ovlp_ij*0
 
-        delta = ovlp_nom*0
-        wf_val = ovlp_nom*0
+        # delta = ovlp_nom*0
+        # wf_val = ovlp_nom*0
         
         # sum over electrons for the gradient terms
         # numer_e = 0
@@ -203,10 +207,10 @@ class ABVMCMatrixAccumulator:
 
         # numer  = gpu.cp.einsum("nc, lc ->cnl", psi, numer_e)
         # delta  = gpu.cp.einsum("cnl, c ->cnl", numer, 1./wf_val)
-        results = {'delta':delta, 'ovlp_ij': ovlp_ij, 'psi_ij': psi_ij, 'ovlp_nom':ovlp_nom, 'wf_val': wf_val, 
-                #    'ovlp_d1':ovlp_d1,
-                   }
-        # results = {'delta':delta, 'ovlp_ij': ovlp_ij, 'norm_i':norm_i}
+        # results = {'delta':delta, 'ovlp_ij': ovlp_ij, 'psi_ij': psi_ij, 'ovlp_nom':ovlp_nom, 'wf_val': wf_val, 
+        #         #    'ovlp_d1':ovlp_d1,
+        #            }
+        results = {'delta':delta, 'ovlp_ij': ovlp_ij, 'norm_i':norm_i}
 
         return results 
 
