@@ -244,7 +244,7 @@ def ABDMC(
     )
     abdmc.runabdmc(wf, configs, accumulators=acc, **dmc_kws)
 
-def initial_guess(mol, nconfig, r=1.0, seed = None):
+def initial_guess(mol, nconfig, r=3.0, seed = None):
     """Generate an initial guess by distributing electrons near atoms
     proportional to their charge.
 

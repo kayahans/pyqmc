@@ -105,6 +105,9 @@ class BosonWF:
         """
         self.tol = -1 if tol is None else tol
         self._mol = mol
+        self.mf_ovlp = mf.get_ovlp()
+        self.ovlp = None
+
         if hasattr(mc, "nelecas"):
             # In case nelecas overrode the information from the molecule object.
             ncore = mc.ncore
@@ -124,6 +127,7 @@ class BosonWF:
             mol, mf, mc, twist=twist, determinants=determinants, tol=self.tol, eval_gto_precision=self.eval_gto_precision
         )
         num_det = len(det_coeff)
+        
         # print('Number of determinants in the bosonic wavefunction=', num_det, det_coeff)
         # Use constant weight 
         # self.myparameters["det_coeff"] = np.ones(num_det)/num_det
@@ -152,7 +156,6 @@ class BosonWF:
         for s in [0, 1]:
             begin = self._nelec[0] * s
             end = self._nelec[0] + self._nelec[1] * s
-            
             mo = self.orbitals.mos(self._aovals[:, :, begin:end, :], s)
             mo_vals = gpu.cp.swapaxes(mo[:, :, self._det_occup[s]], 1, 2)
             self._dets.append(
