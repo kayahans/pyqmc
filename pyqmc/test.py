@@ -93,7 +93,9 @@ if __name__=="__main__":
                         nconfig = 1000,
                         nblocks = 10,
                         nsteps_per_block = 20,
-                        load_parameters = abvmcopt_file)
+                        load_parameters = abvmcopt_file
+                        )
+                        
     else:
         with concurrent.futures.ProcessPoolExecutor(max_workers=ncore) as client:
             bosonrecipes.ABVMC(scf_checkfile, 
@@ -102,10 +104,10 @@ if __name__=="__main__":
                             verbose = True,  
                             jastrow_kws={"ion_cusp":False},
                             tstep   = 0.3,
-                            nconfig = 1000,
+                            nconfig = 10000,
                             nblocks = 1000,
-                            nsteps_per_block = 100,
-                            load_parameters = abvmcopt_file, 
+                            nsteps_per_block = 20,
+                            # load_parameters = abvmcopt_file, 
                             client = client, 
                             npartitions=ncore)
 

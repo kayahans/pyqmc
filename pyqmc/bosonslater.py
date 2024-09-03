@@ -2,6 +2,8 @@ import numpy as np
 import pyqmc.gpu as gpu
 import warnings
 import pyscftools
+import copy
+from wftools import generate_slater
 
 def sherman_morrison_row(e, inv, vec):
     tmp = np.einsum("ek,ekj->ej", vec, inv)
@@ -117,6 +119,18 @@ class BosonWF:
         else:
             self._nelec = mol.nelec
         self.eval_gto_precision = eval_gto_precision
+        
+        # self.wfs = []
+        num_det = mc.ci.shape[0] * mc.ci.shape[1]
+
+        # for i in range(mc.ci.shape[0]):
+        #     for j in range(mc.ci.shape[1]):
+        #         mc0 = copy.copy(mc)
+        #         mc0.ci = mc.ci * 0
+        #         mc0.ci[i, j] = 1 # zero all coefficients except one, this is probably quite inefficient, but should work for now.
+        #         wf0, _ = generate_slater(mol, mf, mc=mc0, optimize_determinants=False)
+        #         self.wfs.append(wf0)
+                
         self.myparameters = {}
         (
             det_coeff,
@@ -126,12 +140,10 @@ class BosonWF:
         ) = pyscftools.orbital_evaluator_from_pyscf(
             mol, mf, mc, twist=twist, determinants=determinants, tol=self.tol, eval_gto_precision=self.eval_gto_precision
         )
-        num_det = len(det_coeff)
-        
-        # print('Number of determinants in the bosonic wavefunction=', num_det, det_coeff)
+                
         # Use constant weight 
-        # self.myparameters["det_coeff"] = np.ones(num_det)/num_det
-        self.myparameters["det_coeff"] = det_coeff
+        self.myparameters["det_coeff"] = np.ones(num_det)/num_det
+        # self.myparameters["det_coeff"] = det_coeff
         self.parameters = JoinParameters([self.myparameters, self.orbitals.parameters])
 
         iscomplex = self.orbitals.mo_dtype == complex or bool(

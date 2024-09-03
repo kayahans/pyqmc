@@ -91,15 +91,15 @@ class ABVMCMatrixAccumulator:
 
     def __call__(self, configs, wf):
         # nconf, nelec, _ = configs.configs.shape
-        wave_functions = wf.wf_factors
-        for wave in wave_functions:
-            if isinstance(wave, bosonslater.BosonWF):
-                boson_wf = wave
-            if isinstance(wave, jastrowspin.JastrowSpin):
-                jastrow_wf = wave        
+        # wave_functions = wf.wf_factors
+        # for wave in wave_functions:
+        #     if isinstance(wave, bosonslater.BosonWF):
+        #         boson_wf = wave
+        #     if isinstance(wave, jastrowspin.JastrowSpin):
+        #         jastrow_wf = wave        
         # import pdb
         # pdb.set_trace()
-        boson_wf.recompute(configs)
+        # boson_wf.recompute(configs)
         # updets = boson_wf._dets[0][:, :, boson_wf._det_map[0]]
         # dndets = boson_wf._dets[1][:, :, boson_wf._det_map[1]]
         
@@ -136,43 +136,71 @@ class ABVMCMatrixAccumulator:
         # norm_i = np.einsum('ni, ni, n ->ni', psi_i, psi_i, 1./rho)
 
         # Option 3
-        if boson_wf.ovlp is None:
-            num_ao = boson_wf._aovals.shape[-1]
+        # if boson_wf.ovlp is None:
+        #     num_ao = boson_wf._aovals.shape[-1]
 
-            det_dim_up = boson_wf._dets[0][1].shape[-1]
-            det_dim_dn = boson_wf._dets[1][1].shape[-1]
-            det_dim = det_dim_up * det_dim_dn
+        #     det_dim_up = boson_wf._dets[0][1].shape[-1]
+        #     det_dim_dn = boson_wf._dets[1][1].shape[-1]
+        #     det_dim = det_dim_up * det_dim_dn
 
-            occ_arr_shape = (2, det_dim, num_ao)
-            occ_arr = np.zeros(occ_arr_shape)
-            for i in range(det_dim):
-                up_i = boson_wf._det_map[0,i]
-                dn_i = boson_wf._det_map[1,i]
-                occ_arr[0, i][boson_wf._det_occup[0][up_i]] = 1
-                occ_arr[1, i][boson_wf._det_occup[1][dn_i]] = 1
+        #     occ_arr_shape = (2, det_dim, num_ao)
+        #     occ_arr = np.zeros(occ_arr_shape)
+        #     for i in range(det_dim):
+        #         up_i = boson_wf._det_map[0,i]
+        #         dn_i = boson_wf._det_map[1,i]
+        #         occ_arr[0, i][boson_wf._det_occup[0][up_i]] = 1
+        #         occ_arr[1, i][boson_wf._det_occup[1][dn_i]] = 1
 
-            mf_ovlp = boson_wf.mf_ovlp
-            ovlp = np.einsum('io, op, jp->ij',occ_arr[0], mf_ovlp, occ_arr[0])
-            boson_wf.ovlp = ovlp
-        else:
-            ovlp = boson_wf.ovlp
+        #     mf_ovlp = boson_wf.mf_ovlp
+        #     ovlp = np.einsum('io, op, jp->ij',occ_arr[0], mf_ovlp, occ_arr[0])
+        #     boson_wf.ovlp = ovlp
+        # else:
+        #     ovlp = boson_wf.ovlp
 
-        sign, logval = boson_wf.value()
-        val = np.exp(logval)
-        rho = val**2 
+        # sign, logval = boson_wf.value()
+        # val = np.exp(logval)
+        # rho = val**2 
 
-        updet_sign, updet_val = boson_wf._dets[0][:, :, boson_wf._det_map[0]]
-        dndet_sign, dndet_val = boson_wf._dets[1][:, :, boson_wf._det_map[1]]
-        nup_i = np.einsum('ni, ni->ni', updet_sign, np.exp(updet_val)) # ui
-        ndn_i = np.einsum('ni, ni->ni', dndet_sign, np.exp(dndet_val)) # uj
+        # updet_sign, updet_val = boson_wf._dets[0][:, :, boson_wf._det_map[0]]
+        # dndet_sign, dndet_val = boson_wf._dets[1][:, :, boson_wf._det_map[1]]
+        # nup_i = np.einsum('ni, ni->ni', updet_sign, np.exp(updet_val)) # ui
+        # ndn_i = np.einsum('ni, ni->ni', dndet_sign, np.exp(dndet_val)) # uj
 
-        nup_ij = np.einsum('ni, ij, nj->nij', nup_i, ovlp, nup_i) # ui * uj
-        ndn_ij = np.einsum('ni, ij, nj->nij', ndn_i, ovlp, ndn_i) # ui * uj
+        # nup_ij = np.einsum('ni, ij, nj->nij', nup_i, ovlp, nup_i) # ui * uj
+        # ndn_ij = np.einsum('ni, ij, nj->nij', ndn_i, ovlp, ndn_i) # ui * uj
 
-        ovlp_ij = np.einsum('nij, nij, n ->nij', nup_ij, ndn_ij, 1./rho) # w(R) * (ui * uj) * (di * dj), w = 1 / rho
+        # ovlp_ij = np.einsum('nij, nij, n ->nij', nup_ij, ndn_ij, 1./rho) # w(R) * (ui * uj) * (di * dj), w = 1 / rho
         
-        psi_i = np.einsum('ni, ni, ni, ni->ni', updet_sign, np.exp(updet_val), dndet_sign, np.exp(dndet_val)) # ui * di 
-        norm_i = np.einsum('ni, ni, n ->ni', psi_i, psi_i, 1./rho)
+        # psi_i = np.einsum('ni, ni, ni, ni->ni', updet_sign, np.exp(updet_val), dndet_sign, np.exp(dndet_val)) # ui * di 
+        # norm_i = np.einsum('ni, ni, n ->ni', psi_i, psi_i, 1./rho)
+        
+        
+        # Option 4
+        # import pdb
+        # pdb.set_trace()
+        for wfi in wf.wfs:
+            wfi.recompute(configs)
+        # pdb.set_trace()
+        phase, log_vals = [
+            np.nan_to_num(np.array(x)) for x in zip(*[wfi.value() for wfi in wf.wfs])
+        ]
+        # pdb.set_trace()
+        ref = np.max(log_vals, axis=0)  # for numerical stability
+        # option 1 
+        rho = np.mean(np.nan_to_num(np.exp(2 * (log_vals - ref))), axis=0)
+        # option 2 
+        # rho = np.exp(2 * (wf.value()[1] - ref))
+        psi = phase * np.nan_to_num(np.exp(log_vals - ref))
+        ovlp_ij = np.einsum("ic,jc->cij", psi.conj(), psi / rho)
+        
+        
+        # # option 1 
+        # # rho = np.exp(2 * (boson_wf.value()[1] - ref))
+        # # option 2 
+        # rho = np.mean(np.nan_to_num(np.exp(2 * (log_vals))), axis=0)
+        # psi = phase * np.nan_to_num(np.exp(log_vals))
+        # ovlp_ij = np.einsum("ic,jc->cij", psi.conj(), psi / rho)
+
         # import pdb
         # pdb.set_trace()
         # norm_ij = np.sqrt(np.einsum('i, j ->ij', norm_i, norm_i))
@@ -251,7 +279,7 @@ class ABVMCMatrixAccumulator:
         # results = {'delta':delta, 'ovlp_ij': ovlp_ij, 'psi_ij': psi_ij, 'ovlp_nom':ovlp_nom, 'wf_val': wf_val, 
         #         #    'ovlp_d1':ovlp_d1,
         #            }
-        results = {'delta':delta, 'ovlp_ij': ovlp_ij, 'norm_i':norm_i}
+        results = {'delta':delta, 'ovlp_ij': ovlp_ij}
 
         return results 
 

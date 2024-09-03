@@ -5,8 +5,8 @@ import jastrowspin
 import multiplywf
 import pyqmc.gpu as gpu
 import numpy as np
-
-from wftools import default_jastrow_basis, read_wf, generate_jastrow
+import copy
+from wftools import default_jastrow_basis, read_wf, generate_jastrow, generate_wf, generate_slater
 
 
 def generate_boson(
@@ -116,5 +116,17 @@ def generate_boson_wf(
         wf = multiplywf.MultiplyWF(wf1, *wfs)
         for i, to_opt2 in enumerate(to_opts):
             to_opt.update({f"wf{i+2}" + k: v for k, v in to_opt2.items()})
+
+    # Add wavefunctions for overlap matrix
+    wf.wfs = []
+    if mc is not None:
+        for i in range(mc.ci.shape[0]):
+            for j in range(mc.ci.shape[1]):
+                mc0 = copy.copy(mc)
+                mc0.ci = mc.ci * 0
+                mc0.ci[i, j] = 1 # zero all coefficients except one, this is probably quite inefficient, but should work for now.
+                # wf0, _ = generate_wf(mol, mf, jastrow=jastrow, jastrow_kws=jastrow_kws, slater_kws=slater_kws, mc=mc0)
+                wf0, _ = generate_slater(mol, mf, mc=mc0, optimize_determinants=False)
+                wf.wfs.append(wf0)
     return wf, to_opt
 

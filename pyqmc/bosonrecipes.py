@@ -244,7 +244,7 @@ def ABDMC(
     )
     abdmc.runabdmc(wf, configs, accumulators=acc, **dmc_kws)
 
-def initial_guess(mol, nconfig, r=3.0, seed = None):
+def initial_guess(mol, nconfig, r=1.0, seed = None):
     """Generate an initial guess by distributing electrons near atoms
     proportional to their charge.
 
@@ -318,6 +318,7 @@ def initialize_boson_qmc_objects(
         mol, mf, mc = pyscftools.recover_pyscf(dft_checkfile, ci_checkfile=ci_checkfile)
         if not hasattr(mc.ci, "shape") or len(mc.ci.shape) == 3:
             mc.fci = mc.ci
+            print('Selecting target CI root #', target_root)
             mc.ci = mc.ci[target_root]
 
     dm = mf.make_rdm1()
