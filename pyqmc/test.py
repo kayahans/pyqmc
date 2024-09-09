@@ -81,7 +81,7 @@ if __name__=="__main__":
         if os.path.isfile(fname):
             os.remove(fname)
     
-    serial = False
+    serial = True
     if serial:
         print('Using Serial code')
         bosonrecipes.ABVMC(scf_checkfile, 
@@ -91,7 +91,7 @@ if __name__=="__main__":
                         jastrow_kws={"ion_cusp":False},
                         tstep   = 0.3,
                         nconfig = 1000,
-                        nblocks = 10,
+                        nblocks = 100,
                         nsteps_per_block = 20,
                         load_parameters = abvmcopt_file
                         )
