@@ -1,3 +1,4 @@
+# After the discussion of how to calculate the dot product of gradients
 import numpy as np
 import energy
 import bosonenergy
@@ -102,51 +103,52 @@ class ABVMCMatrixAccumulator:
         
 
         nconf, nelec, _ = configs.configs.shape
-
+        log_grad_wfs = []
         for wfi in wf.wfs:
             wfi.recompute(configs)
+            grad = 0
+            for e in range(nelec):
+                ge, _, _ = wfi.gradient_value(e, configs.electron(e))
+                grad += ge
+            log_grad_wfs.append(grad)
+        log_grad_wfs = np.array(log_grad_wfs)
 
-        phib_sign, phib_logval = boson_wf.value() # Eq. 4
-        phib_val = phib_sign * np.nan_to_num(np.exp(phib_logval)) #[c]
-        
-        psibt_sign, psibt_logval = wf.value() # Eq. 4
-        psibt_val = psibt_sign * np.nan_to_num(np.exp(psibt_logval)) #[c]
-        
         phase, log_vals = [
             np.nan_to_num(np.array(x)) for x in zip(*[wfi.value() for wfi in wf.wfs])
         ]
         
-        psi = phase * np.nan_to_num(np.exp(log_vals))
-        ovlp_ij = np.einsum("ic,jc, c->cij", psi.conj(), psi, (psibt_val**2/phib_val**4))
-        # No jastrow variant
-        # ovlp_ij = np.einsum("ic,jc->cij", psi.conj(), psi * (1./phib_val**2))
-
+        ref = np.max(log_vals, axis=0)  # for numerical stability
+        rho = np.mean(np.nan_to_num(np.exp(2 * (log_vals - ref))), axis=0)
+        psi = phase * np.nan_to_num(np.exp(log_vals - ref))
+        ovlp_ij = np.einsum("ic,jc->cij", psi.conj(), psi / rho)
+        
         # Delta 
-        # Eq. 34 
-        # wfn_inner is below
-        # \nabla\phi_n \cdot \nabla{J} = \frac{\nabla\Phi_n\Phi_B-\Phi_n\nabla\Phi_B}{\Phi_B^2} \cdot \nabla{J}
-        # =\frac{{\nabla}[ln(\Phi_n)]\Phi_n\Phi_B-\Phi_n{\nabla}[ln(\Phi_B)]\Phi_B}{\Phi_B^2} \cdot \nabla{J}
-        # =\frac{{\nabla}[ln(\Phi_n)]\Phi_n-\Phi_n{\nabla}[ln(\Phi_B)]}{\Phi_B} \cdot \nabla{J}
-        # =\frac{\Phi_n}{\Phi_B}\{{\nabla}[ln(\Phi_n)]-{\nabla}[ln(\Phi_B)]\} \cdot \nabla{J}
-        # where
-        # \frac{\Phi_n}{\Phi_B} = e^{ln(\frac{\Phi_n}{\Phi_B})} = e^{ln(\Phi_n)-ln(\Phi_B)}
-        import pdb
-        pdb.set_trace()
-        wfn_inner = np.zeros(psi.shape)
-        for ind, wfi in enumerate(wf.wfs):  
-            wfi_sign, wfi_value = wfi.value()
-            nb_ratio = wfi_sign * np.exp(wfi_value - phib_logval)
-            grad = 0
-            for e in range(nelec):
-                grad_phi_n = wfi.gradient(e, configs.electron(e))
-                grad_b = boson_wf.gradient(e, configs.electron(e))
-                grad_j = jastrow_wf.gradient(e, configs.electron(e))
-                grad += np.einsum("dc,dc->c", grad_phi_n - grad_b, grad_j)
-            wfn_inner[ind] = np.einsum("c, c -> c", nb_ratio, grad)
-        pdb.set_trace()
-        # {\Psi_B^T}^2\phi_l \nabla\phi_n \cdot \nabla{J}
+        grad_wfs = np.einsum("idc,ic->idc", log_grad_wfs, psi)*np.exp(ref) # [det, 3=g, conf]
+        
+        jastrow_wf.recompute(configs)
+        #option 1 
+        jastrow_grad = np.sum(np.array([jastrow_wf.gradient(e, configs.electron(e)) for e in range(nelec)]), axis=0)
+        #option 2 
+        # jastrow_phase, jastrow_log_val = jastrow_wf.value()
+        # jastrow_val = jastrow_phase * np.nan_to_num(np.exp(jastrow_log_val))
+
+        # jastrow_log_grad = 0
+        # for e in range(nelec):
+        #     ge, _, _ = jastrow_wf.gradient_value(e, configs.electron(e))
+        #     jastrow_log_grad += ge
+
+        # jastrow_grad = np.einsum("dc,c->dc", jastrow_log_grad, jastrow_val)
+        psibt_sign, psibt_logval = wf.value() # Eq. 4
+        phib_sign, phib_logval = boson_wf.value() # Eq. 4
+        phib_log_grad = np.sum(np.array([boson_wf.gradient(e, configs.electron(e)) for e in range(nelec)]), axis=0) # log gradient, phib'/phib [3=g, conf]
+        
+
         # Ignore log instability for now
-        delta = np.einsum("c, c, lc, nc -> cln", psibt_val**2, 1./phib_val**2, psi, wfn_inner)
+        psibt_val = psibt_sign * np.nan_to_num(np.exp(psibt_logval)) #[c]
+        phib_val = phib_sign * np.nan_to_num(np.exp(phib_logval)) #[c]
+        delta_inner = grad_wfs - np.einsum("gc, dc->dgc", phib_log_grad, psi)
+        delta = np.einsum("c, c, lc, ngc, gc -> cln", psibt_val**2, 1./phib_val**2, psi, delta_inner, jastrow_grad)
+
         results = {'delta':delta, 'ovlp_ij': ovlp_ij}
         return results 
 

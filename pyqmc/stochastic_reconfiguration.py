@@ -14,7 +14,7 @@
 
 import numpy as np
 import h5py
-from pyqmc.accumulators_multiwf import invert_list_of_dicts
+from accumulators_multiwf import invert_list_of_dicts
 import scipy.stats
 def nodal_regularization(grad2, nodal_cutoff=1e-3):
     """
@@ -74,6 +74,8 @@ class StochasticReconfiguration:
         """
         Compute (weightsd) average
         """
+        # import pdb
+        # pdb.set_trace()
 
         nconf = configs.configs.shape[0]
         if weights is None:
@@ -88,14 +90,14 @@ class StochasticReconfiguration:
         node_cut, f = nodal_regularization(den["grad2"])
 
         dp_regularized = dp * f[:, np.newaxis]
-
+        
         d = {k: np.average(it, weights=weights, axis=0) for k, it in den.items()}
         d["dpH"] = np.einsum("i,ij->j", energy, weights[:, np.newaxis] * dp_regularized)
         d["dppsi"] = np.average(dp_regularized, weights=weights, axis=0)
         d["dpidpj"] = np.einsum(
             "ij,ik->jk", dp, weights[:, np.newaxis] * dp_regularized, optimize=True
         )
-
+        # print(np.max(d['dpH']), np.max(d['dppsi']), np.max(d["dpidpj"]))
         return d
 
     def keys(self):

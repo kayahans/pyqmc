@@ -22,6 +22,7 @@ import pyqmc.mc
 import copy
 import logging
 
+import mc # kayahan modify back
 
 def opt_hdf(hdf_file, data, attr, configs, parameters):
     import pyqmc.hdftools as hdftools
@@ -156,7 +157,8 @@ def line_minimization(
     else:  # not restarting -- VMC warm up period
         if verbose:
             print("starting warmup")
-        _, coords = pyqmc.mc.vmc(
+        # _, coords = pyqmc.mc.vmc( # kayahan modify back
+        _, coords = mc.vmc(            
             wf,
             coords,
             accumulators={},
@@ -171,7 +173,8 @@ def line_minimization(
 
     # Attributes for linemin
     attr = dict(max_iterations=max_iterations, npts=npts, steprange=steprange)
-
+    # import pdb
+    # pdb.set_trace()
     x0 = pgrad_acc.transform.serialize_parameters(wf.parameters)
 
     df = []
@@ -179,7 +182,8 @@ def line_minimization(
     for it in range(iteration_offset, max_iterations):
 
         set_wf_params(wf, x0, pgrad_acc)
-        df_vmc, coords = pyqmc.mc.vmc(
+        # df_vmc, coords = pyqmc.mc.vmc(
+        df_vmc, coords = mc.vmc(                
             wf,
             coords,
             accumulators={"pgrad": pgrad_acc},
@@ -187,7 +191,7 @@ def line_minimization(
             npartitions=npartitions,
             **vmcoptions,
         )
-
+        # pdb.set_trace()
         data = {}
         for k in pgrad_acc.keys():
             data[k] = np.mean(df_vmc['pgrad'+k], axis=0)
@@ -200,7 +204,7 @@ def line_minimization(
         step_data["iteration"] = it
         step_data["nconfig"] = coords.configs.shape[0]
 
-
+        # pdb.set_trace()
         # Correlated sampling line minimization.
         steps = np.linspace(-steprange / (npts - 2), steprange, npts)
         dps, update_report = pgrad_acc.delta_p(steps, data, verbose=verbose)
@@ -219,10 +223,11 @@ def line_minimization(
         w = stepsdata["weight"]
         w = w / np.mean(w, axis=1, keepdims=True)
         en = np.real(np.mean(stepsdata["total"] * w, axis=1))
+        # pdb.set_trace()
 
         est_min = stable_fit(steps, en)
         x0 = pgrad_acc.delta_p([est_min], data, verbose=False)[0][0] + x0
-
+        # print(x0)
         step_data["tau"] = steps
         step_data["yfit"] = en
         step_data["est_min"] = est_min

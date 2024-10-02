@@ -59,15 +59,16 @@ def boson_kinetic(configs, wf):
     lap_j = np.zeros(nconf)
     drift_b = np.zeros(nconf)
     grad2 = np.zeros(nconf)
-    # import pdb
-    # pdb.set_trace()
     if has_jastrow:
         # If no jastrows (HF), then these terms are zero
         for e in range(nelec):
             _, val_je = jastrow_wf.value()            
             grad_je, lap_je = jastrow_wf.gradient_laplacian(e, configs.electron(e))
             # Convert to exp form of jastrow gradients from the jastrow log wavefunction
-            # \frac{\nabla{e^{-U(r)}}}{e^{-U(r)}} = {\nabla^2}U(r) + {\nabla}U(r) (dot) {\nabla}U(r)}
+            # If \Psi_J = exp(J)
+            # \frac{\nabla{e^{U(r)}}}{e^{U(r)}} = {\nabla^2}U(r) + {\nabla}U(r) \cdot {\nabla}U(r)}
+            # If \Psi_J = exp(-J)
+            # \frac{\nabla{e^{-U(r)}}}{e^{-U(r)}} = - [{\nabla^2}U(r) - {\nabla}U(r) \cdot {\nabla}U(r)}]
             # import pdb
             # pdb.set_trace()
             lap_j += -0.5 * (lap_je.real + np.sum((grad_je.real)**2, axis=0))

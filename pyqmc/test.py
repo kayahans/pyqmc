@@ -17,11 +17,16 @@ if __name__=="__main__":
     # scf_checkfile, opt_checkfile, mf_lda = run_lda_li()
     # ci_checkfile = None
     # # 1. CI calculation
-    from scf_runs import run_lda_li, run_casci, run_lda_h2
-    scf_checkfile, opt_checkfile, mf_lda = run_lda_h2()
-    # scf_checkfile, opt_checkfile, mf_lda = run_lda_li()
-    ci_checkfile, mc = run_casci(scf_checkfile, nroots=2, ncas =3)
+    from scf_runs import run_lda_li, run_casci, run_lda_h2, run_lda_he, run_lda_carbon, run_lda_be
+    # scf_checkfile, _, mf_lda = run_lda_h2()
+    scf_checkfile, _, mf_lda = run_lda_he()
+    # scf_checkfile, _, mf_lda = run_lda_li()
+    # scf_checkfile, _, mf_lda = run_lda_be()
+    # scf_checkfile, _, mf_lda = run_lda_carbon()
+
+    ci_checkfile, mc, opt_checkfile, abvmc_checkfile = run_casci(scf_checkfile, nroots=2, ncas = 5, nelecas=(1, 1))
     
+    print(opt_checkfile, abvmc_checkfile)
     # for fname in ['sj.hdf5']:
     #     if os.path.isfile(fname):
     #         os.remove(fname)
@@ -38,76 +43,82 @@ if __name__=="__main__":
 
 
     # 2. Boson Jastrow optimization
-    abvmcopt_file = 'abvmc-j-opt.hdf5'
     reuse = False
+    jastrow_kws = {"ion_cusp":False, "na":0}
+    
     if not reuse:
-        for fname in [abvmcopt_file]:
+        for fname in [opt_checkfile]:
             if os.path.isfile(fname):
                 os.remove(fname)
         print("RUNNING ABVMC OPTIMIZATION")
         num_int = 1
-        
+        nconfig = 100
         serial = False
         if serial:
             bosonrecipes.ABOPTIMIZE(scf_checkfile, 
-                                    abvmcopt_file, 
+                                    opt_checkfile, 
                                     ci_checkfile   = ci_checkfile,
                                     max_iterations = num_int, 
-                                    jastrow_kws    = {"ion_cusp":False},
+                                    jastrow_kws    = jastrow_kws,
                                     verbose        = True,                            
-                                    nconfig        = 1000)  
+                                    nconfig        = nconfig)  
         else:
             with concurrent.futures.ProcessPoolExecutor(max_workers=ncore) as client:
                 bosonrecipes.ABOPTIMIZE(scf_checkfile, 
-                                abvmcopt_file, 
+                                opt_checkfile, 
                                 ci_checkfile = ci_checkfile,
-                                max_iterations=1, 
+                                max_iterations=num_int, 
                                 verbose=True,  
                                 load_parameters = None, 
                                 # nblocks=nblocks, 
                                 # nsteps_per_block=nsteps_per_block,
                                 # tstep= tstep, 
-                                jastrow_kws={"ion_cusp":False},
+                                jastrow_kws    = jastrow_kws,
                                 client = client, 
                                 npartitions=ncore,                            
-                                nconfig=1000)
+                                nconfig=nconfig)
         # Jastrow optimization results
-        df = recipes.read_opt(abvmcopt_file)
+        df = recipes.read_opt(opt_checkfile)
         print(df)
 
     # 3. ABVMC
-    abvmc_file = 'abvmc.hdf5'
-    for fname in [abvmc_file]:
+    for fname in [abvmc_checkfile]:
         if os.path.isfile(fname):
             os.remove(fname)
-    
+
+    nconfig = 100
+    tstep = 0.1
+
     serial = True
     if serial:
         print('Using Serial code')
         bosonrecipes.ABVMC(scf_checkfile, 
-                        abvmc_file, 
+                        abvmc_checkfile, 
                         ci_checkfile = ci_checkfile,
                         verbose = True,  
-                        jastrow_kws={"ion_cusp":False},
-                        tstep   = 0.3,
-                        nconfig = 1000,
+                        jastrow_kws    = jastrow_kws,
+                        tstep   = tstep,
+                        nconfig = nconfig,
                         nblocks = 100,
+                        accumulators = ['excitations'],
                         nsteps_per_block = 20,
-                        load_parameters = abvmcopt_file
+                        load_parameters = opt_checkfile
                         )
                         
     else:
+        print('Using Parallel code')
         with concurrent.futures.ProcessPoolExecutor(max_workers=ncore) as client:
             bosonrecipes.ABVMC(scf_checkfile, 
-                            abvmc_file, 
+                            abvmc_checkfile, 
                             ci_checkfile = ci_checkfile,
                             verbose = True,  
-                            jastrow_kws={"ion_cusp":False},
-                            tstep   = 0.3,
-                            nconfig = 10000,
+                            jastrow_kws    = jastrow_kws,
+                            tstep   = tstep,
+                            nconfig = nconfig,
                             nblocks = 1000,
                             nsteps_per_block = 20,
-                            # load_parameters = abvmcopt_file, 
+                            load_parameters = opt_checkfile, 
+                            accumulators = ['excitations'],
                             client = client, 
                             npartitions=ncore)
 

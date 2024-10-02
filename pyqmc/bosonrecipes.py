@@ -19,7 +19,7 @@ def ABOPTIMIZE(
     ci_checkfile:str|None=None,
     load_parameters: str|None=None,
     S=None,
-    jastrow_kws: list|None = None,
+    jastrow_kws = {"ion_cusp":False, 'na':0},
     slater_kws:  list|None = None,
     **linemin_kws,
 ):
@@ -66,6 +66,8 @@ def ABOPTIMIZE(
         slater_kws=slater_kws,
         accumulators=bosonaccumulators,
     )
+    # import pdb
+    # pdb.set_trace()
     if anchors is None:
         wf, df = linemin.line_minimization(wf, configs, acc, **linemin_kws)
     # else:
@@ -171,7 +173,7 @@ def ABVMC(
     ci_checkfile: str|None=None,
     load_parameters: str|None=None,
     S=None,
-    jastrow_kws: list|None = None,
+    jastrow_kws = {"ion_cusp":False, 'na':0},
     slater_kws:  list|None = None,
     accumulators: list|None = None,
     seed: int|None=None,
@@ -318,7 +320,7 @@ def initialize_boson_qmc_objects(
         mol, mf, mc = pyscftools.recover_pyscf(dft_checkfile, ci_checkfile=ci_checkfile)
         if not hasattr(mc.ci, "shape") or len(mc.ci.shape) == 3:
             mc.fci = mc.ci
-            print('Selecting target CI root #', target_root)
+            # print('Selecting target CI root #', target_root)
             mc.ci = mc.ci[target_root]
 
     dm = mf.make_rdm1()
@@ -327,12 +329,12 @@ def initialize_boson_qmc_objects(
     if jastrow_kws == None:
         jastrow_kws = dict()
     
-    if "ion_cusp" in jastrow_kws.keys():
-        if jastrow_kws["ion_cusp"] != False:
-            print("WARNING: ion_cusp = True is not the default behavior")
-    else:
-        print("WARNING: Using ion_cusp = False as default")
-        jastrow_kws["ion_cusp"] = True
+    # if "ion_cusp" in jastrow_kws.keys():
+    #     if jastrow_kws["ion_cusp"] != False:
+    #         print("WARNING: ion_cusp = True is not the default behavior")
+    # else:
+    #     print("WARNING: Using ion_cusp = False as default")
+    #     jastrow_kws["ion_cusp"] = True
     
 
     if S is not None:
@@ -352,19 +354,21 @@ def initialize_boson_qmc_objects(
     print('Using spherical guess')
     configs = initial_guess(mol, nconfig,seed=seed)
     if opt_wf:
-        accumulators = bosonaccumulators.boson_gradient_generator(
+        acc = bosonaccumulators.boson_gradient_generator(
             mf, wf, to_opt, nodal_cutoff=nodal_cutoff
         )
     else:
-        accumulators = {}
-        if slater_kws is not None and "twist" in slater_kws.keys():
-            twist = slater_kws["twist"]
-        else:
-            twist = 0
-        accumulators['energy'] = bosonaccumulators.ABQMCEnergyAccumulator(mf)
-        accumulators['excitations'] = bosonaccumulators.ABVMCMatrixAccumulator()
-        # acc = generate_accumulators(mol, mf, twist=twist, **accumulators)
-    return wf, configs, accumulators
+        acc = {}
+        acc['energy'] = bosonaccumulators.ABQMCEnergyAccumulator(mf)
+        allowed_acc = ['energy', 'excitations']
+        for acc_i in accumulators:
+            if acc_i not in allowed_acc:
+                print('WARNING: input {} is not one of the allowed accumulators : {}'.format(acc_i, allowed_acc))
+        if 'excitations' in accumulators:
+            print('Collecting excitations')
+            acc['excitations'] = bosonaccumulators.ABVMCMatrixAccumulator()
+    
+    return wf, configs, acc
 
 def read_abvmc(fname):
     with h5py.File(fname) as f:

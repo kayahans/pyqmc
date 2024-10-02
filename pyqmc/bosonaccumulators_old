@@ -25,7 +25,7 @@ class ABQMCEnergyAccumulator:
 
     def __init__(self, mf, **kwargs):
         self.mol = mf.mol
-        self.dm = mf.dm
+        # self.dm = mf.dm
         self.mo_energy = mf.mo_energy
         self.mo_occ = mf.mo_occ
         

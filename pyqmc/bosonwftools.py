@@ -30,15 +30,15 @@ def generate_boson(
     wf = slater.BosonWF(mol, mf, mc=mc)
     # TODO: update here later
     to_opt = {}
-    to_opt["det_coeff"] = np.zeros_like(wf.parameters["det_coeff"], dtype=bool)
-    if optimize_determinants:
-        to_opt["det_coeff"] = np.ones_like(wf.parameters["det_coeff"], dtype=bool)
-        to_opt["det_coeff"][np.argmax(wf.parameters["det_coeff"])] = False
-    if optimize_orbitals:
-        for k in ["mo_coeff_alpha", "mo_coeff_beta"]:
-            to_opt[k] = np.ones(wf.parameters[k].shape, dtype=bool)
-            if not optimize_zeros:
-                to_opt[k][np.abs(gpu.asnumpy(wf.parameters[k])) < epsilon] = False
+    # to_opt["det_coeff"] = np.zeros_like(wf.parameters["det_coeff"], dtype=bool)
+    # if optimize_determinants:
+    #     to_opt["det_coeff"] = np.ones_like(wf.parameters["det_coeff"], dtype=bool)
+    #     to_opt["det_coeff"][np.argmax(wf.parameters["det_coeff"])] = False
+    # if optimize_orbitals:
+    #     for k in ["mo_coeff_alpha", "mo_coeff_beta"]:
+    #         to_opt[k] = np.ones(wf.parameters[k].shape, dtype=bool)
+    #         if not optimize_zeros:
+    #             to_opt[k][np.abs(gpu.asnumpy(wf.parameters[k])) < epsilon] = False
     
     return wf, to_opt
 
@@ -92,12 +92,6 @@ def generate_boson_wf(
         wf, to_opt1 = generate_boson(mol, mf, mc=mc, **slater_kws)
         to_opt = {"wf1" + k: v for k, v in to_opt1.items()}
     else:        
-        no_ei = False
-        if 'ei' in jastrow_kws.keys():
-            if jastrow_kws['ei'] == False:
-                no_ei = True
-            del jastrow_kws['ei']
-
         if not isinstance(jastrow, list):
             jastrow = [jastrow]
             jastrow_kws = [jastrow_kws]
@@ -109,13 +103,10 @@ def generate_boson_wf(
         wfs = [p[0] for p in pack]
         to_opts = [p[1] for p in pack]
         
-        # Do not optimize e-i jastrows
-        if no_ei:
-            to_opts[0]['bcoeff']*=False
-
         wf = multiplywf.MultiplyWF(wf1, *wfs)
         for i, to_opt2 in enumerate(to_opts):
             to_opt.update({f"wf{i+2}" + k: v for k, v in to_opt2.items()})
+        print('Will optimize: ', to_opt.keys())
 
     # Add wavefunctions for overlap matrix
     wf.wfs = []
