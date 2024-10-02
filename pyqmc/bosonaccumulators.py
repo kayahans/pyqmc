@@ -117,9 +117,11 @@ class ABVMCMatrixAccumulator:
         ]
         
         psi = phase * np.nan_to_num(np.exp(log_vals))
-        ovlp_ij = np.einsum("ic,jc, c->cij", psi.conj(), psi, (psibt_val**2/phib_val**4))
+        ovlp_ij = np.einsum("ic,jc, c->cij", psi.conj(), psi, (1./phib_val**2))
         # No jastrow variant
         # ovlp_ij = np.einsum("ic,jc->cij", psi.conj(), psi * (1./phib_val**2))
+        # Older variant
+        # ovlp_ij = np.einsum("ic,jc, c->cij", psi.conj(), psi, (psibt_val**2/phib_val**4))
 
         # Delta 
         # Eq. 34 
@@ -130,8 +132,8 @@ class ABVMCMatrixAccumulator:
         # =\frac{\Phi_n}{\Phi_B}\{{\nabla}[ln(\Phi_n)]-{\nabla}[ln(\Phi_B)]\} \cdot \nabla{J}
         # where
         # \frac{\Phi_n}{\Phi_B} = e^{ln(\frac{\Phi_n}{\Phi_B})} = e^{ln(\Phi_n)-ln(\Phi_B)}
-        import pdb
-        pdb.set_trace()
+        # import pdb
+        # pdb.set_trace()
         wfn_inner = np.zeros(psi.shape)
         for ind, wfi in enumerate(wf.wfs):  
             wfi_sign, wfi_value = wfi.value()
@@ -143,10 +145,12 @@ class ABVMCMatrixAccumulator:
                 grad_j = jastrow_wf.gradient(e, configs.electron(e))
                 grad += np.einsum("dc,dc->c", grad_phi_n - grad_b, grad_j)
             wfn_inner[ind] = np.einsum("c, c -> c", nb_ratio, grad)
-        pdb.set_trace()
+        # pdb.set_trace()
         # {\Psi_B^T}^2\phi_l \nabla\phi_n \cdot \nabla{J}
         # Ignore log instability for now
-        delta = np.einsum("c, c, lc, nc -> cln", psibt_val**2, 1./phib_val**2, psi, wfn_inner)
+        delta = np.einsum("c, lc, nc -> cln", psibt_val, psi, wfn_inner)
+        # Older variant
+        # delta = np.einsum("c, c, lc, nc -> cln", psibt_val**2, 1./phib_val**2, psi, wfn_inner)
         results = {'delta':delta, 'ovlp_ij': ovlp_ij}
         return results 
 

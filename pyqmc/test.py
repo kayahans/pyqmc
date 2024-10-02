@@ -43,7 +43,7 @@ if __name__=="__main__":
 
 
     # 2. Boson Jastrow optimization
-    reuse = False
+    reuse = True
     jastrow_kws = {"ion_cusp":False, "na":0}
     
     if not reuse:
