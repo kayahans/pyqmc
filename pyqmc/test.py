@@ -89,7 +89,7 @@ if __name__=="__main__":
     nconfig = 100
     tstep = 0.1
 
-    serial = True
+    serial = False
     if serial:
         print('Using Serial code')
         bosonrecipes.ABVMC(scf_checkfile, 
