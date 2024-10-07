@@ -224,16 +224,6 @@ class BosonWF:
         updets = self._dets[0][:, :, self._det_map[0]]
         dndets = self._dets[1][:, :, self._det_map[1]]
 
-        # upref = gpu.cp.amax(updets[1]).real
-        # dnref = gpu.cp.amax(dndets[1]).real
-        # det_coeff = self.myparameters['det_coeff']
-        
-        # logvals = (updets[1] - upref + dndets[1] - dnref)
-        # wf_val = gpu.cp.einsum("id->di", gpu.cp.exp(logvals))
-
-        # wf_sign = np.nan_to_num(wf_val / gpu.cp.abs(wf_val))
-        # wf_logval = np.nan_to_num(gpu.cp.log(gpu.cp.abs(wf_val)) + (upref + dnref))        
-        
         wf_logval = (updets[1] + dndets[1])
         wf_sign = updets[0] * dndets[0]
 
@@ -367,16 +357,6 @@ class BosonWF:
         return grads
 
     def pgradient(self):
-        # Has not been fully implemented
+        # Not implemented
         d = {}
-        
-        # value, real_values, signs = self.value_all()
-        
-        # pgradients = []
-        # for wf in self.wfs:
-        #     pgradients.append(wf.pgradient())
-        
-        # real_value = np.exp(2*value)
-        # d["det_coeff"] = 1./2 * real_values**2 / real_value
-
         return d

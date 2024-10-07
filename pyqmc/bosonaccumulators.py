@@ -106,8 +106,6 @@ class ABVMCMatrixAccumulator:
         phib_val = phib_sign * np.nan_to_num(np.exp(phib_logval)) #[c]
         
         phase, log_vals = boson_wf.value_dets()
-        # import pdb
-        # pdb.set_trace()
         psi = phase * np.nan_to_num(np.exp(log_vals))
         ovlp_ij = np.einsum("cl,cn, c->cln", psi.conj(), psi, (1./phib_val**2))
         
@@ -132,24 +130,7 @@ class ABVMCMatrixAccumulator:
             grad += np.einsum("nec,ec->nc", grad_phi_n - grad_b, grad_j)
         wfn_inner = np.einsum("nc,nc->nc", nb_ratio, grad)
 
-        # for ind, wfi in enumerate(wf.wfs):  
-        #     wfi_sign, wfi_value = wfi.value()
-        #     nb_ratio = wfi_sign * np.exp(wfi_value - phib_logval)
-        #     grad = 0
-        #     for e in range(nelec):
-
-        #         grad_phi_n = wfi.gradient(e, configs.electron(e))
-        #         grad_b = boson_wf.gradient(e, configs.electron(e))
-        #         grad_j = jastrow_wf.gradient(e, configs.electron(e))
-        #         grad += np.einsum("dc,dc->c", grad_phi_n - grad_b, grad_j)
-        #     wfn_inner[ind] = np.einsum("c, c -> c", nb_ratio, grad)
-        
-        # {\Psi_B^T}^2\phi_l \nabla\phi_n \cdot \nabla{J}
-        # Ignore log instability for now
-        # delta = np.einsum("c, lc, nc -> cln", psibt_val, psi, wfn_inner)
         delta = np.einsum("cl, c, nc -> cln", psi, 1./phib_val, wfn_inner)
-        # Older variant
-        # delta = np.einsum("c, c, lc, nc -> cln", psibt_val**2, 1./phib_val**2, psi, wfn_inner)
         results = {'delta':delta, 'ovlp_ij': ovlp_ij}
         return results 
 
