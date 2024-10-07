@@ -166,13 +166,16 @@ def vmc_worker(wf, configs, tstep, nsteps, accumulators):
     """
     nconf, nelec, _ = configs.configs.shape
     block_avg = {}
-    wf.recompute(configs) 
+    # wf.recompute(configs) 
     for _ in range(nsteps):
         acc = 0.0
         for e in range(nelec):
             # Propose move
-            # val_old = wf.recompute(configs)
-            # wf_new = copy.deepcopy(wf)
+            # import pdb
+            # pdb.set_trace()
+            sign_old, val_old = wf.recompute(configs)
+            wf_new = copy.deepcopy(wf)
+
             g, _, _ = wf.gradient_value(e, configs.electron(e))
             grad = limdrift(np.real(g.T))
             gauss = np.random.normal(scale=np.sqrt(tstep), size=(nconf, 3))
@@ -187,13 +190,14 @@ def vmc_worker(wf, configs, tstep, nsteps, accumulators):
 
             # Acceptance
             t_prob = np.exp(1 / (2 * tstep) * (forward - backward))
-            ratio = np.abs(new_val) ** 2 * t_prob
-            # newcoord = copy.deepcopy(configs)
-            # newcoord.configs[:,e,:] = newcoorde.configs
-            # val_new = wf_new.recompute(newcoord)
-            # ratio = np.exp(2*(val_new[0]*val_new[1]-val_old[0]*val_old[1]))* t_prob
+            # ratio = np.abs(new_val) ** 2 * t_prob
+            newcoord = copy.deepcopy(configs)
+            newcoord.configs[:,e,:] = newcoorde.configs
+            sign_new, val_new = wf_new.recompute(newcoord)
+            ratio = np.exp(2*(val_new-val_old))* t_prob
+            # pdb.set_trace()
             accept = ratio > np.random.rand(nconf)
-
+            # accept = np.random.rand(nconf) > 0.5
             # Update wave function
             configs.move(e, newcoorde, accept)
             wf.updateinternals(e, newcoorde, configs, mask=accept, saved_values=saved)
@@ -202,8 +206,6 @@ def vmc_worker(wf, configs, tstep, nsteps, accumulators):
             # print(e, np.max(ratio), np.max(new_val), np.max(t_prob))
         # Rolling average on step
         for k, accumulator in accumulators.items():
-            # import pdb
-            # pdb.set_trace()
             dat = accumulator.avg(configs, wf)
             for m, res in dat.items():
                 if k + m not in block_avg:

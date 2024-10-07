@@ -24,24 +24,10 @@ if __name__=="__main__":
     # scf_checkfile, _, mf_lda = run_lda_be()
     # scf_checkfile, _, mf_lda = run_lda_carbon()
 
-    ci_checkfile, mc, opt_checkfile, abvmc_checkfile = run_casci(scf_checkfile, nroots=2, ncas = 5, nelecas=(1, 1))
+    ci_checkfile, mc, opt_checkfile, abvmc_checkfile = run_casci(scf_checkfile, nroots=2, ncas = 9, nelecas=(1, 1))
     
     print(opt_checkfile, abvmc_checkfile)
-    # for fname in ['sj.hdf5']:
-    #     if os.path.isfile(fname):
-    #         os.remove(fname)
-    # print("RUNNING VMC OPTIMIZATION")
-    # with concurrent.futures.ProcessPoolExecutor(max_workers=ncore) as client:
-    #     recipes.OPTIMIZE(scf_checkfile, "sj.hdf5", 
-    #                     max_iterations=6, 
-    #                     nconfig=1000, 
-    #                     verbose=True,
-    #                     jastrow_kws={"ion_cusp":False},
-    #                     client = client, 
-    #                     npartitions=ncore
-    #                     )
-
-
+    
     # 2. Boson Jastrow optimization
     reuse = True
     jastrow_kws = {"ion_cusp":False, "na":0}
@@ -51,8 +37,8 @@ if __name__=="__main__":
             if os.path.isfile(fname):
                 os.remove(fname)
         print("RUNNING ABVMC OPTIMIZATION")
-        num_int = 1
-        nconfig = 100
+        num_int = 6
+        nconfig = 1000
         serial = False
         if serial:
             bosonrecipes.ABOPTIMIZE(scf_checkfile, 
@@ -70,9 +56,6 @@ if __name__=="__main__":
                                 max_iterations=num_int, 
                                 verbose=True,  
                                 load_parameters = None, 
-                                # nblocks=nblocks, 
-                                # nsteps_per_block=nsteps_per_block,
-                                # tstep= tstep, 
                                 jastrow_kws    = jastrow_kws,
                                 client = client, 
                                 npartitions=ncore,                            
@@ -86,8 +69,9 @@ if __name__=="__main__":
         if os.path.isfile(fname):
             os.remove(fname)
 
-    nconfig = 100
-    tstep = 0.1
+    nconfig = 1000
+    nblocks = 200
+    tstep = 0.3
 
     serial = False
     if serial:
@@ -99,7 +83,7 @@ if __name__=="__main__":
                         jastrow_kws    = jastrow_kws,
                         tstep   = tstep,
                         nconfig = nconfig,
-                        nblocks = 100,
+                        nblocks = nblocks,
                         accumulators = ['excitations'],
                         nsteps_per_block = 20,
                         load_parameters = opt_checkfile
@@ -115,7 +99,7 @@ if __name__=="__main__":
                             jastrow_kws    = jastrow_kws,
                             tstep   = tstep,
                             nconfig = nconfig,
-                            nblocks = 1000,
+                            nblocks = nblocks,
                             nsteps_per_block = 20,
                             load_parameters = opt_checkfile, 
                             accumulators = ['excitations'],

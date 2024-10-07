@@ -100,29 +100,17 @@ class ABVMCMatrixAccumulator:
             if isinstance(wave, jastrowspin.JastrowSpin):
                 jastrow_wf = wave        
         
-
-        nconf, nelec, _ = configs.configs.shape
-
-        for wfi in wf.wfs:
-            wfi.recompute(configs)
+        _, nelec, _ = configs.configs.shape
 
         phib_sign, phib_logval = boson_wf.value() # Eq. 4
         phib_val = phib_sign * np.nan_to_num(np.exp(phib_logval)) #[c]
         
-        psibt_sign, psibt_logval = wf.value() # Eq. 4
-        psibt_val = psibt_sign * np.nan_to_num(np.exp(psibt_logval)) #[c]
-        
-        phase, log_vals = [
-            np.nan_to_num(np.array(x)) for x in zip(*[wfi.value() for wfi in wf.wfs])
-        ]
-        
+        phase, log_vals = boson_wf.value_dets()
+        # import pdb
+        # pdb.set_trace()
         psi = phase * np.nan_to_num(np.exp(log_vals))
-        ovlp_ij = np.einsum("lc,nc, c->cln", psi.conj(), psi, (1./phib_val**2))
-        # No jastrow variant
-        # ovlp_ij = np.einsum("ic,jc->cij", psi.conj(), psi * (1./phib_val**2))
-        # Older variant
-        # ovlp_ij = np.einsum("ic,jc, c->cij", psi.conj(), psi, (psibt_val**2/phib_val**4))
-
+        ovlp_ij = np.einsum("cl,cn, c->cln", psi.conj(), psi, (1./phib_val**2))
+        
         # Delta 
         # Eq. 34 
         # wfn_inner is below
@@ -133,21 +121,33 @@ class ABVMCMatrixAccumulator:
         # where
         # \frac{\Phi_n}{\Phi_B} = e^{ln(\frac{\Phi_n}{\Phi_B})} = e^{ln(\Phi_n)-ln(\Phi_B)}
         wfn_inner = np.zeros(psi.shape)
-        for ind, wfi in enumerate(wf.wfs):  
-            wfi_sign, wfi_value = wfi.value()
-            nb_ratio = wfi_sign * np.exp(wfi_value - phib_logval)
-            grad = 0
-            for e in range(nelec):
-                grad_phi_n = wfi.gradient(e, configs.electron(e))
-                grad_b = boson_wf.gradient(e, configs.electron(e))
-                grad_j = jastrow_wf.gradient(e, configs.electron(e))
-                grad += np.einsum("dc,dc->c", grad_phi_n - grad_b, grad_j)
-            wfn_inner[ind] = np.einsum("c, c -> c", nb_ratio, grad)
+        nb_ratio = phase.T * np.nan_to_num(np.exp(log_vals.T - phib_logval))
+        
+        grad = 0
+        for e in range(nelec):
+            epos = configs.electron(e)
+            grad_phi_n = boson_wf.gradient_dets(e, epos)
+            grad_b     = boson_wf.gradient(e, epos)
+            grad_j = jastrow_wf.gradient(e, configs.electron(e))
+            grad += np.einsum("nec,ec->nc", grad_phi_n - grad_b, grad_j)
+        wfn_inner = np.einsum("nc,nc->nc", nb_ratio, grad)
+
+        # for ind, wfi in enumerate(wf.wfs):  
+        #     wfi_sign, wfi_value = wfi.value()
+        #     nb_ratio = wfi_sign * np.exp(wfi_value - phib_logval)
+        #     grad = 0
+        #     for e in range(nelec):
+
+        #         grad_phi_n = wfi.gradient(e, configs.electron(e))
+        #         grad_b = boson_wf.gradient(e, configs.electron(e))
+        #         grad_j = jastrow_wf.gradient(e, configs.electron(e))
+        #         grad += np.einsum("dc,dc->c", grad_phi_n - grad_b, grad_j)
+        #     wfn_inner[ind] = np.einsum("c, c -> c", nb_ratio, grad)
         
         # {\Psi_B^T}^2\phi_l \nabla\phi_n \cdot \nabla{J}
         # Ignore log instability for now
         # delta = np.einsum("c, lc, nc -> cln", psibt_val, psi, wfn_inner)
-        delta = np.einsum("lc, c, nc -> cln", psi, 1./phib_val, wfn_inner)
+        delta = np.einsum("cl, c, nc -> cln", psi, 1./phib_val, wfn_inner)
         # Older variant
         # delta = np.einsum("c, c, lc, nc -> cln", psibt_val**2, 1./phib_val**2, psi, wfn_inner)
         results = {'delta':delta, 'ovlp_ij': ovlp_ij}

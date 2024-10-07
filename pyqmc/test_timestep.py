@@ -56,11 +56,11 @@ if __name__=="__main__":
     # # 1. CI calculation
     from scf_runs import run_lda_li, run_casci, run_lda_h2, run_lda_he, run_lda_carbon
     # scf_checkfile, _, mf_lda = run_lda_h2()
-    scf_checkfile, _, mf_lda = run_lda_he()
+    # scf_checkfile, _, mf_lda = run_lda_he()
     # scf_checkfile, _, mf_lda = run_lda_li()
-    # scf_checkfile, _, mf_lda = run_lda_carbon()
+    scf_checkfile, _, mf_lda = run_lda_carbon()
 
-    ci_checkfile, mc, opt_checkfile, abvmc_checkfile = run_casci(scf_checkfile, nroots=2, ncas =3, nelecas=(1, 1))
+    ci_checkfile, mc, opt_checkfile, abvmc_checkfile = run_casci(scf_checkfile, nroots=2, ncas =4, nelecas=(4, 2))
     
     print(opt_checkfile, abvmc_checkfile)
     t = [0.001, 0.02, 0.1, 0.3, 1]
@@ -76,7 +76,7 @@ if __name__=="__main__":
               abvmc_checkfile_dt, 
               ci_checkfile, 
               tstep = dt, 
-              nblocks = 310,
+              nblocks = 200,
               serial = False, 
               ncore = 16)
             
@@ -90,15 +90,11 @@ if __name__=="__main__":
             print(e_m, e_d)
             e_t_abvmc.append(e_m)
             e_t_abvmc_err.append(e_d)
-    import pdb
-    pdb.set_trace()
-
     # for i in t:
     #     plt.plot(ab_e_dict[i], label=str(i))
     plt.errorbar(np.arange(len(e_t_abvmc)), e_t_abvmc, yerr=e_t_abvmc_err)
     plt.legend()
     plt.xlabel('steps')
     plt.ylabel('Energy (Ha)')
-    # plt.ylim((-37.8, -37.6))
     plt.show()
     
