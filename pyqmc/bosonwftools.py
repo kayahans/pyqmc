@@ -17,6 +17,7 @@ def generate_boson(
     optimize_orbitals=False,
     optimize_zeros=True,    
     epsilon=1e-8,
+    det_emax=None,
     **kwargs,
 ):
     """Construct a Slater determinant
@@ -27,7 +28,7 @@ def generate_boson(
     :returns: slater, to_opt
     """
     
-    wf = slater.BosonWF(mol, mf, mc=mc)
+    wf = slater.BosonWF(mol, mf, mc=mc, det_emax=det_emax)
     # TODO: update here later
     to_opt = {}
     # to_opt["det_coeff"] = np.zeros_like(wf.parameters["det_coeff"], dtype=bool)
@@ -79,7 +80,7 @@ def generate_boson(
 
 
 def generate_boson_wf(
-    mol, mf, jastrow=generate_jastrow, jastrow_kws=None, slater_kws=None, mc = None, 
+    mol, mf, jastrow=generate_jastrow, jastrow_kws=None, slater_kws=None, mc = None, det_emax = None
 ):
     """
     """
@@ -89,14 +90,14 @@ def generate_boson_wf(
     if slater_kws is None:
         slater_kws = {}
     if jastrow == None:
-        wf, to_opt1 = generate_boson(mol, mf, mc=mc, **slater_kws)
+        wf, to_opt1 = generate_boson(mol, mf, mc=mc, det_emax=det_emax, **slater_kws)
         to_opt = {"wf1" + k: v for k, v in to_opt1.items()}
     else:        
         if not isinstance(jastrow, list):
             jastrow = [jastrow]
             jastrow_kws = [jastrow_kws]
 
-        wf1, to_opt1 = generate_boson(mol, mf, mc=mc, **slater_kws)
+        wf1, to_opt1 = generate_boson(mol, mf, mc=mc, det_emax=det_emax, **slater_kws)
         to_opt = {"wf1" + k: v for k, v in to_opt1.items()}
 
         pack = [jast(mol, **kw) for jast, kw in zip(jastrow, jastrow_kws)]

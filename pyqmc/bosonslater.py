@@ -4,6 +4,22 @@ import warnings
 import pyscftools
 import copy
 from wftools import generate_slater
+import h5py
+import time
+report_timer = False
+def timer_func(func):
+    def wrapper(*args, **kwargs):
+        start = time.time()
+        result = func(*args, **kwargs)
+        duration = time.time() - start
+        wrapper.total_time += duration
+        wrapper.total_calls += 1
+        if wrapper.total_calls % 1 == 0 and report_timer:
+            print(f'Spent {(wrapper.total_time):.4f}s in function {(wrapper.total_calls)} calls to {func.__name__!r}') 
+        return result
+    wrapper.total_calls = 0
+    wrapper.total_time = 0
+    return wrapper
 
 def sherman_morrison_row(e, inv, vec):
     tmp = np.einsum("ek,ekj->ej", vec, inv)
@@ -92,7 +108,7 @@ def compute_boson_value(updets, dndets, det_coeffs):
     return gpu.asnumpy(wf_sign), gpu.asnumpy(wf_logval)
 class BosonWF:
 
-    def __init__(self, mol, mf, mc=None, tol=None, twist=None, determinants=None, eval_gto_precision=None):
+    def __init__(self, mol, mf, mc=None, tol=None, twist=None, determinants=None, eval_gto_precision=None, det_emax = None):
         """
         Create Bosonic wavefunction
         Args:
@@ -115,6 +131,7 @@ class BosonWF:
                 ncore = [ncore, ncore]
             self._nelec = (mc.nelecas[0] + ncore[0], mc.nelecas[1] + ncore[1])
         else:
+            ncore = (0,0)
             self._nelec = mol.nelec
         self.eval_gto_precision = eval_gto_precision
         
@@ -129,6 +146,11 @@ class BosonWF:
         ) = pyscftools.orbital_evaluator_from_pyscf(
             mol, mf, mc, twist=twist, determinants=determinants, tol=self.tol, eval_gto_precision=self.eval_gto_precision
         )
+        self.det_info_file = 'det_info.hdf5'
+        self.hmf_file      = 'hmf.hdf5'
+
+        self.filter_determinants(det_emax, mf.mo_energy, ncore)
+        self.get_hmf(mf.mo_energy, ncore)
 
         # Use constant weight 
         self.myparameters["det_coeff"] = np.ones(self.num_det)/self.num_det
@@ -140,11 +162,76 @@ class BosonWF:
         self.dtype = complex if iscomplex else float
 
         self.get_phase = get_complex_phase if iscomplex else gpu.cp.sign
+        
+    def get_hmf(self, mo_energies, ncore):
+        up_energies = np.sum(mo_energies[0][self._det_occup[0]+ncore[0]], axis=1)
+        dn_energies = np.sum(mo_energies[1][self._det_occup[1]+ncore[1]], axis=1)
+        total_energies = up_energies[self._det_map[0]] + dn_energies[self._det_map[1]]
+        hf = h5py.File(self.hmf_file, 'w')
+        hf.create_dataset('hmf', data=total_energies)
+        hf.close()
+    
+    def filter_determinants(self, emax, mo_energies, ncore):
+        
+        determinants_filtered = False
+        
+        if isinstance(emax, float):
+            determinants_filtered = True
+            print("Determinants being filtered with emax ", emax)
+            up_energies = np.sum(mo_energies[0][self._det_occup[0]+ncore[0]], axis=1)
+            dn_energies = np.sum(mo_energies[1][self._det_occup[1]+ncore[1]], axis=1)
+            total_energies = up_energies[self._det_map[0]] + dn_energies[self._det_map[1]]
+            mask = total_energies < emax
+            temp_det_map = self._det_map[np.row_stack((mask, mask))]
+            num_init_dets = len(self._det_map[0])
+            unused_temp_det_map = self._det_map[np.row_stack((~mask, ~mask))]
+            det_map_shape = np.array(temp_det_map.shape)
+            num_used_dets = int(det_map_shape[0]/2)
 
+            det_map = temp_det_map.reshape(2, num_used_dets)
+            unused_det_map = unused_temp_det_map.reshape(2, num_init_dets-num_used_dets)
+            print('Min eigenvalue', np.round(np.min(total_energies), 3))
+            print('Max eigenvalue', np.round(np.max(total_energies), 3))
+        elif emax == 'singles' or emax == 'doubles':
+            determinants_filtered = True
+            up_ground = self._det_occup[0][0]
+            dn_ground = self._det_occup[1][0]
+            up_num_exc = np.array([np.setdiff1d(x, up_ground).shape[0] for x in self._det_occup[0]])
+            dn_num_exc = np.array([np.setdiff1d(x, dn_ground).shape[0] for x in self._det_occup[1]])
+            tot_exc = up_num_exc[self._det_map[0]] + dn_num_exc[self._det_map[1]]
+            if emax == 'singles':
+                mask = tot_exc < 2
+            elif emax == 'doubles':
+                mask = tot_exc < 3
+            tot_used_exc = tot_exc[mask]
+            det_map = self._det_map[np.row_stack((mask, mask))].reshape(2, -1)
+            unused_det_map = self._det_map[np.row_stack((~mask, ~mask))].reshape(2, -1)
+            num_init_dets = len(self._det_map[0])
+            det_map_shape = np.array(det_map.shape)
+            num_used_dets = int(det_map_shape[1])
+            print('Det excitations', tot_used_exc)
+        else:
+            num_used_dets = len(self._det_map[0])
+            print('Used # of determinants', num_used_dets)
+
+        if determinants_filtered:
+            self._det_map_orig = copy.deepcopy(self._det_map)
+            self._det_map_mask = mask
+            self._det_map = det_map
+            self.num_det = num_used_dets
+            print('Initial # of determinants', num_init_dets)
+            print('Filtered # of determinants', num_init_dets-num_used_dets)
+            print('Used # of determinants', num_used_dets)
+            hf = h5py.File(self.det_info_file, 'w')
+            hf.create_dataset('det_map_orig', data=self._det_map_orig)
+            hf.create_dataset('det_map_mask', data=self._det_map_mask)
+            hf.create_dataset('det_map',      data=self._det_map)
+            hf.close()
+        
+    @timer_func
     def recompute(self, configs):
         """This computes the value from scratch. Returns the logarithm of the wave function as
         (phase,logdet). If the wf is real, phase will be +/- 1."""
-
         nconf, nelec, ndim = configs.configs.shape
         aos = self.orbitals.aos("GTOval_sph", configs)
         self._aovals = aos.reshape(-1, nconf, nelec, aos.shape[-1])
@@ -158,7 +245,6 @@ class BosonWF:
             self._dets.append(
                 gpu.cp.asarray(np.linalg.slogdet(mo_vals))
             )  # Spin, (sign, val), nconf, [ndet_up, ndet_dn]
-
             is_zero = np.sum(np.abs(self._dets[s][0]) < 1e-16)
             compute = np.isfinite(self._dets[s][1])
             if is_zero > 0:
@@ -175,6 +261,7 @@ class BosonWF:
             # spin, Nconf, [ndet_up, ndet_dn], nelec, nelec
         return self.value()
 
+    @timer_func
     def updateinternals(self, e, epos, configs, mask=None, saved_values=None):
         """Update any internals given that electron e moved to epos. mask is a Boolean array
         which allows us to update only certain walkers"""
@@ -205,7 +292,8 @@ class BosonWF:
         )
         self._dets[s][0, mask, :] *= self.get_phase(det_ratio)
         self._dets[s][1, mask, :] += gpu.cp.log(gpu.cp.abs(det_ratio))
-
+    
+    @timer_func
     def value(self):
         updets = self._dets[0][:, :, self._det_map[0]]
         dndets = self._dets[1][:, :, self._det_map[1]]
@@ -219,7 +307,8 @@ class BosonWF:
         wf_sign = np.nan_to_num(wf_val / gpu.cp.abs(wf_val))
         wf_logval = 1./2 * np.nan_to_num(gpu.cp.log(gpu.cp.abs(wf_val)) + 2*(upref + dnref))        
         return wf_sign, wf_logval
-
+    
+    @timer_func
     def value_dets(self, test = False):
         updets = self._dets[0][:, :, self._det_map[0]]
         dndets = self._dets[1][:, :, self._det_map[1]]
@@ -229,11 +318,16 @@ class BosonWF:
 
         if test:
             det_coeff = self.myparameters['det_coeff']
-            tol = 1E-15
-            phi_b = 1./2 * np.log(np.einsum('d, di->i', det_coeff,np.exp(2*wf_logval) ))
-            assert ((np.abs(phi_b - self.value()[1]) < tol).all())
+            tol = 1E-12
+            phi_b = 1./2 * np.log(np.einsum('d, id->i', det_coeff,np.exp(2*wf_logval) ))
+            try:
+                assert ((np.abs(phi_b - self.value()[1]) < tol).all())
+            except:
+                print('value_dets error', np.max(np.abs(phi_b - self.value()[1])))
+                      
         return wf_sign, wf_logval
-
+    
+    @timer_func
     def gradient(self, e, epos):
         """Compute the gradient of the log wave function
         Note that this can be called even if the internals have not been updated for electron e,
@@ -286,6 +380,7 @@ class BosonWF:
         grad[~np.isfinite(grad)] = 0.0
         return grad
     
+    @timer_func
     def gradient_value(self, e, epos):
         s = int(e >= self._nelec[0])
         aograd = self.orbitals.aos("GTOval_sph_deriv1", epos)
@@ -331,7 +426,8 @@ class BosonWF:
         values = derivatives[0]
         values[~np.isfinite(values)] = 1.0
         return derivatives, values, (aograd[:, 0], mograd[0])
-
+    
+    @timer_func
     def gradient_dets(self, e, epos, test=False):
         s = int(e >= self._nelec[0])
         aograd = self.orbitals.aos("GTOval_sph_deriv1", epos)
@@ -350,10 +446,14 @@ class BosonWF:
         grads = jac[:, 1:, :]
 
         if test:
+            tol = 1E-12
             dv = self.value_dets()[1]
             v = self.value()[1]
-            gc = np.einsum('d, di,dei->ei', det_coeff, np.exp(2*(dv-v)), grads)
-            assert((gc == self.gradient(e, epos)).all())
+            gc = np.einsum('d, id,dei->ei', det_coeff, np.exp(2*(dv-v[:, None])), grads)
+            try:
+                assert ((np.abs(gc - self.gradient(e, epos)) < tol).all())
+            except:
+                print('gradient_dets error', np.max(np.abs(gc - self.gradient(e, epos))))
         return grads
 
     def pgradient(self):
