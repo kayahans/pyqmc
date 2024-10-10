@@ -21,6 +21,7 @@ def ABOPTIMIZE(
     S=None,
     jastrow_kws = {"ion_cusp":False, 'na':0},
     slater_kws:  list|None = None,
+    det_emax: float|None=None,
     **linemin_kws,
 ):
     """Auxiliary Boson wavefunction Slater Jastrow optimization
@@ -65,6 +66,7 @@ def ABOPTIMIZE(
         jastrow_kws=jastrow_kws,
         slater_kws=slater_kws,
         accumulators=bosonaccumulators,
+        det_emax=det_emax,
     )
     if anchors is None:
         wf, df = linemin.line_minimization(wf, configs, acc, **linemin_kws)
@@ -141,6 +143,7 @@ def ABVMC(
     slater_kws:  list|None = None,
     accumulators: list|None = None,
     seed: int|None=None,
+    det_emax: float|None=None,
     **vmc_kws,
 ):
     """Auxiliary Boson VMC recipe
@@ -167,6 +170,7 @@ def ABVMC(
         slater_kws=slater_kws,
         accumulators=accumulators,
         seed=seed,
+        det_emax=det_emax,
     )
     # bosonmc.abvmc(wf, configs, accumulators=acc, **vmc_kws)
     mc.vmc(wf, configs, accumulators=acc, **vmc_kws)
@@ -273,6 +277,7 @@ def initialize_boson_qmc_objects(
     accumulators=None,
     opt_wf=False,
     seed = None,
+    det_emax = None,
 ):  
     
     target_root=0
@@ -306,11 +311,11 @@ def initialize_boson_qmc_objects(
     # Use when testing HF
     if load_parameters is False:
         wf, to_opt = bosonwftools.generate_boson_wf(
-            mol, mf, mc=mc, jastrow = None, jastrow_kws=jastrow_kws, slater_kws=slater_kws
+            mol, mf, mc=mc, jastrow = None, jastrow_kws=jastrow_kws, slater_kws=slater_kws, det_emax=det_emax
         )
     else:
         wf, to_opt = bosonwftools.generate_boson_wf(
-            mol, mf, mc=mc, jastrow_kws=jastrow_kws, slater_kws=slater_kws
+            mol, mf, mc=mc, jastrow_kws=jastrow_kws, slater_kws=slater_kws, det_emax=det_emax
         )
 
     if load_parameters is not None:

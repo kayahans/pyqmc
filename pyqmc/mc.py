@@ -24,6 +24,8 @@ import h5py
 import logging
 import copy
 
+from bosonslater import timer_func
+
 def fixed_initial_guess(mol, nconfig, r=1.0):
 
 
@@ -157,7 +159,6 @@ def vmc_file(hdf_file, data, attr, configs):
             hdftools.append_hdf(hdf, data)
             configs.to_hdf(hdf)
 
-
 def vmc_worker(wf, configs, tstep, nsteps, accumulators):
     """
     Run VMC for nsteps.
@@ -167,13 +168,12 @@ def vmc_worker(wf, configs, tstep, nsteps, accumulators):
     nconf, nelec, _ = configs.configs.shape
     block_avg = {}
     # wf.recompute(configs) 
+    nsteps = 1
     for _ in range(nsteps):
         acc = 0.0
         for e in range(nelec):
             # Propose move
-            # import pdb
-            # pdb.set_trace()
-            sign_old, val_old = wf.recompute(configs)
+            _, val_old = wf.recompute(configs)
             wf_new = copy.deepcopy(wf)
 
             g, _, _ = wf.gradient_value(e, configs.electron(e))
@@ -193,11 +193,9 @@ def vmc_worker(wf, configs, tstep, nsteps, accumulators):
             # ratio = np.abs(new_val) ** 2 * t_prob
             newcoord = copy.deepcopy(configs)
             newcoord.configs[:,e,:] = newcoorde.configs
-            sign_new, val_new = wf_new.recompute(newcoord)
+            _, val_new = wf_new.recompute(newcoord)
             ratio = np.exp(2*(val_new-val_old))* t_prob
-            # pdb.set_trace()
             accept = ratio > np.random.rand(nconf)
-            # accept = np.random.rand(nconf) > 0.5
             # Update wave function
             configs.move(e, newcoorde, accept)
             wf.updateinternals(e, newcoorde, configs, mask=accept, saved_values=saved)

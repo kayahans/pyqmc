@@ -11,6 +11,8 @@ from boson_stochastic_reconfiguration import BosonStochasticReconfiguration
 from stochastic_reconfiguration import StochasticReconfiguration
 from wftools import generate_wf
 
+from bosonslater import timer_func
+
 PGradTransform = BosonStochasticReconfiguration
 # PGradTransform = StochasticReconfiguration
 
@@ -35,7 +37,8 @@ class ABQMCEnergyAccumulator:
             self.coulomb = ewald.Ewald(self.mol, **kwargs)
         else:
             self.coulomb = energy.OpenCoulomb(self.mol, **kwargs)
-
+    
+    @timer_func
     def __call__(self, configs, wf):
         ee, ei, ii = self.coulomb.energy(configs)
         try:
@@ -90,7 +93,8 @@ class ABQMCEnergyAccumulator:
 
 class ABVMCMatrixAccumulator:
     """Returns local energy of each configuration in a dictionary."""
-
+    
+    @timer_func
     def __call__(self, configs, wf):
         
         wave_functions = wf.wf_factors
@@ -107,6 +111,8 @@ class ABVMCMatrixAccumulator:
         
         phase, log_vals = boson_wf.value_dets()
         psi = phase * np.nan_to_num(np.exp(log_vals))
+        # import pdb
+        # pdb.set_trace()
         ovlp_ij = np.einsum("cl,cn, c->cln", psi.conj(), psi, (1./phib_val**2))
         
         # Delta 

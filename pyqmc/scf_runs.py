@@ -44,20 +44,24 @@ def run_lda_carbon(scf_checkfile="c.hdf5"):
     opt_checkfile = scf_checkfile.split('.hdf5')[0]+'-sj.hdf5'
     return scf_checkfile, opt_checkfile, mf
 
-def run_lda_he(scf_checkfile="he.hdf5"):
+def run_lda_he(scf_checkfile="he.hdf5", dryrun=False):
+    
     print("He atom neutral LDA spin=0")
-    # mol = gto.M(atom="He 0. 0. 0.", basis="ccECP_cc-pVDZ", ecp="ccecp", unit='bohr')
-    mol = gto.M(atom="He 0. 0. 0.", basis="ccpvqz", unit='bohr')    
-    print("HF")
-    mf = scf.UHF(mol)
-    mf.kernel()
-    print("LDA")    
-    mf = dft.UKS(mol)
-    # mf.verbose=6
-    mf.chkfile = scf_checkfile
-    dm = mf.init_guess_by_atom()
-    mf.kernel(dm, xc='LDA')
     opt_checkfile = scf_checkfile.split('.hdf5')[0]+'-sj.hdf5'
+    if not dryrun:
+        # mol = gto.M(atom="He 0. 0. 0.", basis="ccECP_cc-pVDZ", ecp="ccecp", unit='bohr')
+        mol = gto.M(atom="He 0. 0. 0.", basis="ccpvqz", unit='bohr')    
+        print("HF")
+        mf = scf.UHF(mol)
+        mf.kernel()
+        print("LDA")    
+        mf = dft.UKS(mol)
+        # mf.verbose=6
+        mf.chkfile = scf_checkfile
+        dm = mf.init_guess_by_atom()
+        mf.kernel(dm, xc='LDA')
+    else:
+        mf = None
     return scf_checkfile, opt_checkfile, mf
 
 def run_lda_li(scf_checkfile="li.hdf5"):
@@ -90,47 +94,81 @@ def run_lda_be(scf_checkfile="be.hdf5"):
     opt_checkfile = scf_checkfile.split('.hdf5')[0]+'-sj.hdf5'
     return scf_checkfile, opt_checkfile, mf
 
-def run_lda_b(scf_checkfile):
+def run_lda_b(scf_checkfile="b.hdf5"):
     print("B atom neutral LDA spin=1")
-    mol = gto.M(atom="B 0. 0. 0.", spin=1,basis=f'ccpvdz', unit='bohr')
+    mol = gto.M(atom="B 0. 0. 0.", spin=1, basis='ccpvqz', unit='bohr')
     print("HF")
     mf = scf.UHF(mol)
     mf.kernel()
-    print("LDA")        
+    print("LDA")    
     mf = dft.UKS(mol)
     # mf.verbose=6
     mf.chkfile = scf_checkfile
     dm = mf.init_guess_by_atom()
     mf.kernel(dm, xc='LDA')
-    return mf
+    opt_checkfile = scf_checkfile.split('.hdf5')[0]+'-sj.hdf5'
+    return scf_checkfile, opt_checkfile, mf
 
-def run_lda_c(scf_checkfile):
+def run_lda_c(scf_checkfile="c.hdf5"):
     print("C atom neutral LDA spin=2")
-    mol = gto.M(atom="C 0. 0. 0.", spin=2,basis=f'ccpvdz', unit='bohr')
+    mol = gto.M(atom="C 0. 0. 0.", spin=2, basis='ccpvqz', unit='bohr')
     print("HF")
     mf = scf.UHF(mol)
     mf.kernel()
-    print("LDA")        
+    print("LDA")    
     mf = dft.UKS(mol)
     # mf.verbose=6
     mf.chkfile = scf_checkfile
     dm = mf.init_guess_by_atom()
     mf.kernel(dm, xc='LDA')
-    return mf
+    opt_checkfile = scf_checkfile.split('.hdf5')[0]+'-sj.hdf5'
+    return scf_checkfile, opt_checkfile, mf
 
-def run_lda_n(scf_checkfile):
+
+def run_lda_n(scf_checkfile="n.hdf5"):
     print("N atom neutral LDA spin=3")
-    mol = gto.M(atom="N 0. 0. 0.", spin=3, basis=f'ccpvdz', unit='bohr')
+    mol = gto.M(atom="N 0. 0. 0.", spin=3, basis='ccpvqz', unit='bohr')
     print("HF")
     mf = scf.UHF(mol)
     mf.kernel()
-    print("LDA")        
+    print("LDA")    
     mf = dft.UKS(mol)
     # mf.verbose=6
     mf.chkfile = scf_checkfile
     dm = mf.init_guess_by_atom()
     mf.kernel(dm, xc='LDA')
-    return mf
+    opt_checkfile = scf_checkfile.split('.hdf5')[0]+'-sj.hdf5'
+    return scf_checkfile, opt_checkfile, mf
+
+def run_lda_o(scf_checkfile="o.hdf5"):
+    print("O atom neutral LDA spin=2")
+    mol = gto.M(atom="O 0. 0. 0.", spin=2, basis='ccpvqz', unit='bohr')
+    print("HF")
+    mf = scf.UHF(mol)
+    mf.kernel()
+    print("LDA")    
+    mf = dft.UKS(mol)
+    # mf.verbose=6
+    mf.chkfile = scf_checkfile
+    dm = mf.init_guess_by_atom()
+    mf.kernel(dm, xc='LDA')
+    opt_checkfile = scf_checkfile.split('.hdf5')[0]+'-sj.hdf5'
+    return scf_checkfile, opt_checkfile, mf
+
+def run_lda_f(scf_checkfile="f.hdf5"):
+    print("F atom neutral LDA spin=1")
+    mol = gto.M(atom="F 0. 0. 0.", spin=1, basis='ccpvqz', unit='bohr')
+    print("HF")
+    mf = scf.UHF(mol)
+    mf.kernel()
+    print("LDA")    
+    mf = dft.UKS(mol)
+    # mf.verbose=6
+    mf.chkfile = scf_checkfile
+    dm = mf.init_guess_by_atom()
+    mf.kernel(dm, xc='LDA')
+    opt_checkfile = scf_checkfile.split('.hdf5')[0]+'-sj.hdf5'
+    return scf_checkfile, opt_checkfile, mf
     
 def run_lda_h2(scf_checkfile="h2.hdf5"):
     mol = gto.M(atom="H 0. 0. 0.; H 0. 0. 2", spin = 0, basis=f'ccecpccpvqz', unit='bohr')
@@ -164,10 +202,9 @@ def run_casscf(scf_checkfile, ci_checkfile):
         f["mcscf/ci"] = mc.ci
     return mc
 
-def run_casci(scf_chkfile, ncas = None, nroots=None, nelecas = None):
+def run_casci(scf_chkfile, ncas = None, nroots=None, nelecas = None, dryrun= False):
     rootname = scf_chkfile.split('.hdf5')[0]
     ci_chkfile = rootname+'-ci.hdf5'
-    
     cell, mf = pyq.recover_pyscf(scf_chkfile, cancel_outputs=False)
     # ncas: orbitals
     # nelecas: electrons
@@ -179,28 +216,31 @@ def run_casci(scf_chkfile, ncas = None, nroots=None, nelecas = None):
         nelecas_str=str(nelecas)
     opt_chkfile = rootname+'_opt_cas_'+str(ncas)+'_nelecas_'+str(nelecas_str)+'.hdf5'
     vmc_chkfile = rootname+'_vmc_cas_'+str(ncas)+'_nelecas_'+str(nelecas_str)+'.hdf5'
-    print('CASCI nelecas up/down', nelecas)
-    mc = mcscf.CASCI(mf, ncas, nelecas)
-    if nroots is not None:
-        mc.fcisolver.nroots = nroots
-    for fname in [ci_chkfile]:
-        if os.path.isfile(fname):
-            os.remove(fname)   
-    mc.kernel()
-    # print(mc.__dict__.keys())
-    with h5py.File(ci_chkfile, "a") as f:
-        f.create_group("ci")
-        f["ci/ncas"] = mc.ncas
-        f["ci/ncore"] = mc.ncore
-        f["ci/nelecas"] = list(mc.nelecas)
-        f["ci/fci"] = mc.ci
-        f["ci/ci"] = mc.ci
-        f["ci/mo_coeff"] = mc.mo_coeff
-        f["ci/mc_mo_energy"] = mc.mo_energy
-        f["ci/mf_mo_energy"] = mf.mo_energy
-        f["ci/mo_occ"] = mf.mo_occ
-        print("Available output from CASCI:", f["ci"].keys())
-    return ci_chkfile, mc, opt_chkfile, vmc_chkfile
+    if dryrun: 
+        return ci_chkfile, None, opt_chkfile, vmc_chkfile            
+    else:
+        print('CASCI nelecas up/down', nelecas)
+        mc = mcscf.CASCI(mf, ncas, nelecas)
+        if nroots is not None:
+            mc.fcisolver.nroots = nroots
+        for fname in [ci_chkfile]:
+            if os.path.isfile(fname):
+                os.remove(fname)   
+        mc.kernel()
+        # print(mc.__dict__.keys())
+        with h5py.File(ci_chkfile, "a") as f:
+            f.create_group("ci")
+            f["ci/ncas"] = mc.ncas
+            f["ci/ncore"] = mc.ncore
+            f["ci/nelecas"] = list(mc.nelecas)
+            f["ci/fci"] = mc.ci
+            f["ci/ci"] = mc.ci
+            f["ci/mo_coeff"] = mc.mo_coeff
+            f["ci/mc_mo_energy"] = mc.mo_energy
+            f["ci/mf_mo_energy"] = mf.mo_energy
+            f["ci/mo_occ"] = mf.mo_occ
+            print("Available output from CASCI:", f["ci"].keys())
+        return ci_chkfile, mc, opt_chkfile, vmc_chkfile
 
 def make_wf_object(scf_checkfile, ci_checkfile):
     mol, mf, mc = pyq.recover_pyscf(scf_checkfile, ci_checkfile=ci_checkfile)
