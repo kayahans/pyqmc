@@ -14,7 +14,7 @@
 
 import numpy as np
 import pyqmc.gpu as gpu
-import pyqmc.sample_many as sm
+import sample_many as sm
 import scipy
 import h5py
 import os
@@ -175,13 +175,17 @@ def line_minimization(
     attr = dict(max_iterations=max_iterations, npts=npts, steprange=steprange)
     # import pdb
     # pdb.set_trace()
+    print('Pgrad acc type: ', type(pgrad_acc))
+    print('Pgrad enacc type: ', type(pgrad_acc.enacc))
+    print('Pgrad transform type: ', type(pgrad_acc.transform))
     x0 = pgrad_acc.transform.serialize_parameters(wf.parameters)
-
+    
     df = []
     # Gradient descent cycles
     for it in range(iteration_offset, max_iterations):
 
         set_wf_params(wf, x0, pgrad_acc)
+        print(it, 'params', x0)
         # df_vmc, coords = pyqmc.mc.vmc(
         df_vmc, coords = mc.vmc(                
             wf,
@@ -231,6 +235,7 @@ def line_minimization(
         step_data["tau"] = steps
         step_data["yfit"] = en
         step_data["est_min"] = est_min
+        step_data["ke"] = df_vmc['pgradke']
 
         if verbose:
             print("descent en", data['total'], data['total_err'])
@@ -266,6 +271,8 @@ def correlated_compute(
     for p, wf_ in zip(params, wfs):
         set_wf_params(wf_, p, pgrad_acc)
     # sample combined distribution
+    # import pdb
+    # pdb.set_trace()
     _, _, configs = sm.sample_overlap(
         wfs, configs, None, client=client, npartitions=npartitions, **kws
     )

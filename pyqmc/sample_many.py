@@ -19,7 +19,7 @@ import pyqmc.linemin as linemin
 import pyqmc.gpu as gpu
 import os
 import h5py
-
+import copy
 
 def run_vmc_many(wfs, configs, energy, nreps=1, **kwargs):
     # data gets saved at the end of each rep
@@ -101,8 +101,10 @@ def sample_overlap_worker(wfs, configs, tstep, nsteps, nblocks, energy):
 
 
 def sample_overlap_block(wfs, configs, tstep, nsteps, energy):
-    for wf in wfs:
-        wf.recompute(configs)
+    # Kayahan modified start
+    # # for wf in wfs:
+    #     wf.recompute(configs)
+    # Kayahan modified end
     weighted_block = {}
     unweighted_block = {"acceptance": 0.0}
     nconf, nelec = configs.configs.shape[:2]
@@ -110,6 +112,17 @@ def sample_overlap_block(wfs, configs, tstep, nsteps, energy):
     for n in range(nsteps):
         for e in range(nelec):  # a sweep
             # Propose move
+            #Kayahan added start
+            vals_old = []
+            wf_copies = []
+            for wf in wfs:
+                _, val_old = wf.recompute(configs)
+                vals_old.append(val_old)
+                wf_new = copy.deepcopy(wf)
+                wf_copies.append(wf_new)
+            vals_old = np.array(vals_old)
+            #Kayahan added end
+
             grads = [np.real(wf.gradient(e, configs.electron(e)).T) for wf in wfs]
             grad = mc.limdrift(np.mean(grads, axis=0))
             gauss = np.random.normal(scale=np.sqrt(tstep), size=(nconf, 3))
@@ -127,7 +140,21 @@ def sample_overlap_block(wfs, configs, tstep, nsteps, energy):
 
             # Acceptance
             t_prob = np.exp(1 / (2 * tstep) * (forward - backward))
-            wf_ratios = np.abs(vals) ** 2
+            #Kayahan added start
+            newcoord = copy.deepcopy(configs)
+            newcoord.configs[:,e,:] = newcoorde.configs
+            vals_new = []
+            for wf_new in wf_copies:
+                _, val_new = wf_new.recompute(newcoord)
+                vals_new.append(val_new)
+            vals_new = np.array(vals_new)
+            wf_ratios = np.exp(2*(val_new-val_old))
+            # Kayahan added end 
+            
+            # Kayahan modified
+            # wf_ratios = np.abs(vals) ** 2
+            # Kayahan modified end 
+
             log_values = np.real(np.array([wf.value()[1] for wf in wfs]))
             weights = np.exp(2 * (log_values - log_values[0]))
 

@@ -85,14 +85,20 @@ class BosonStochasticReconfiguration:
         node_cut, f = nodal_regularization(den["grad2"])
 
         dp_regularized = dp * f[:, np.newaxis]
-
         d = {k: np.average(it, weights=weights, axis=0) for k, it in den.items()}
         d["dpH"] = np.einsum("i,ij->j", energy, weights[:, np.newaxis] * dp_regularized)
         d["dppsi"] = np.average(dp_regularized, weights=weights, axis=0)
         d["dpidpj"] = np.einsum(
             "ij,ik->jk", dp, weights[:, np.newaxis] * dp_regularized, optimize=True
         )
+        # import pdb
+        # pdb.set_trace()
 
+        # print('dp', np.real(dp),
+        #       'dpH', np.real(d['dpH']), 
+        #       '\ndppsi', np.real(d['dppsi']), 
+        #       '\ndpidj', np.real(d['dpidpj'])
+        #       )
         return d
 
     def keys(self):

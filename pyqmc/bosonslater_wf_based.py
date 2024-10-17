@@ -138,7 +138,6 @@ class BosonWF:
         ) = pyscftools.orbital_evaluator_from_pyscf(
             mol, mf, mc, twist=twist, determinants=determinants, tol=self.tol, eval_gto_precision=self.eval_gto_precision
         )
-
         # Use constant weight 
         self.myparameters["det_coeff"] = np.ones(self.num_det)/self.num_det
         # self.myparameters["det_coeff"] = det_coeff

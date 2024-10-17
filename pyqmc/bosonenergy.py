@@ -38,14 +38,15 @@ def boson_kinetic(configs, wf):
     Returns the jastrow laplacian (lap_j) and the bosonic drift (drift_b) terms 
     in Eq. 21 in doi: 10.1063/5.0155513. 
     '''
-    nconf, nelec, ndim = configs.configs.shape
-    ke = np.zeros(nconf)
+    nconf, nelec, _ = configs.configs.shape
+    
     has_jastrow = True
     try:
         wave_functions = wf.wf_factors
     except:
         has_jastrow = False
         wave_functions = [wf]
+    
     jastrow_wf = None
     boson_wf = None
     from bosonslater import BosonWF
@@ -62,24 +63,62 @@ def boson_kinetic(configs, wf):
     if has_jastrow:
         # If no jastrows (HF), then these terms are zero
         for e in range(nelec):
-            _, val_je = jastrow_wf.value()            
             grad_je, lap_je = jastrow_wf.gradient_laplacian(e, configs.electron(e))
-            # Convert to exp form of jastrow gradients from the jastrow log wavefunction
-            # If \Psi_J = exp(J)
-            # \frac{\nabla{e^{U(r)}}}{e^{U(r)}} = {\nabla^2}U(r) + {\nabla}U(r) \cdot {\nabla}U(r)}
-            # If \Psi_J = exp(-J)
-            # \frac{\nabla{e^{-U(r)}}}{e^{-U(r)}} = - [{\nabla^2}U(r) - {\nabla}U(r) \cdot {\nabla}U(r)}]
-            # import pdb
-            # pdb.set_trace()
-            lap_j += -0.5 * (lap_je.real + np.sum((grad_je.real)**2, axis=0))
-            # lap_j += -0.5 * lap_je.real
-            # lap_j += 0.5  * (lap_je.real + np.einsum("di,di->i",grad_j,np.conjugate(grad_j)))
+            lap_j += -0.5 * lap_je.real
             grad_b = boson_wf.gradient(e, configs.electron(e))
+            drift_b += np.einsum("di,di->i", grad_je, grad_b)
             grad = wf.gradient(e, configs.electron(e))
             grad2 += np.sum(np.abs(grad) ** 2, axis=0)
-            drift_b += np.einsum("di,di->i", -grad_je, grad_b)
         # ke = lap_j + drift_b
     return lap_j, drift_b, grad2
+
+# def boson_kinetic(configs, wf):
+#     '''
+#     Returns the jastrow laplacian (lap_j) and the bosonic drift (drift_b) terms 
+#     in Eq. 21 in doi: 10.1063/5.0155513. 
+#     '''
+#     nconf, nelec, ndim = configs.configs.shape
+#     ke = np.zeros(nconf)
+#     has_jastrow = True
+#     try:
+#         wave_functions = wf.wf_factors
+#     except:
+#         has_jastrow = False
+#         wave_functions = [wf]
+#     jastrow_wf = None
+#     boson_wf = None
+#     from bosonslater import BosonWF
+#     from jastrowspin import JastrowSpin
+#     for wave in wave_functions:
+#         if isinstance(wave, BosonWF):
+#             boson_wf = wave
+#         if isinstance(wave, JastrowSpin):
+#             jastrow_wf = wave
+    
+#     lap_j = np.zeros(nconf)
+#     drift_b = np.zeros(nconf)
+#     grad2 = np.zeros(nconf)
+#     if has_jastrow:
+#         # If no jastrows (HF), then these terms are zero
+#         for e in range(nelec):
+#             _, val_je = jastrow_wf.value()            
+#             grad_je, lap_je = jastrow_wf.gradient_laplacian(e, configs.electron(e))
+#             # Convert to exp form of jastrow gradients from the jastrow log wavefunction
+#             # If \Psi_J = exp(J)
+#             # \frac{\nabla{e^{U(r)}}}{e^{U(r)}} = {\nabla^2}U(r) + {\nabla}U(r) \cdot {\nabla}U(r)}
+#             # If \Psi_J = exp(-J)
+#             # \frac{\nabla{e^{-U(r)}}}{e^{-U(r)}} = - [{\nabla^2}U(r) - {\nabla}U(r) \cdot {\nabla}U(r)}]
+#             # import pdb
+#             # pdb.set_trace()
+#             lap_j += -0.5 * (lap_je.real + np.sum((grad_je.real)**2, axis=0))
+#             # lap_j += -0.5 * lap_je.real
+#             # lap_j += 0.5  * (lap_je.real + np.einsum("di,di->i",grad_j,np.conjugate(grad_j)))
+#             grad_b = boson_wf.gradient(e, configs.electron(e))
+#             drift_b += np.einsum("di,di->i", -grad_je, grad_b)
+#             grad = wf.gradient(e, configs.electron(e))
+#             grad2 += np.sum(np.abs(grad) ** 2, axis=0)
+#         # ke = lap_j + drift_b
+#     return lap_j, drift_b, grad2
 
 # def boson_drift(configs, wf):
 #     # TODO: Check where this is used

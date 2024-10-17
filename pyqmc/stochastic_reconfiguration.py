@@ -68,6 +68,12 @@ class StochasticReconfiguration:
         d["dppsi"] = dp_regularized
         d["dpidpj"] = np.einsum("ij,ik->ijk", dp, dp_regularized)
 
+        print('dp', np.real(dp),
+            #   'dpH', np.real(d['dpH']), 
+            #   '\ndppsi', np.real(d['dppsi']), 
+            #   '\ndpidj', np.real(d['dpidpj'])
+              )
+
         return d
 
     def avg(self, configs, wf, weights=None):

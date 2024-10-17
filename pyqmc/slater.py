@@ -399,6 +399,8 @@ class Slater:
         ao = gpu.cp.concatenate(
             [ao[:, 0:4, ...], ao[:, [4, 7, 9], ...].sum(axis=1, keepdims=True)], axis=1
         )
+        import pdb
+        pdb.set_trace()
         mo = self.orbitals.mos(ao, s)
         mo_vals = mo[:, :, self._det_occup[s]]
         ratios = self._testrowderiv(e, mo_vals)

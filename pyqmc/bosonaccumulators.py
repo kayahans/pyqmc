@@ -49,9 +49,13 @@ class ABQMCEnergyAccumulator:
         if nwf == 1:
             nup_dn = wf._nelec
         else:
+            nup_dn = None
             for wfi in wf.wf_factors:
-                if isinstance(wfi, bosonslater.BosonWF):
-                    nup_dn = wfi._nelec
+                if nup_dn is None:
+                    try:
+                        nup_dn = wfi._nelec
+                    except:
+                        pass
         vh,vxc,ecorr = bosonenergy.dft_energy(self.mol, self.dm, self.mo_energy, self.mo_occ, configs, nup_dn)
         ke1, ke2, grad2 = bosonenergy.boson_kinetic(configs, wf)
         # ke1 *= 0
@@ -111,10 +115,8 @@ class ABVMCMatrixAccumulator:
         
         phase, log_vals = boson_wf.value_dets()
         psi = phase * np.nan_to_num(np.exp(log_vals))
-        # import pdb
-        # pdb.set_trace()
         ovlp_ij = np.einsum("cl,cn, c->cln", psi.conj(), psi, (1./phib_val**2))
-        
+
         # Delta 
         # Eq. 34 
         # wfn_inner is below
@@ -135,7 +137,7 @@ class ABVMCMatrixAccumulator:
             grad_j = jastrow_wf.gradient(e, configs.electron(e))
             grad += np.einsum("nec,ec->nc", grad_phi_n - grad_b, grad_j)
         wfn_inner = np.einsum("nc,nc->nc", nb_ratio, grad)
-
+        
         delta = np.einsum("cl, c, nc -> cln", psi, 1./phib_val, wfn_inner)
         results = {'delta':delta, 'ovlp_ij': ovlp_ij}
         return results 

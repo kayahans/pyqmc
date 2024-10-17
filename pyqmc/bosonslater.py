@@ -192,6 +192,26 @@ class BosonWF:
             unused_det_map = unused_temp_det_map.reshape(2, num_init_dets-num_used_dets)
             print('Min eigenvalue', np.round(np.min(total_energies), 3))
             print('Max eigenvalue', np.round(np.max(total_energies), 3))
+        elif isinstance(emax, int):
+            determinants_filtered = True
+            percentile = emax
+            print("Determinants being filtered with percentage ", percentile)
+            up_energies = np.sum(mo_energies[0][self._det_occup[0]+ncore[0]], axis=1)
+            dn_energies = np.sum(mo_energies[1][self._det_occup[1]+ncore[1]], axis=1)
+            total_energies = up_energies[self._det_map[0]] + dn_energies[self._det_map[1]]
+            emax = np.percentile(total_energies, percentile)
+
+            mask = total_energies < emax
+            temp_det_map = self._det_map[np.row_stack((mask, mask))]
+            num_init_dets = len(self._det_map[0])
+            unused_temp_det_map = self._det_map[np.row_stack((~mask, ~mask))]
+            det_map_shape = np.array(temp_det_map.shape)
+            num_used_dets = int(det_map_shape[0]/2)
+
+            det_map = temp_det_map.reshape(2, num_used_dets)
+            unused_det_map = unused_temp_det_map.reshape(2, num_init_dets-num_used_dets)
+            print('Min eigenvalue', np.round(np.min(total_energies), 3))
+            print('Max eigenvalue', np.round(np.max(total_energies), 3))
         elif emax == 'singles' or emax == 'doubles':
             determinants_filtered = True
             up_ground = self._det_occup[0][0]

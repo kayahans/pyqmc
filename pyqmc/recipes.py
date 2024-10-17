@@ -16,7 +16,7 @@ import pyqmc.obdm as obdm
 import pyqmc.wftools as wftools
 import pyqmc.pyscftools as pyscftools
 import pyqmc.supercell as supercell
-import pyqmc.linemin as linemin
+import linemin as linemin
 import pyqmc.optimize_ortho as optimize_ortho
 import pyqmc.dmc as dmc
 import pyqmc.mc
