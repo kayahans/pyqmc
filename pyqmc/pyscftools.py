@@ -19,7 +19,7 @@ import pyscf.fci
 import h5py
 import json
 import numpy as np
-import pyqmc.determinant_tools as determinant_tools
+import determinant_tools as determinant_tools
 import pyqmc.orbitals as orbitals
 import pyqmc.supercell as supercell
 import pyqmc.twists as twists
