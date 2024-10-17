@@ -38,7 +38,7 @@ def fixed_initial_guess(mol, nconfig, r=1.0):
     :rtype: ndarray
 
     """
-    from pyqmc.coord import OpenConfigs, PeriodicConfigs
+    from coord import OpenConfigs, PeriodicConfigs
 
     epos = np.zeros((nconfig, np.sum(mol.nelec), 3))
     wts = mol.atom_charges()
@@ -98,7 +98,7 @@ def initial_guess(mol, nconfig, r=1.0):
     :rtype: ndarray
 
     """
-    from pyqmc.coord import OpenConfigs, PeriodicConfigs
+    from coord import OpenConfigs, PeriodicConfigs
 
     epos = np.zeros((nconfig, np.sum(mol.nelec), 3))
     wts = mol.atom_charges()

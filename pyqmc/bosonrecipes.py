@@ -229,7 +229,7 @@ def initial_guess(mol, nconfig, r=1.0, seed = None):
     :rtype: ndarray
 
     """
-    from pyqmc.coord import OpenConfigs, PeriodicConfigs
+    from coord import OpenConfigs, PeriodicConfigs
     if seed is not None:
         rng = np.random.RandomState(seed)
     else:

@@ -17,7 +17,7 @@ import pyqmc.gpu as gpu
 import pyqmc.energy as energy
 import pyqmc.ewald as ewald
 import pyqmc.eval_ecp as eval_ecp
-from pyqmc.stochastic_reconfiguration import StochasticReconfiguration
+from stochastic_reconfiguration import StochasticReconfiguration
 import copy
 
 
