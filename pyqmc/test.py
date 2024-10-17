@@ -19,13 +19,13 @@ if __name__=="__main__":
     # # 1. CI calculation
     from scf_runs import run_lda_li, run_casci, run_lda_h2, run_lda_he, run_lda_c, run_lda_be, run_lda_f, run_lda_b
     # scf_checkfile, _, mf_lda = run_lda_h2()
-    # scf_checkfile, _, mf_lda = run_lda_he()
+    scf_checkfile, _, mf_lda = run_lda_he()
     # scf_checkfile, _, mf_lda = run_lda_li()
     # scf_checkfile, _, mf_lda = run_lda_be()
-    scf_checkfile, _, mf_lda = run_lda_b()
+    # scf_checkfile, _, mf_lda = run_lda_b()
     # scf_checkfile, _, mf_lda = run_lda_f()
 
-    ci_checkfile, mc, opt_checkfile, abvmc_checkfile = run_casci(scf_checkfile, nroots=2, ncas = 9, nelecas=(3, 2))
+    ci_checkfile, mc, opt_checkfile, abvmc_checkfile = run_casci(scf_checkfile, nroots=2, ncas = 2, nelecas=(1, 1))
     
     print(opt_checkfile, abvmc_checkfile)
     
@@ -41,7 +41,7 @@ if __name__=="__main__":
         num_int = 1
         nconfig = 1000
         
-        serial = False
+        serial = True
         if serial:
             bosonrecipes.ABOPTIMIZE(scf_checkfile, 
                                     opt_checkfile, 
