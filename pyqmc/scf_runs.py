@@ -18,131 +18,95 @@ from pyscf.scf.chkfile import dump_scf
 print(pyq.__file__)
 print(pyscf.__file__)
 
-# H2 molecule
-def run_scf(scf_checkfile):
-    mol = gto.M(atom="H 0. 0. 0.;H 0. 0. 1.;", basis=f'ccecpccpvdz', unit='bohr')
-    mf = scf.UHF(mol)
-    mf.chkfile = scf_checkfile
-    dm = mf.init_guess_by_atom()
-    mf.kernel(dm)
-    dump_scf(mf.mol, 'scf.hdf5', mf.energy_tot(), mf.mo_energy, mf.mo_coeff, mf.mo_occ)
-    return mf
-
-def run_lda_carbon(scf_checkfile="c.hdf5"):
-    print("C atom neutral LDA spin=2")
-    # mol = gto.M(atom="He 0. 0. 0.", basis="ccECP_cc-pVDZ", ecp="ccecp", unit='bohr')
-    mol = gto.M(atom="C 0. 0. 0.", basis="ccpvdz", unit='bohr', spin = 2)    
-    print("HF")
-    mf = scf.UHF(mol)
-    mf.kernel()
-    print("LDA")    
-    mf = dft.UKS(mol)
-    # mf.verbose=6
-    mf.chkfile = scf_checkfile
-    dm = mf.init_guess_by_atom()
-    mf.kernel(dm, xc='LDA')
-    opt_checkfile = scf_checkfile.split('.hdf5')[0]+'-sj.hdf5'
-    return scf_checkfile, opt_checkfile, mf
-
-def run_lda_he(scf_checkfile="he.hdf5", dryrun=False):
+def run_lda_he(scf_checkfile="he.hdf5"):
     
     print("He atom neutral LDA spin=0")
+    # mol = gto.M(atom="He 0. 0. 0.", basis="ccECP_cc-pVDZ", ecp="ccecp", unit='bohr')
+    mol = gto.M(atom="He 0. 0. 0.", basis="aug-ccpvqz", unit='bohr')    
+    # print("HF")
+    # mf = scf.UHF(mol)
+    # mf.kernel()
+    print("LDA")    
+    mf = dft.UKS(mol)
+    mf.chkfile = scf_checkfile
+    # dm = mf.init_guess_by_atom()
+    # mf.kernel(dm, xc='LDA')
+    mf.xc = 'LDA'
+    mf.kernel()
     opt_checkfile = scf_checkfile.split('.hdf5')[0]+'-sj.hdf5'
-    if not dryrun:
-        # mol = gto.M(atom="He 0. 0. 0.", basis="ccECP_cc-pVDZ", ecp="ccecp", unit='bohr')
-        mol = gto.M(atom="He 0. 0. 0.", basis="ccpvqz", unit='bohr')    
-        print("HF")
-        mf = scf.UHF(mol)
-        mf.kernel()
-        print("LDA")    
-        mf = dft.UKS(mol)
-        # mf.verbose=6
-        mf.chkfile = scf_checkfile
-        dm = mf.init_guess_by_atom()
-        mf.kernel(dm, xc='LDA')
-    else:
-        mf = None
     return scf_checkfile, opt_checkfile, mf
 
 def run_lda_li(scf_checkfile="li.hdf5"):
-    print("Li atom neutral LDA spin=1")
-    mol = gto.M(atom="Li 0. 0. 0.", spin = 1, basis="ccpvqz", unit='bohr')    
-    print("HF")
-    mf = scf.UHF(mol)
-    mf.kernel()
+    print("Li atom neutral LDA spin=1 aug-ccpvqz")
+    mol = gto.M(atom="Li 0. 0. 0.", spin = 1, basis="aug-ccpvqz", unit='bohr')    
+    # print("HF")
+    # mf = scf.UHF(mol)
+    # mf.kernel()
     print("LDA")    
     mf = dft.UKS(mol)
-    # mf.verbose=6
-    mf.chkfile = scf_checkfile
-    dm = mf.init_guess_by_atom()
-    mf.kernel(dm, xc='LDA')
+    mf.xc = 'LDA'
+    mf.kernel()
+
     opt_checkfile = scf_checkfile.split('.hdf5')[0]+'-sj.hdf5'
     return scf_checkfile, opt_checkfile, mf
 
 def run_lda_be(scf_checkfile="be.hdf5"):
-    print("Be atom neutral LDA spin=0")
-    mol = gto.M(atom="Be 0. 0. 0.", spin=0, basis='ccpvqz', unit='bohr')
-    print("HF")
-    mf = scf.UHF(mol)
-    mf.kernel()
+    print("Be atom neutral LDA spin=0 aug-ccpvqz")
+    mol = gto.M(atom="Be 0. 0. 0.", spin=0, basis='aug-ccpvqz', unit='bohr')
+    # print("HF")
+    # mf = scf.UHF(mol)
+    # mf.kernel()
     print("LDA")    
     mf = dft.UKS(mol)
-    # mf.verbose=6
-    mf.chkfile = scf_checkfile
-    dm = mf.init_guess_by_atom()
-    mf.kernel(dm, xc='LDA')
+    mf.xc = 'LDA'
+    mf.kernel()
+
     opt_checkfile = scf_checkfile.split('.hdf5')[0]+'-sj.hdf5'
     return scf_checkfile, opt_checkfile, mf
 
 def run_lda_b(scf_checkfile="b.hdf5"):
-    print("B atom neutral LDA spin=1")
-    mol = gto.M(atom="B 0. 0. 0.", spin=1, basis='ccpvqz', unit='bohr')
-    print("HF")
-    mf = scf.UHF(mol)
-    mf.kernel()
+    print("B atom neutral LDA spin=1 aug-ccpvqz")
+    mol = gto.M(atom="B 0. 0. 0.", spin=1, basis='aug-ccpvqz', unit='bohr')
+    # print("HF")
+    # mf = scf.UHF(mol)
+    # mf.kernel()
     print("LDA")    
     mf = dft.UKS(mol)
-    # mf.verbose=6
-    mf.chkfile = scf_checkfile
-    dm = mf.init_guess_by_atom()
-    mf.kernel(dm, xc='LDA')
+    mf.xc = 'LDA'
+    mf.kernel()
     opt_checkfile = scf_checkfile.split('.hdf5')[0]+'-sj.hdf5'
     return scf_checkfile, opt_checkfile, mf
 
 def run_lda_c(scf_checkfile="c.hdf5"):
-    print("C atom neutral LDA spin=2")
-    mol = gto.M(atom="C 0. 0. 0.", spin=2, basis='ccpvqz', unit='bohr')
-    print("HF")
-    mf = scf.UHF(mol)
-    mf.kernel()
+    print("C atom neutral LDA spin=2 aug-ccpvqz")
+    mol = gto.M(atom="C 0. 0. 0.", spin=2, basis='aug-ccpvqz', unit='bohr')
+    # print("HF")
+    # mf = scf.UHF(mol)
+    # mf.kernel()
     print("LDA")    
     mf = dft.UKS(mol)
-    # mf.verbose=6
-    mf.chkfile = scf_checkfile
-    dm = mf.init_guess_by_atom()
-    mf.kernel(dm, xc='LDA')
+    mf.xc = 'LDA'
+    mf.kernel()
     opt_checkfile = scf_checkfile.split('.hdf5')[0]+'-sj.hdf5'
     return scf_checkfile, opt_checkfile, mf
 
 
 def run_lda_n(scf_checkfile="n.hdf5"):
-    print("N atom neutral LDA spin=3")
-    mol = gto.M(atom="N 0. 0. 0.", spin=3, basis='ccpvqz', unit='bohr')
-    print("HF")
-    mf = scf.UHF(mol)
-    mf.kernel()
+    print("N atom neutral LDA spin=3 aug-ccpvqz")
+    mol = gto.M(atom="N 0. 0. 0.", spin=3, basis='aug-ccpvqz', unit='bohr')
+    # print("HF")
+    # mf = scf.UHF(mol)
+    # mf.kernel()
     print("LDA")    
     mf = dft.UKS(mol)
-    # mf.verbose=6
-    mf.chkfile = scf_checkfile
-    dm = mf.init_guess_by_atom()
-    mf.kernel(dm, xc='LDA')
+    mf.xc = 'LDA'
+    mf.kernel()
     opt_checkfile = scf_checkfile.split('.hdf5')[0]+'-sj.hdf5'
     return scf_checkfile, opt_checkfile, mf
 
 def run_lda_o(scf_checkfile="o.hdf5"):
-    print("O atom neutral LDA spin=2")
-    mol = gto.M(atom="O 0. 0. 0.", spin=2, basis='ccpvqz', unit='bohr')
+    print("O atom neutral LDA spin=2 aug-ccpvqz")
+    mol = gto.M(atom="O 0. 0. 0.", spin=2, basis='aug-ccpvqz', unit='bohr')
     print("HF")
     mf = scf.UHF(mol)
     mf.kernel()
@@ -156,40 +120,17 @@ def run_lda_o(scf_checkfile="o.hdf5"):
     return scf_checkfile, opt_checkfile, mf
 
 def run_lda_f(scf_checkfile="f.hdf5"):
-    print("F atom neutral LDA spin=1")
-    mol = gto.M(atom="F 0. 0. 0.", spin=1, basis='ccpvqz', unit='bohr')
-    print("HF")
-    mf = scf.UHF(mol)
-    mf.kernel()
+    print("F atom neutral LDA spin=1 aug-ccpvqz")
+    mol = gto.M(atom="F 0. 0. 0.", spin=1, basis='aug-ccpvqz', unit='bohr')
+    # print("HF")
+    # mf = scf.UHF(mol)
+    # mf.kernel()
     print("LDA")    
     mf = dft.UKS(mol)
-    # mf.verbose=6
-    mf.chkfile = scf_checkfile
-    dm = mf.init_guess_by_atom()
-    mf.kernel(dm, xc='LDA')
+    mf.xc = 'LDA'
+    mf.kernel()
     opt_checkfile = scf_checkfile.split('.hdf5')[0]+'-sj.hdf5'
     return scf_checkfile, opt_checkfile, mf
-    
-def run_lda_h2(scf_checkfile="h2.hdf5"):
-    mol = gto.M(atom="H 0. 0. 0.; H 0. 0. 2", spin = 0, basis=f'ccecpccpvqz', unit='bohr')
-    mf = dft.UKS(mol)
-    # mf.verbose=6
-    mf.chkfile = scf_checkfile
-    dm = mf.init_guess_by_atom()
-    mf.xc='LDA, VWN'
-    mf.kernel()    
-    # mf.kernel(dm, xc='LDA,VWN')
-    opt_checkfile = scf_checkfile.split('.hdf5')[0]+'-sj.hdf5'
-    return scf_checkfile, opt_checkfile, mf
-
-def run_lda(scf_checkfile):
-    mol = gto.M(atom="H 0. 0. 0.", spin=1,basis=f'ccecpccpvdz', unit='bohr')
-    mf = dft.UKS(mol)
-    # mf.verbose=6
-    mf.chkfile = scf_checkfile
-    dm = mf.init_guess_by_atom()
-    mf.kernel(dm, xc='LDA')
-    return mf
     
 def run_casscf(scf_checkfile, ci_checkfile):
     cell, mf = pyq.recover_pyscf(scf_checkfile, cancel_outputs=False)
