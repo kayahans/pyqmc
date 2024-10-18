@@ -32,6 +32,7 @@ def run_lda_he(scf_checkfile="he.hdf5"):
     # dm = mf.init_guess_by_atom()
     # mf.kernel(dm, xc='LDA')
     mf.xc = 'LDA'
+    mf.chkfile = scf_checkfile
     mf.kernel()
     opt_checkfile = scf_checkfile.split('.hdf5')[0]+'-sj.hdf5'
     return scf_checkfile, opt_checkfile, mf
@@ -44,6 +45,7 @@ def run_lda_li(scf_checkfile="li.hdf5"):
     # mf.kernel()
     print("LDA")    
     mf = dft.UKS(mol)
+    mf.chkfile = scf_checkfile
     mf.xc = 'LDA'
     mf.kernel()
 
@@ -58,6 +60,7 @@ def run_lda_be(scf_checkfile="be.hdf5"):
     # mf.kernel()
     print("LDA")    
     mf = dft.UKS(mol)
+    mf.chkfile = scf_checkfile
     mf.xc = 'LDA'
     mf.kernel()
 
@@ -72,6 +75,7 @@ def run_lda_b(scf_checkfile="b.hdf5"):
     # mf.kernel()
     print("LDA")    
     mf = dft.UKS(mol)
+    mf.chkfile = scf_checkfile
     mf.xc = 'LDA'
     mf.kernel()
     opt_checkfile = scf_checkfile.split('.hdf5')[0]+'-sj.hdf5'
@@ -85,6 +89,7 @@ def run_lda_c(scf_checkfile="c.hdf5"):
     # mf.kernel()
     print("LDA")    
     mf = dft.UKS(mol)
+    mf.chkfile = scf_checkfile
     mf.xc = 'LDA'
     mf.kernel()
     opt_checkfile = scf_checkfile.split('.hdf5')[0]+'-sj.hdf5'
@@ -99,6 +104,7 @@ def run_lda_n(scf_checkfile="n.hdf5"):
     # mf.kernel()
     print("LDA")    
     mf = dft.UKS(mol)
+    mf.chkfile = scf_checkfile
     mf.xc = 'LDA'
     mf.kernel()
     opt_checkfile = scf_checkfile.split('.hdf5')[0]+'-sj.hdf5'
@@ -107,15 +113,14 @@ def run_lda_n(scf_checkfile="n.hdf5"):
 def run_lda_o(scf_checkfile="o.hdf5"):
     print("O atom neutral LDA spin=2 aug-ccpvqz")
     mol = gto.M(atom="O 0. 0. 0.", spin=2, basis='aug-ccpvqz', unit='bohr')
-    print("HF")
-    mf = scf.UHF(mol)
-    mf.kernel()
+    # print("HF")
+    # mf = scf.UHF(mol)
+    # mf.kernel()
     print("LDA")    
     mf = dft.UKS(mol)
-    # mf.verbose=6
     mf.chkfile = scf_checkfile
-    dm = mf.init_guess_by_atom()
-    mf.kernel(dm, xc='LDA')
+    mf.xc = 'LDA'
+    mf.kernel()
     opt_checkfile = scf_checkfile.split('.hdf5')[0]+'-sj.hdf5'
     return scf_checkfile, opt_checkfile, mf
 
@@ -127,6 +132,7 @@ def run_lda_f(scf_checkfile="f.hdf5"):
     # mf.kernel()
     print("LDA")    
     mf = dft.UKS(mol)
+    mf.chkfile = scf_checkfile
     mf.xc = 'LDA'
     mf.kernel()
     opt_checkfile = scf_checkfile.split('.hdf5')[0]+'-sj.hdf5'
