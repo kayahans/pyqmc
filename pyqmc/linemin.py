@@ -245,6 +245,12 @@ def line_minimization(
         opt_hdf(
             hdf_file, step_data, attr, coords, pgrad_acc.transform.deserialize(wf, x0)
         )
+        opt_hdf(
+            'stepsdata_'+hdf_file, stepsdata, attr, coords, pgrad_acc.transform.deserialize(wf, x0)
+        )        
+        opt_hdf(
+            'data_'+hdf_file, data, attr, coords, pgrad_acc.transform.deserialize(wf, x0)
+        )        
         df.append(step_data)
 
     set_wf_params(wf, x0, pgrad_acc)

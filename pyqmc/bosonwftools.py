@@ -107,7 +107,6 @@ def generate_boson_wf(
         wf = multiplywf.MultiplyWF(wf1, *wfs)
         for i, to_opt2 in enumerate(to_opts):
             to_opt.update({f"wf{i+2}" + k: v for k, v in to_opt2.items()})
-        print('Will optimize: ', to_opt.keys())
 
     # Add wavefunctions for overlap matrix
     return wf, to_opt

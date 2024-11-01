@@ -230,6 +230,7 @@ class BosonWF:
             det_map_shape = np.array(det_map.shape)
             num_used_dets = int(det_map_shape[1])
             print('Det excitations', tot_used_exc)
+            self._tot_used_exc = tot_used_exc
         else:
             num_used_dets = len(self._det_map[0])
             print('Used # of determinants', num_used_dets)
