@@ -34,7 +34,7 @@ def nodal_regularization(grad2, nodal_cutoff=1e-3):
 
     f = a * r + b * r**2 + c * r**3
     f[np.logical_not(mask)] = 1.0
-    print('Node regularization applied on # configurations ', np.sum(mask), np.sum(f))
+    # print('Node regularization applied on # configurations ', np.sum(mask), np.sum(f))
     return mask, f
 
 class BosonStochasticReconfiguration:

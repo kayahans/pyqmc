@@ -316,6 +316,11 @@ class BosonWF:
     
     @timer_func
     def value(self):
+        """Returns the logarithmic value of the bosonic wavefunction: log(\Phi_B)
+
+        Returns:
+            sign, logval: sign and logatithmic value of the bosonic wavefunction
+        """
         updets = self._dets[0][:, :, self._det_map[0]]
         dndets = self._dets[1][:, :, self._det_map[1]]
 
@@ -331,6 +336,15 @@ class BosonWF:
     
     @timer_func
     def value_dets(self, test = False):
+        """Returns logarithmic values of all Slater determinants used to form bosonic wavefunction
+
+        Args:
+            test (bool, optional): Calculates the value of bosonic wavefunction using values in this function.
+                                   Defaults to False.
+
+        Returns:
+            sign, logval: sign and logatithmic value of each wavefunction
+        """
         updets = self._dets[0][:, :, self._det_map[0]]
         dndets = self._dets[1][:, :, self._det_map[1]]
 
@@ -360,13 +374,14 @@ class BosonWF:
         s = int(e >= self._nelec[0])
         aograd = self.orbitals.aos("GTOval_sph_deriv1", epos)
         mograd = self.orbitals.mos(aograd, s)
-
         mograd_vals = mograd[:, :, self._det_occup[s]]
         jacobi = gpu.cp.einsum(
             "ei...dj,idj...->ei...d",
             mograd_vals,
             self._inverse[s][..., e - s * self._nelec[0]],
         )
+        # import pdb
+        # pdb.set_trace()
         det_coeff = self.myparameters['det_coeff']
         upref = gpu.cp.amax(self._dets[0][1]).real
         dnref = gpu.cp.amax(self._dets[1][1]).real
@@ -450,6 +465,17 @@ class BosonWF:
     
     @timer_func
     def gradient_dets(self, e, epos, test=False):
+        """Returns the log gradient of each slater determinant forming the bosonic wavefunction
+
+        Args:
+            e (_type_): electron index
+            epos (_type_): electron coordinates
+            test (bool, optional): Calculates the gradient of bosonic wavefunction using values in this function.
+                                   Defaults to False.
+
+        Returns:
+            gradient: [# of determinants, cartesian(3), nconfigs]
+        """
         s = int(e >= self._nelec[0])
         aograd = self.orbitals.aos("GTOval_sph_deriv1", epos)
         mograd = self.orbitals.mos(aograd, s)
@@ -459,17 +485,20 @@ class BosonWF:
             mograd_vals,
             self._inverse[s][..., e - s * self._nelec[0]],
         )
-        det_coeff = self.myparameters['det_coeff']
+        # import pdb
+        # pdb.set_trace()
         jac =  gpu.cp.einsum(
             "ei...d->dei...",
             jacobi[..., self._det_map[s]],
         )
-        grads = jac[:, 1:, :]
+        # grads = jac[:, 1:, :]
+        grads = np.einsum('dei, di->dei', jac[:,1:,:], 1./jac[:, 0, :])
 
         if test:
-            tol = 1E-12
+            tol = 1E-6
             dv = self.value_dets()[1]
             v = self.value()[1]
+            det_coeff = self.myparameters['det_coeff']
             gc = np.einsum('d, id,dei->ei', det_coeff, np.exp(2*(dv-v[:, None])), grads)
             try:
                 assert ((np.abs(gc - self.gradient(e, epos)) < tol).all())

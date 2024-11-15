@@ -167,10 +167,15 @@ def vmc_worker(wf, configs, tstep, nsteps, accumulators):
     """
     nconf, nelec, _ = configs.configs.shape
     block_avg = {}
+    wf.tstep = tstep
+    
     # wf.recompute(configs) 
     nsteps = 1
     for _ in range(nsteps):
         acc = 0.0
+        wf.curr_config = copy.deepcopy(configs)
+        wf.next_config = copy.deepcopy(configs)
+        wf.accept_array = np.zeros((nelec, nconf))
         for e in range(nelec):
             # Propose move
             _, val_old = wf.recompute(configs)
@@ -181,6 +186,11 @@ def vmc_worker(wf, configs, tstep, nsteps, accumulators):
             gauss = np.random.normal(scale=np.sqrt(tstep), size=(nconf, 3))
             newcoorde = configs.configs[:, e, :] + gauss + grad * tstep
             newcoorde = configs.make_irreducible(e, newcoorde)
+            # import pdb
+            # pdb.set_trace()
+            newcoordeg = configs.configs[:, e, :] + gauss
+            newcoordeg = configs.make_irreducible(e, newcoordeg)
+            wf.next_config.move(e, newcoordeg, np.ones(nconf, dtype=bool))
 
             # Compute reverse move
             g, new_val, saved = wf.gradient_value(e, newcoorde)
@@ -200,7 +210,8 @@ def vmc_worker(wf, configs, tstep, nsteps, accumulators):
             configs.move(e, newcoorde, accept)
             wf.updateinternals(e, newcoorde, configs, mask=accept, saved_values=saved)
             acc += np.mean(accept) / nelec
-
+            # wf.accept_array += accept.astype(float)/nelec 
+            wf.accept_array[e] += accept.astype(float)
             # print(e, np.max(ratio), np.max(new_val), np.max(t_prob))
         # Rolling average on step
         for k, accumulator in accumulators.items():

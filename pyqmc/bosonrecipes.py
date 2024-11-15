@@ -84,6 +84,8 @@ def ABVMC(
     accumulators: list|None = None,
     seed: int|None=None,
     det_emax: float|None=None,
+    nwarmup: int | None = None,
+    dtwarmup: float|None=None,
     **vmc_kws,
 ):
     """Auxiliary Boson VMC recipe
@@ -112,7 +114,24 @@ def ABVMC(
         seed=seed,
         det_emax=det_emax,
     )
-    # bosonmc.abvmc(wf, configs, accumulators=acc, **vmc_kws)
+    # First equilibration
+    # Reused keywords
+    eq_keywords = ['verbose', 'hdf_file', 'nsteps_per_block', 'client', 'npartitions']
+    eq_tags = {}
+    for kw in eq_keywords:
+        if kw in vmc_kws.keys():
+            if kw == 'hdf_file':
+                eq_tags[kw] = 'eq_'+vmc_kws[kw]
+            else:
+                eq_tags[kw] = vmc_kws[kw]
+
+    _, configs = mc.vmc(
+            wf,
+            configs,
+            nblocks = nwarmup,
+            tstep   = dtwarmup,
+            **eq_tags
+    )
     mc.vmc(wf, configs, accumulators=acc, **vmc_kws)
 
 def ABDMC(
@@ -155,8 +174,6 @@ def ABDMC(
         seed=seed,
         det_emax=det_emax,
     )
-    import pdb
-    pdb.set_trace()
     bosondmc.rundmc(wf, configs, accumulators=acc, **dmc_kws)
 
 def initial_guess(mol, nconfig, r=1.0, seed = None):
@@ -262,26 +279,26 @@ def initialize_boson_qmc_objects(
         wf, to_opt = bosonwftools.generate_boson_wf(
             mol, mf, mc=mc, jastrow_kws=jastrow_kws, slater_kws=slater_kws, det_emax=det_emax
         )
+        if load_parameters is not None:
+            wftools.read_wf(wf, load_parameters)    
 
-    if load_parameters is not None:
-        wftools.read_wf(wf, load_parameters)    
+    
     print('Using spherical guess')
     configs = initial_guess(mol, nconfig,seed=seed)
-    if opt_wf:
+
+    acc = {}
+    acc['energy'] = bosonaccumulators.ABQMCEnergyAccumulator(mf)
+
+    if isinstance(accumulators, list) and 'vmcexcitations' in accumulators:
+        acc['vmcexcitations'] = bosonaccumulators.ABVMCMatrixAccumulator()
+    
+    if isinstance(accumulators, list) and 'dmcexcitations' in accumulators:
+        acc['dmcexcitations'] = bosonaccumulators.ABDMCMatrixAccumulator()
+
+    if opt_wf is True:
         acc = bosonaccumulators.boson_gradient_generator(
             mf, wf, to_opt, nodal_cutoff=nodal_cutoff
         )
-    else:
-        acc = {}
-        acc['energy'] = bosonaccumulators.ABQMCEnergyAccumulator(mf)
-        allowed_acc = ['energy', 'excitations']
-        if accumulators is not None:
-            for acc_i in accumulators:
-                if acc_i not in allowed_acc:
-                    print('WARNING: input {} is not one of the allowed accumulators : {}'.format(acc_i, allowed_acc))
-            if 'excitations' in accumulators:
-                print('Collecting excitations')
-                acc['excitations'] = bosonaccumulators.ABVMCMatrixAccumulator()
     
     return wf, configs, acc
 
