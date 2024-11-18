@@ -116,43 +116,11 @@ class ABVMCMatrixAccumulator:
         phases, log_vals = boson_wf.value_dets()
         psis = phases * np.nan_to_num(np.exp(log_vals))
         psi_basis = np.einsum('cn, c->nc', psis, 1./val) # eq. 14
-        ovlp_ij = np.einsum("lc,nc->cln", psi_basis.conj(), psi_basis)
-
-
-
-        # wf.recompute(configs)
-        # phase, log_val = wf.value() #log(\psi_BT)
-        # val = phase * np.nan_to_num(np.exp(log_val)) #\psi_BT
-
-        # phases, log_vals = boson_wf.value_dets() #log(\phi_n)
-        # psis = phases * np.nan_to_num(np.exp(log_vals))
-        # psi_basis = np.einsum('cn, c->nc', psis, 1./val) # eq. 14
-
-
-        # matel = 0
-        # for e in range(nelec):
-        #     epos = configs.electron(e)
-        #     grad_b_e = wf.gradient(e, epos)
-        #     grad_n = boson_wf.gradient_dets(e, epos)
-        #     grad_psi_basis = np.einsum('nc, nxc->nxc', psi_basis, grad_n-grad_b_e)
-        #     # \nabla(f_B) = \nabla(\psi_BT^2) = 2 * \nabla(log(\psi_BT)) * \psi_BT**2
-        #     # import pdb
-        #     # pdb.set_trace()
-        #     gradf = 2 * grad_b_e #2 * np.einsum('xc, c->xc', 1000*grad_b_e, val**2)     
-
-        #     matel += np.einsum("nc,xc,lxc ->cnl", psi_basis, gradf, grad_psi_basis)
-
-        # Delta 
-        # Eq. 34 
-        # wfn_inner is below
-        # \nabla\phi_n \cdot \nabla{J} = \frac{\nabla\Phi_n\Phi_B-\Phi_n\nabla\Phi_B}{\Phi_B^2} \cdot \nabla{J}
-        # =\frac{{\nabla}[ln(\Phi_n)]\Phi_n\Phi_B-\Phi_n{\nabla}[ln(\Phi_B)]\Phi_B}{\Phi_B^2} \cdot \nabla{J}
-        # =\frac{{\nabla}[ln(\Phi_n)]\Phi_n-\Phi_n{\nabla}[ln(\Phi_B)]}{\Phi_B} \cdot \nabla{J}
-        # =\frac{\Phi_n}{\Phi_B}\{{\nabla}[ln(\Phi_n)]-{\nabla}[ln(\Phi_B)]\} \cdot \nabla{J}
-        # where
-        # \frac{\Phi_n}{\Phi_B} = e^{ln(\frac{\Phi_n}{\Phi_B})} = e^{ln(\Phi_n)-ln(\Phi_B)}
-        delta = 0
         acc = copy.deepcopy(wf.accept_array)
+        facc = np.sum(acc, axis=0)/nelec
+        ovlp_ij = nconf /np.sum(facc) * np.einsum("lc,nc,c->cln", psi_basis.conj(), psi_basis, facc)
+        delta = 0
+        
         for e in range(nelec):
             epos = configs.electron(e)
             grad_b_e = wf.gradient(e, epos)
@@ -161,15 +129,6 @@ class ABVMCMatrixAccumulator:
             grad_j = jastrow_wf.gradient(e, configs.electron(e))
             delta += nconf /np.sum(acc[e]) * np.einsum("nc,xc,lxc, c ->cnl", psi_basis, grad_j, grad_psi_basis, acc[e])
 
-        # for e in range(nelec):
-        #     epos = configs.electron(e)
-        #     grad_phi_n = boson_wf.gradient_dets(e, epos)
-        #     grad_b     = boson_wf.gradient(e, epos)
-        #     grad_j = jastrow_wf.gradient(e, configs.electron(e))
-        #     grad += np.einsum("nec,ec->nc", grad_phi_n - grad_b, grad_j)
-        # wfn_inner = np.einsum("nc,nc->nc", nb_ratio, grad)
-        
-        # delta = np.einsum("cl, c, nc -> cln", psi, 1./phib_val, wfn_inner)
         results = {'delta':delta, 'ovlp_ij': ovlp_ij}
         return results 
 

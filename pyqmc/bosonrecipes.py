@@ -114,24 +114,26 @@ def ABVMC(
         seed=seed,
         det_emax=det_emax,
     )
-    # First equilibration
-    # Reused keywords
-    eq_keywords = ['verbose', 'hdf_file', 'nsteps_per_block', 'client', 'npartitions']
-    eq_tags = {}
-    for kw in eq_keywords:
-        if kw in vmc_kws.keys():
-            if kw == 'hdf_file':
-                eq_tags[kw] = 'eq_'+vmc_kws[kw]
-            else:
-                eq_tags[kw] = vmc_kws[kw]
-
-    _, configs = mc.vmc(
-            wf,
-            configs,
-            nblocks = nwarmup,
-            tstep   = dtwarmup,
-            **eq_tags
-    )
+    
+    if nwarmup > 0:
+        # First equilibration
+        # Reused keywords
+        eq_keywords = ['verbose', 'hdf_file', 'nsteps_per_block', 'client', 'npartitions']
+        eq_tags = {}
+        for kw in eq_keywords:
+            if kw in vmc_kws.keys():
+                if kw == 'hdf_file':
+                    eq_tags[kw] = 'eq_'+vmc_kws[kw]
+                else:
+                    eq_tags[kw] = vmc_kws[kw]
+        _, configs = mc.vmc(
+                wf,
+                configs,
+                nblocks = nwarmup,
+                tstep   = dtwarmup,
+                **eq_tags
+        )
+        
     mc.vmc(wf, configs, accumulators=acc, **vmc_kws)
 
 def ABDMC(
