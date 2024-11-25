@@ -167,12 +167,18 @@ class ABDMCMatrixAccumulator:
         
         # 1. Fernando's method
         ri = wf.curr_config.configs
-        rf = wf.next_config.configs
-        
         tstep = wf.tstep
+        next_config = copy.deepcopy(configs)
+        for e in range(nelec):
+            gauss = np.random.normal(scale=np.sqrt(tstep), size=(nconf, 3))
+            newcoordeg = wf.curr_config.configs[:, e, :] + gauss
+            newcoordeg = wf.curr_config.make_irreducible(e, newcoordeg)
+            next_config.move(e, newcoordeg, np.ones(nconf, dtype=bool))
+
+        rf = next_config.configs
         drdt = -(rf-ri)/tstep # What is the correct sign?
 
-        wf.recompute(wf.next_config)
+        wf.recompute(next_config)
         phase, log_val = wf.value() #log(\psi_BT)
         val = phase * np.nan_to_num(np.exp(log_val)) #\psi_BT
 
@@ -180,16 +186,16 @@ class ABDMCMatrixAccumulator:
         psis = phases * np.nan_to_num(np.exp(log_vals))
         psi_basis_s = np.einsum('cn, c->nc', psis, 1./val) # eq. 14
         matel2 = 0
-        acc = copy.deepcopy(wf.accept_array)
+        # acc = copy.deepcopy(wf.accept_array)
         # acc[acc<1.0] = 0
         for e in range(nelec):
-            epos_s = wf.next_config.electron(e)
+            epos_s = next_config.electron(e)
 
             grad_b_e_s = wf.gradient(e, epos_s) # \nabla{log(\Psi_B)}
             grad_n_s = boson_wf.gradient_dets(e, epos_s) # \nabla{log(\Phi_n)}
             grad_psi_basis_s = np.einsum('nc, nxc->nxc', psi_basis_s, grad_n_s-grad_b_e_s)
             # \nabla(f_B) = \nabla(\psi_BT^2) = 2 * \nabla(log(\psi_BT)) * \psi_BT**2
-            gradf_s = drdt[:,e,:] #np.einsum('cx, c->cx', drdt[:,e,:], val)
+            gradf_s = drdt[:,e,:] 
             # matel2 += np.einsum("nc,cx,lxc,c->cnl", psi_basis_s, gradf_s, grad_psi_basis_s, acc[e])
             matel2 += np.einsum("nc,cx,lxc->cnl", psi_basis_s, gradf_s, grad_psi_basis_s)
 
