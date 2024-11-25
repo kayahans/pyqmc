@@ -190,7 +190,8 @@ class ABDMCMatrixAccumulator:
             grad_psi_basis_s = np.einsum('nc, nxc->nxc', psi_basis_s, grad_n_s-grad_b_e_s)
             # \nabla(f_B) = \nabla(\psi_BT^2) = 2 * \nabla(log(\psi_BT)) * \psi_BT**2
             gradf_s = drdt[:,e,:] #np.einsum('cx, c->cx', drdt[:,e,:], val)
-            matel2 += nconf /np.sum(acc[e]) * np.einsum("nc,cx,lxc,c->cnl", psi_basis_s, gradf_s, grad_psi_basis_s, acc[e])
+            # matel2 += np.einsum("nc,cx,lxc,c->cnl", psi_basis_s, gradf_s, grad_psi_basis_s, acc[e])
+            matel2 += np.einsum("nc,cx,lxc->cnl", psi_basis_s, gradf_s, grad_psi_basis_s)
 
         
         # # 2. Using configs from accept/reject
@@ -212,9 +213,10 @@ class ABDMCMatrixAccumulator:
             # \nabla(f_B) = \nabla(\psi_BT^2) = 2 * \nabla(log(\psi_BT)) * \psi_BT**2
             # import pdb
             # pdb.set_trace()
-            gradf = 2 * grad_b_e #2 * np.einsum('xc, c->xc', 1000*grad_b_e, val**2)     
+            gradf = 2 * grad_b_e
 
-            matel += nconf /np.sum(acc[e]) * np.einsum("nc,xc,lxc, c ->cnl", psi_basis, gradf, grad_psi_basis, acc[e])
+            # matel += nconf/np.sum(acc[e]) * np.einsum("nc,xc,lxc, c ->cnl", psi_basis, gradf, grad_psi_basis, acc[e])
+            matel += np.einsum("nc,xc,lxc->cnl", psi_basis, gradf, grad_psi_basis)
             
         # # 3. Using derivative of delta function
         # Probably very noisy
