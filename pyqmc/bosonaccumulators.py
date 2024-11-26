@@ -159,49 +159,51 @@ class ABDMCMatrixAccumulator:
         # wf.curr_config.configs: configs prior to accept/reject
         # wf.next_config.configs: configs with gaussian added only 
         nconf, nelec, _ = configs.configs.shape
-        boson_wf = wf
-        # wave_functions = wf.wf_factors
-        # for wave in wave_functions:
-        #     if isinstance(wave, bosonslater.BosonWF):
-        #         boson_wf = wave
+
+        wave_functions = wf.wf_factors
+        for wave in wave_functions:
+            if isinstance(wave, bosonslater.BosonWF):
+                boson_wf = wave
+            if isinstance(wave, jastrowspin.JastrowSpin):
+                jastrow_wf = wave        
         
         # 1. Fernando's method
-        ri = wf.curr_config.configs
-        tstep = wf.tstep
-        next_config = copy.deepcopy(configs)
-        for e in range(nelec):
-            gauss = np.random.normal(scale=np.sqrt(tstep), size=(nconf, 3))
-            newcoordeg = wf.curr_config.configs[:, e, :] + gauss
-            newcoordeg = wf.curr_config.make_irreducible(e, newcoordeg)
-            next_config.move(e, newcoordeg, np.ones(nconf, dtype=bool))
+        # ri = wf.curr_config.configs
+        # tstep = wf.tstep
+        # next_config = copy.deepcopy(configs)
+        # for e in range(nelec):
+        #     gauss = np.random.normal(scale=np.sqrt(tstep), size=(nconf, 3))
+        #     newcoordeg = wf.curr_config.configs[:, e, :] + gauss
+        #     newcoordeg = wf.curr_config.make_irreducible(e, newcoordeg)
+        #     next_config.move(e, newcoordeg, np.ones(nconf, dtype=bool))
 
-        rf = next_config.configs
-        drdt = -(rf-ri)/tstep # What is the correct sign?
+        # rf = next_config.configs
+        # drdt = -(rf-ri)/tstep
 
-        wf.recompute(next_config)
-        phase, log_val = wf.value() #log(\psi_BT)
-        val = phase * np.nan_to_num(np.exp(log_val)) #\psi_BT
+        # wf.recompute(next_config)
+        # phase, log_val = wf.value() #log(\psi_BT)
+        # val = phase * np.nan_to_num(np.exp(log_val)) #\psi_BT
 
-        phases, log_vals = boson_wf.value_dets() #log(\phi_n)
-        psis = phases * np.nan_to_num(np.exp(log_vals))
-        psi_basis_s = np.einsum('cn, c->nc', psis, 1./val) # eq. 14
+        # phases, log_vals = boson_wf.value_dets() #log(\phi_n)
+        # psis = phases * np.nan_to_num(np.exp(log_vals))
+        # psi_basis_s = np.einsum('cn, c->nc', psis, 1./val) # eq. 14
         matel2 = 0
         # acc = copy.deepcopy(wf.accept_array)
         # acc[acc<1.0] = 0
-        for e in range(nelec):
-            epos_s = next_config.electron(e)
-
-            grad_b_e_s = wf.gradient(e, epos_s) # \nabla{log(\Psi_B)}
-            grad_n_s = boson_wf.gradient_dets(e, epos_s) # \nabla{log(\Phi_n)}
-            grad_psi_basis_s = np.einsum('nc, nxc->nxc', psi_basis_s, grad_n_s-grad_b_e_s)
-            # \nabla(f_B) = \nabla(\psi_BT^2) = 2 * \nabla(log(\psi_BT)) * \psi_BT**2
-            gradf_s = drdt[:,e,:] 
-            # matel2 += np.einsum("nc,cx,lxc,c->cnl", psi_basis_s, gradf_s, grad_psi_basis_s, acc[e])
-            matel2 += np.einsum("nc,cx,lxc->cnl", psi_basis_s, gradf_s, grad_psi_basis_s)
+        # for e in range(nelec):
+        #     epos_s = next_config.electron(e)
+        #     # grad_t_e_s = wf.gradient(e, epos_s) # \nabla{log(\Psi_B^T)}
+        #     grad_b_e_s = boson_wf.gradient(e, epos_s) # \nabla{log(\Psi_B)}
+        #     grad_n_s = boson_wf.gradient_dets(e, epos_s) # \nabla{log(\Phi_n)}
+        #     grad_psi_basis_s = np.einsum('nc, nxc->nxc', psi_basis_s, grad_n_s-grad_b_e_s)
+        #     # \nabla(f_B) = \nabla(\psi_BT^2) = 2 * \nabla(log(\psi_BT)) * \psi_BT**2
+        #     gradf_s = -drdt[:,e,:] 
+        #     # matel2 += np.einsum("nc,cx,lxc,c->cnl", psi_basis_s, gradf_s, grad_psi_basis_s, acc[e])
+        #     matel2 += np.einsum("nc,cx,lxc->cnl", psi_basis_s, gradf_s, grad_psi_basis_s)
 
         
         # # 2. Using configs from accept/reject
-        wf.recompute(configs)
+        # wf.recompute(configs)
         phase, log_val = wf.value() #log(\psi_BT)
         val = phase * np.nan_to_num(np.exp(log_val)) #\psi_BT
 
@@ -209,62 +211,24 @@ class ABDMCMatrixAccumulator:
         psis = phases * np.nan_to_num(np.exp(log_vals))
         psi_basis = np.einsum('cn, c->nc', psis, 1./val) # eq. 14
 
-
+        # import pdb
+        # pdb.set_trace()
         matel = 0
         for e in range(nelec):
             epos = configs.electron(e)
-            grad_b_e = wf.gradient(e, epos)
+            grad_t_e = wf.gradient(e, epos)
+            grad_b_e = boson_wf.gradient(e, epos)
+            grad_j_e = jastrow_wf.gradient(e, epos)
             grad_n = boson_wf.gradient_dets(e, epos)
             grad_psi_basis = np.einsum('nc, nxc->nxc', psi_basis, grad_n-grad_b_e)
             # \nabla(f_B) = \nabla(\psi_BT^2) = 2 * \nabla(log(\psi_BT)) * \psi_BT**2
-            # import pdb
-            # pdb.set_trace()
-            gradf = 2 * grad_b_e
-
+            # gradf = -2 * grad_t_e + grad_b_e + grad_t_e
             # matel += nconf/np.sum(acc[e]) * np.einsum("nc,xc,lxc, c ->cnl", psi_basis, gradf, grad_psi_basis, acc[e])
-            matel += np.einsum("nc,xc,lxc->cnl", psi_basis, gradf, grad_psi_basis)
-            
-        # # 3. Using derivative of delta function
-        # Probably very noisy
+            # matel += np.einsum("nc,xc,lxc->cnl", psi_basis, gradf, grad_psi_basis)
+            matel += np.einsum("nc,xc,lxc->cnl", psi_basis, -grad_j_e, grad_psi_basis)
+            matel2 += np.einsum("nc,xc,lxc->cnl", psi_basis, -2 * grad_t_e + grad_b_e + grad_t_e, grad_psi_basis)
+        
         # wf.recompute(configs)
-        # phase, log_val = wf.value() #log(\psi_BT)
-        # val = phase * np.nan_to_num(np.exp(log_val)) #\psi_BT
-
-        # phases, log_vals = boson_wf.value_dets() #log(\phi_n)
-        # psis = phases * np.nan_to_num(np.exp(log_vals))
-        # psi_basis = np.einsum('nc, n->nc', psis, 1./val) # eq. 14
-
-        # matel3 = 0
-        # for e in range(nelec):
-        #     gauss = np.random.normal(scale=np.sqrt(tstep), size=(nconf, 3))
-            
-        #     epos = configs.electron(e)
-        #     grad_b_e = wf.gradient(e, epos)
-        #     grad_n = boson_wf.gradient_dets(e, epos)
-        #     grad_psi_basis = np.einsum('cn, c, nxc->nxc', psis, 1./val, grad_n-grad_b_e)
-        #     # \nabla(f_B) = \nabla(\psi_BT^2) = 2 * \nabla(log(\psi_BT)) * \psi_BT**2
-        #     matel3 -= np.einsum("cn,cx,lxc ->cnl", psi_basis, 1./gauss, grad_psi_basis)
-
-        #     newcoorde = configs.configs[:, e, :] + gauss
-        #     newcoorde = configs.make_irreducible(e, newcoorde)
-        #     new_config = copy.deepcopy(configs)
-        #     new_config.move(e, newcoorde, np.ones(nconf, dtype=bool))
-        #     wf.recompute(new_config)
-        #     epos_next = new_config.electron(e)            
-            
-        #     phase_next, log_val_next = wf.value() #log(\psi_BT)
-        #     val_next = phase_next * np.nan_to_num(np.exp(log_val_next)) #\psi_BT
-
-        #     phases_next, log_vals_next = boson_wf.value_dets() #log(\phi_n)
-        #     psis_next = phases_next * np.nan_to_num(np.exp(log_vals_next))
-        #     psi_basis_next = np.einsum('nc, n->nc', psis_next, 1./val_next) # eq. 14
-
-        #     grad_b_e_next = wf.gradient(e, epos_next)
-        #     grad_n_next = boson_wf.gradient_dets(e, epos_next)
-        #     grad_psi_basis_next = np.einsum('cn, c, nxc->nxc', psis, 1./val_next, grad_n_next-grad_b_e_next)
-        #     # \nabla(f_B) = \nabla(\psi_BT^2) = 2 * \nabla(log(\psi_BT)) * \psi_BT**2
-        #     matel3 += np.einsum("cn,cx,lxc ->cnl", psi_basis_next, 1./gauss, grad_psi_basis_next)
-        wf.recompute(configs)
         results = {'matel':matel, 'matel2':matel2} #, 'matel3':matel3}
         return results 
 
