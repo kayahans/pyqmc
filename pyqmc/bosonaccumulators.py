@@ -78,6 +78,7 @@ class ABQMCEnergyAccumulator:
             # E_Corr is the sum of KS eigenvalues 
             "total": ke + ee - (vh + vxc) + ecorr + ii,
         }
+        # print(np.mean(ke1), np.mean(ke2), np.mean(ee), np.mean(vh), np.mean(vxc), np.mean(ecorr), np.mean(ei), np.mean(ii), np.mean(energies['total']))
         return energies 
 
     def avg(self, configs, wf):
@@ -116,9 +117,14 @@ class ABVMCMatrixAccumulator:
         phases, log_vals = boson_wf.value_dets()
         psis = phases * np.nan_to_num(np.exp(log_vals))
         psi_basis = np.einsum('cn, c->nc', psis, 1./val) # eq. 14
-        acc = copy.deepcopy(wf.accept_array)
-        facc = np.sum(acc, axis=0)/nelec
-        ovlp_ij = nconf /np.sum(facc) * np.einsum("lc,nc,c->cln", psi_basis.conj(), psi_basis, facc)
+        # variant 1, using Acceptance from VMC
+        # acc = copy.deepcopy(wf.accept_array)
+        # facc = np.sum(acc, axis=0)/nelec
+        # ovlp_ij = nconf /np.sum(facc) * np.einsum("lc,nc,c->cln", psi_basis.conj(), psi_basis, facc)
+
+        # variant 2 do not use acceptance from VMC 
+        ovlp_ij = np.einsum("lc,nc->cln", psi_basis.conj(), psi_basis)
+
         delta = 0
         
         for e in range(nelec):
@@ -127,7 +133,10 @@ class ABVMCMatrixAccumulator:
             grad_n = boson_wf.gradient_dets(e, epos)
             grad_psi_basis = np.einsum('nc, nxc->nxc', psi_basis, grad_n-grad_b_e)
             grad_j = jastrow_wf.gradient(e, configs.electron(e))
-            delta += nconf /np.sum(acc[e]) * np.einsum("nc,xc,lxc, c ->cnl", psi_basis, grad_j, grad_psi_basis, acc[e])
+            # variant 1 use acceptance from VMC
+            # delta += nconf /np.sum(acc[e]) * np.einsum("nc,xc,lxc, c ->cnl", psi_basis, grad_j, grad_psi_basis, acc[e])
+            # variant 2 do not use acceptance from VMC
+            delta += np.einsum("nc,xc,lxc->cnl", psi_basis, grad_j, grad_psi_basis)
 
         results = {'delta':delta, 'ovlp_ij': ovlp_ij}
         return results 
@@ -216,6 +225,8 @@ class ABDMCMatrixAccumulator:
         psis = phases * np.nan_to_num(np.exp(log_vals))
         psi_basis = np.einsum('cn, c->nc', psis, 1./val) # eq. 14
 
+        ovlp_ij = np.einsum("lc,nc->cln", psi_basis.conj(), psi_basis)
+
         # import pdb
         # pdb.set_trace()
         matel = 0
@@ -236,7 +247,13 @@ class ABDMCMatrixAccumulator:
             matel2[1] += matel_temp
         
         # wf.recompute(configs)
-        results = {'matel':matel, 'matel2_t1':matel2[0], 'matel2_t2':matel2[1]}
+        # Matel 2 is the statistical approach
+        # Matel 1 is analytical (these are equal only when VMC is used)
+        results = {
+                    'matel':matel, 
+                    'matel2_t1':matel2[0], 
+                    'matel2_t2':matel2[1], 
+                    'ovlp': ovlp_ij}
         return results 
 
     def avg(self, configs, wf):

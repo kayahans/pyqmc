@@ -14,11 +14,12 @@
 
 import os
 import numpy as np
-import pyqmc.mc as mc
+# import pyqmc.mc as mc
+import mc
 import sys
 import h5py
 import logging
-
+import copy
 
 def limdrift(g, tau, acyrus=0.25):
     """
@@ -49,24 +50,40 @@ def get_V2(configs, wf, acc_out):
 
 def propose_drift_diffusion(wf, configs, tstep, e):
     nconfig = configs.configs.shape[0]
-    grad = limdrift(np.real(wf.gradient(e, configs.electron(e)).T), tstep)
+
+    _, val_old = wf.recompute(configs) # Kayahan added 
+    wf_new = copy.deepcopy(wf)         # Kayahan added 
+
+    gradt = limdrift(np.real(wf.gradient(e, configs.electron(e)).T), tstep)
+    # np.random.seed(1)
     gauss = np.random.normal(scale=np.sqrt(tstep), size=(nconfig, 3))
-    eposnew = configs.configs[:, e, :] + gauss + grad
+    # print(e, gauss[0])
+    eposnew = configs.configs[:, e, :] + gauss + gradt
+    # print(e, eposnew[0])
+    # print(e, 'grad', np.sum(grad))
     newepos = configs.make_irreducible(e, eposnew)
 
     # Compute reverse move
-    g, wfratio, saved = wf.gradient_value(e, newepos)
+    # g, wfratio, saved = wf.gradient_value(e, newepos)
+    g, _, saved = wf.gradient_value(e, newepos) # Kayahan modified
     new_grad = limdrift(np.real(g.T), tstep)
     forward = np.sum(gauss**2, axis=1)
-    backward = np.sum((gauss + grad + new_grad) ** 2, axis=1)
+    backward = np.sum((gauss + gradt + new_grad) ** 2, axis=1)
     t_prob = np.exp(1 / (2 * tstep) * (forward - backward))
 
+    newcoord = copy.deepcopy(configs)           # Kayahan added     
+    newcoorde = newcoord.configs[:, e, :] + gauss + gradt # Kayahan added 
+    newcoorde = newcoord.make_irreducible(e, newcoorde) # Kayahan added 
+    newcoord.configs[:,e,:] = newcoorde.configs # Kayahan added 
+    # print(newcoord.configs[0])
+    _, val_new = wf_new.recompute(newcoord) # Kayahan added 
+    wfratio = np.exp((val_new-val_old)) # Kayahan added 
     # Acceptance -- fixed-node: reject if wf changes sign
     ratio = np.abs(wfratio) ** 2 * t_prob
-    if wf.dtype == float:
-        ratio *= np.sign(wfratio)
+    # if wf.dtype == float:             # Kayahan modified, no fixed node error
+    #     ratio *= np.sign(wfratio)     # Kayahan modified, no fixed node error
     accept = ratio > np.random.rand(nconfig)
-    r2 = np.sum((gauss + grad) ** 2, axis=1)
+    r2 = np.sum((gauss + gradt) ** 2, axis=1)
 
     return newepos, accept, r2, saved
 
@@ -164,17 +181,19 @@ def dmc_propagate(
         r2_accepted = np.zeros(nconfig)
         r2_proposed = np.zeros(nconfig)
         prob_acceptance = np.zeros(nconfig)
-        tmove_acceptance = np.zeros(nconfig)
+        # tmove_acceptance = np.zeros(nconfig)
 
-        if accumulators[ekey[0]].has_nonlocal_moves():
-            for e in range(nelec):  # T-moves
-                newepos, mask, probability, ecp_totweight = propose_tmoves(
-                    wf, configs, accumulators[ekey[0]], tstep, e
-                )
-                accept = mask & (probability > np.random.rand(nconfig))
-                configs.move(e, newepos, accept)
-                wf.updateinternals(e, newepos, configs, mask=accept)
-                tmove_acceptance += accept / nelec
+        # if accumulators[ekey[0]].has_nonlocal_moves():
+        #     for e in range(nelec):  # T-moves
+        #         newepos, mask, probability, ecp_totweight = propose_tmoves(
+        #             wf, configs, accumulators[ekey[0]], tstep, e
+        #         )
+        #         accept = mask & (probability > np.random.rand(nconfig))
+        #         configs.move(e, newepos, accept)
+        #         wf.updateinternals(e, newepos, configs, mask=accept)
+        #         tmove_acceptance += accept / nelec
+        
+        wf.curr_config = copy.deepcopy(configs)
 
         for e in range(nelec):  # drift-diffusion
             newepos, accept, r2, saved = propose_drift_diffusion(wf, configs, tstep, e)
@@ -208,7 +227,7 @@ def dmc_propagate(
                 )
         avg["weight"] = wavg
         avg["acceptance"] = np.mean(prob_acceptance)
-        avg["tmove_acceptance"] = np.mean(tmove_acceptance)
+        # avg["tmove_acceptance"] = np.mean(tmove_acceptance)
         df.append(avg)
     weight = np.asarray([d["weight"] for d in df])
     avg_weight = weight / np.mean(weight)
@@ -481,8 +500,6 @@ def rundmc(
         esigma = np.std(en)
         if verbose:
             print("eref start", eref, "esigma", esigma)
-    import pdb
-    pdb.set_trace()
     nconfig = configs.configs.shape[0]
     if weights is None:
         weights = np.ones(nconfig)

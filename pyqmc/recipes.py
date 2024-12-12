@@ -69,8 +69,6 @@ def OPTIMIZE(
         nodal_cutoff=nodal_cutoff,
     )
     if anchors is None:
-        # import pdb
-        # pdb.set_trace()
         linemin.line_minimization(wf, configs, acc, **linemin_kws)
     else:
         wfs = []

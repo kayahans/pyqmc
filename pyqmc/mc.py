@@ -170,7 +170,7 @@ def vmc_worker(wf, configs, tstep, nsteps, accumulators):
     wf.tstep = tstep
     
     # wf.recompute(configs) 
-    nsteps = 1
+    nsteps = 1 # TODO: restore to proper form
     for _ in range(nsteps):
         acc = 0.0
         wf.curr_config = copy.deepcopy(configs)

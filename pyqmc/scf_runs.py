@@ -18,6 +18,18 @@ from pyscf.scf.chkfile import dump_scf
 print(pyq.__file__)
 print(pyscf.__file__)
 
+def run_lda_h2(scf_checkfile="h2.hdf5"):
+    
+    print("H2 molecule neutral LDA spin=0")
+    mol = gto.M(atom="H 0. 0. 0.; H 0. 0. 1.", basis="aug-ccpvqz", unit='bohr')    
+    mf = dft.UKS(mol)
+    mf.chkfile = scf_checkfile
+    mf.xc = 'LDA'
+    mf.chkfile = scf_checkfile
+    mf.kernel()
+    opt_checkfile = scf_checkfile.split('.hdf5')[0]+'-sj.hdf5'
+    return scf_checkfile, opt_checkfile, mf
+    
 def run_lda_he(scf_checkfile="he.hdf5"):
     
     print("He atom neutral LDA spin=0")

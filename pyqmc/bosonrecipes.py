@@ -84,7 +84,7 @@ def ABVMC(
     accumulators: list|None = None,
     seed: int|None=None,
     det_emax: float|None=None,
-    nwarmup: int | None = None,
+    nwarmup: int = 0,
     dtwarmup: float|None=None,
     **vmc_kws,
 ):
@@ -164,6 +164,7 @@ def ABDMC(
         accumulators (list | None, optional): List of accumulators. Defaults to None.
     """    
     dmc_kws["hdf_file"] = output
+    
     wf, configs, acc = initialize_boson_qmc_objects(
         dft_checkfile,
         nconfig=nconfig,
