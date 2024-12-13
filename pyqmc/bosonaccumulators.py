@@ -197,7 +197,7 @@ class ABDMCMatrixAccumulator:
             drdt = -(rf-ri)/tstep
 
             wf.recompute(next_config)
-            phase, log_val = wf.value() #log(\psi_BT)
+            phase, log_val = boson_wf.value() #log(\psi_BT)
             val = phase * np.nan_to_num(np.exp(log_val)) #\psi_BT
 
             phases, log_vals = boson_wf.value_dets() #log(\phi_n)
@@ -218,7 +218,7 @@ class ABDMCMatrixAccumulator:
 
         # # 2. Using configs from accept/reject
         wf.recompute(configs)
-        phase, log_val = wf.value() #log(\psi_BT)
+        phase, log_val = boson_wf.value() #log(\psi_BT)
         val = phase * np.nan_to_num(np.exp(log_val)) #\psi_BT
 
         phases, log_vals = boson_wf.value_dets() #log(\phi_n)
