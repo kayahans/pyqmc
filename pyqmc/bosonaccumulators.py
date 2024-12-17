@@ -96,6 +96,15 @@ class ABQMCEnergyAccumulator:
     def shapes(self):
         return {"ke": (), "ee": (), "vxc": (), "ei": (), "ecp": (), "total": (), "grad2": ()}
 
+def get_psi_basis(boson_wf):
+    phase, log_val = boson_wf.value() # Eq. 4
+    val = phase * np.nan_to_num(np.exp(log_val)) #\psi_BT
+    
+    phases, log_vals = boson_wf.value_dets() #log(\phi_n)
+    psis = phases * np.nan_to_num(np.exp(log_vals))
+    psi_basis = np.einsum('cn, c->nc', psis, 1./val) # eq. 14
+    return psi_basis
+
 class ABVMCMatrixAccumulator:
     """Returns local energy of each configuration in a dictionary."""
     
@@ -110,18 +119,11 @@ class ABVMCMatrixAccumulator:
                 jastrow_wf = wave        
         
         nconf, nelec, _ = configs.configs.shape
-
-        phase, log_val = boson_wf.value() # Eq. 4
-        val = phase * np.nan_to_num(np.exp(log_val)) #[c]
-        
-        phases, log_vals = boson_wf.value_dets()
-        psis = phases * np.nan_to_num(np.exp(log_vals))
-        psi_basis = np.einsum('cn, c->nc', psis, 1./val) # eq. 14
+        psi_basis = get_psi_basis(boson_wf)
         # variant 1, using Acceptance from VMC
         # acc = copy.deepcopy(wf.accept_array)
         # facc = np.sum(acc, axis=0)/nelec
         # ovlp_ij = nconf /np.sum(facc) * np.einsum("lc,nc,c->cln", psi_basis.conj(), psi_basis, facc)
-
         # variant 2 do not use acceptance from VMC 
         ovlp_ij = np.einsum("lc,nc->cln", psi_basis.conj(), psi_basis)
 
@@ -180,9 +182,9 @@ class ABDMCMatrixAccumulator:
 
         # 1. Fernando's method
         ri = wf.curr_config.configs
-        matel2 = [0, 0]
-        extrapolate_timesteps = np.sort([0.05, 0.1]) # smaller first 
-        assert(extrapolate_timesteps.shape[0] == 2) # 2-point extrapolation only 
+        matel2 = [0, 0, 0, 0]
+        extrapolate_timesteps = np.sort([0.01, 0.02, 0.05, 0.1]) # smaller first 
+        assert(extrapolate_timesteps.shape[0] == 4) # 4-point extrapolation
         t1, t2 = extrapolate_timesteps
         # prefactors = [t2/(t2-t1), -t1/(t2-t1)]
         for ind, tstep in enumerate(extrapolate_timesteps):
@@ -197,12 +199,7 @@ class ABDMCMatrixAccumulator:
             drdt = -(rf-ri)/tstep
 
             wf.recompute(next_config)
-            phase, log_val = boson_wf.value() #log(\psi_BT)
-            val = phase * np.nan_to_num(np.exp(log_val)) #\psi_BT
-
-            phases, log_vals = boson_wf.value_dets() #log(\phi_n)
-            psis = phases * np.nan_to_num(np.exp(log_vals))
-            psi_basis_s = np.einsum('cn, c->nc', psis, 1./val) # eq. 14
+            psi_basis_s = get_psi_basis(boson_wf)
             
             # acc = copy.deepcopy(wf.accept_array)
             # acc[acc<1.0] = 0
@@ -218,13 +215,7 @@ class ABDMCMatrixAccumulator:
 
         # # 2. Using configs from accept/reject
         wf.recompute(configs)
-        phase, log_val = boson_wf.value() #log(\psi_BT)
-        val = phase * np.nan_to_num(np.exp(log_val)) #\psi_BT
-
-        phases, log_vals = boson_wf.value_dets() #log(\phi_n)
-        psis = phases * np.nan_to_num(np.exp(log_vals))
-        psi_basis = np.einsum('cn, c->nc', psis, 1./val) # eq. 14
-
+        psi_basis = get_psi_basis(boson_wf)
         ovlp_ij = np.einsum("lc,nc->cln", psi_basis.conj(), psi_basis)
 
         # import pdb
@@ -241,10 +232,12 @@ class ABDMCMatrixAccumulator:
             # gradf = -2 * grad_b_e # + grad_b_e + grad_t_e
             # matel += nconf/np.sum(acc[e]) * np.einsum("nc,xc,lxc, c ->cnl", psi_basis, gradf, grad_psi_basis, acc[e])
             # matel += np.einsum("nc,xc,lxc->cnl", psi_basis, gradf, grad_psi_basis)
-            matel += np.einsum("nc,xc,lxc->cnl", psi_basis, -grad_j_e, grad_psi_basis)
+            matel += np.einsum("nc,xc,lxc->cnl", psi_basis, grad_j_e, grad_psi_basis)
             matel_temp = np.einsum("nc,xc,lxc->cnl", psi_basis, grad_b_e + grad_t_e, grad_psi_basis)
             matel2[0] += matel_temp
             matel2[1] += matel_temp
+            matel2[2] += matel_temp
+            matel2[3] += matel_temp
         
         # wf.recompute(configs)
         # Matel 2 is the statistical approach
@@ -253,6 +246,8 @@ class ABDMCMatrixAccumulator:
                     'matel':matel, 
                     'matel2_t1':matel2[0], 
                     'matel2_t2':matel2[1], 
+                    'matel2_t3':matel2[2], 
+                    'matel2_t4':matel2[3], 
                     'ovlp': ovlp_ij}
         return results 
 
