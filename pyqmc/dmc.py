@@ -196,9 +196,10 @@ def dmc_propagate(
         Snew = compute_S(e_trial, e_est, branchcut_start, v2, tstep, eloc, nelec)
         Sold = compute_S(e_trial, e_est, branchcut_start, v2old, tstep, elocold, nelec)
         wmult = np.exp(tstep * tdamp * (0.5 * Snew + 0.5 * Sold))
-        weights *= wmult
+        # weights *= wmult
         wavg = np.mean(weights)
-
+        print(wavg)
+        
         avg = {}
         for k, accumulator in accumulators.items():
             dat = accumulator(configs, wf) if k != ekey[0] else energydat

@@ -13,7 +13,7 @@
 # copies or substantial portions of the Software.
 
 from pyqmc import three_body_jastrow
-import pyqmc.slater as slater
+import slater as slater
 import pyqmc.multiplywf as multiplywf
 import pyqmc.addwf as addwf
 # import pyqmc.jastrowspin as jastrowspin

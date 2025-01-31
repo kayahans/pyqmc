@@ -153,7 +153,8 @@ class BosonWF:
         self.get_hmf(mf.mo_energy, ncore)
 
         # Use constant weight 
-        self.myparameters["det_coeff"] = np.ones(self.num_det)/self.num_det
+        # self.myparameters["det_coeff"] = np.ones(self.num_det)/self.num_det
+        self.myparameters["det_coeff"] = np.ones(self.num_det)
         self.parameters = JoinParameters([self.myparameters, self.orbitals.parameters])
 
         iscomplex = self.orbitals.mo_dtype == complex or bool(
@@ -169,6 +170,7 @@ class BosonWF:
         total_energies = up_energies[self._det_map[0]] + dn_energies[self._det_map[1]]
         hf = h5py.File(self.hmf_file, 'w')
         hf.create_dataset('hmf', data=total_energies)
+        self.hmf = np.diag(total_energies)
         hf.close()
     
     def filter_determinants(self, emax, mo_energies, ncore):
@@ -364,7 +366,7 @@ class BosonWF:
     
     @timer_func
     def gradient(self, e, epos):
-        """Compute the gradient of the log wave function
+        """Compute the gradient of the log wave function ∇log(Psi_B) 
         Note that this can be called even if the internals have not been updated for electron e,
         if epos differs from the current position of electron e."""
         #returns \nabla ln(\Phi_B)=\frac{\nabla \Phi_B}{\Phi_B}
@@ -416,8 +418,66 @@ class BosonWF:
         grad[~np.isfinite(grad)] = 0.0
         return grad
     
-    @timer_func
+    @ timer_func
+    def laplacian(self, e, epos):
+        """Returns ∇²(Phi_B)/Phi_B of bosonic wave function for electron e at position epos
+        Returns array of shape (nconfigs,)
+        \[
+        \nabla^2 \Phi_B = \frac{\sum_l \left( \nabla \Phi_l \cdot \nabla \Phi_l + \Phi_l \nabla^2 \Phi_l \right)}{\Phi_B} 
+        - \frac{\left( \sum_l \Phi_l \nabla \Phi_l \right)^2}{\Phi_B^3}.
+        \]
+        # The Laplacian of the bosonic wave function (Phi_B) divided by Phi_B is:
+        #
+        # 1. First term: Sum over determinants l of:
+        #    - (gradient of Phi_l)·(gradient of Phi_l)  [dot product of gradients]
+        #    - plus (Phi_l)·(Laplacian of Phi_l)
+        #    All divided by Phi_B squared
+        #
+        # 2. Second term: Subtract
+        #    - The square of (sum of Phi_l times gradient of Phi_l)
+        #    - Divided by Phi_B 4th power
+        #
+        # This implements the quotient rule for second derivatives of the bosonic wave function
+        """
+
+        # import pdb; pdb.set_trace()
+        lap_n = self.laplacian_dets(e, epos) # ∇²(Phi_n)
+        # Get value of determinants
+        phase_n, logval_n = self.value_dets()   # phase(Phi_n), log(Phi_n)
+        val_n = phase_n * np.nan_to_num(np.exp(logval_n)) # Phi_n
+        # Get gradient of determinants
+        loggrad_n = self.gradient_dets(e, epos) # ∇log(Phi_n) # large
+
+        # Get value of bosonic wavefunction
+        phase_b, logval_b = self.value() # phase(Phi_B), log(Phi_B)
+        val_b = phase_b * np.nan_to_num(np.exp(logval_b)) # Phi_B
+
+        # Calculate ∇²(Phi_B)/Phi_B
+        # First term: Sum over determinants l of: (gradient of Phi_l)·(gradient of Phi_l)  [dot product of gradients]
+        
+        grad_phi_l = np.einsum('nxc, cn->nxc', loggrad_n, val_n)
+        
+        lap_b1 = np.einsum('nxc, nxc->c', grad_phi_l, grad_phi_l)
+        lap_b1 += np.einsum('cn, cn->c', val_n, lap_n)
+        lap_b1 /= val_b**2
+        # Second term: Minus the square of (sum of Phi_l times gradient of Phi_l)
+        lap_b2 = np.einsum('cn, nxc->cx', val_n, grad_phi_l)
+        lap_b2 = np.einsum('cx, cx->c', lap_b2, lap_b2)
+        lap_b2 /= val_b**4
+        lap_b = lap_b1 - lap_b2
+        # import matplotlib.pyplot as plt
+        # plt.figure()
+        # plt.scatter(val_b,lap_b)
+        # plt.show()
+        # import pdb; pdb.set_trace()
+        return lap_b
+    
+    
     def gradient_value(self, e, epos):
+        """Returns the ∇log(Phi_B) gradient of bosonic wavefunction and its log value log(Phi_B)
+        Phi_B is defined in eq. 4, Phi_B = \sqrt{\sum_{n}{\Phi_n^2}}
+        Returns array of shape (nconfigs, 3) and (nconfigs,)"""
+
         s = int(e >= self._nelec[0])
         aograd = self.orbitals.aos("GTOval_sph_deriv1", epos)
         mograd = self.orbitals.mos(aograd, s)
@@ -465,7 +525,8 @@ class BosonWF:
     
     @timer_func
     def gradient_dets(self, e, epos, test=False):
-        """Returns the log gradient of each slater determinant forming the bosonic wavefunction
+        """Returns the ∇log(Phi_l) gradient of each slater determinant forming the bosonic wavefunction
+        Phi_l is defined in eq. 14, psi_l = Phi_l/Phi_B
 
         Args:
             e (_type_): electron index
@@ -505,6 +566,67 @@ class BosonWF:
             except:
                 print('gradient_dets error', np.max(np.abs(gc - self.gradient(e, epos))))
         return grads
+    
+    def laplacian_dets(self, e, epos, test=False):
+        """Returns laplacian ∇²(Phi_l) of each slater determinant forming the bosonic wavefunction
+        Phi_l is defined in eq. 14, psi_l = Phi_l/Phi_B
+
+        Args:
+            e (_type_): electron index
+            epos (_type_): electron coordinates
+            test (bool, optional): Calculates the laplacian of bosonic wavefunction using values in this function.
+                                   Defaults to False.
+
+        Returns:
+            laplacian: [# of determinants, nconfigs]
+        """
+        s = int(e >= self._nelec[0])
+        ao = self.orbitals.aos("GTOval_sph_deriv2", epos)
+        ao_val = ao[:, 0, :, :]
+        ao_lap = gpu.cp.sum(ao[:, [4, 7, 9], :, :], axis=1)
+        mo_lap_vals = gpu.cp.stack(
+            [self.orbitals.mos(x, s)[..., self._det_occup[s]] for x in [ao_val, ao_lap]]
+        )
+
+        jacobi = gpu.cp.einsum(
+            "ei...dj,idj...->ei...d",
+            mo_lap_vals,
+            self._inverse[s][..., e - s * self._nelec[0]],
+        )
+
+        upref = gpu.cp.amax(self._dets[0][1]).real
+        dnref = gpu.cp.amax(self._dets[1][1]).real
+
+        det_array = (
+            self._dets[0][0, :, self._det_map[0]]
+            * self._dets[1][0, :, self._det_map[1]]
+            * gpu.cp.exp(
+                self._dets[0][1, :, self._det_map[0]]
+                + self._dets[1][1, :, self._det_map[1]]
+                # - upref
+                # - dnref
+            )
+        )
+        
+        # det_coeff = self.myparameters['det_coeff']
+        numer = gpu.cp.einsum(
+            "ei...d,di->ei...d",
+            jacobi[..., self._det_map[s]],
+            # det_coeff,
+            det_array,
+        )
+        # denom = np.sum(numer[0], axis=1)
+        # lap = np.einsum('id, i->id', numer[1], 1./denom)
+        
+        lap = numer[1]
+
+        # np.sum(numer[0], axis=1) should be the same as denom in laplacian @ slater.py
+        # If want to return ∇²(Psi_n), return numer[1]
+        # np.einsum('ie, i->ie',numer[1], 1./np.sum(numer[0], axis=1)) returns ∇²(Psi_n)/\sum(Psi_n)
+        # For testing against slater laplacian, return np.einsum('ie, i->ie',numer[1], 1./np.sum(numer[0], axis=1))
+        # We don't need to evaluate numer[0], if we want ∇²(Psi_n) 
+        return lap
+        
 
     def pgradient(self):
         # Not implemented

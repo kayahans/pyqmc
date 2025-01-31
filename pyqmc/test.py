@@ -17,20 +17,15 @@ if __name__=="__main__":
     # scf_checkfile, opt_checkfile, mf_lda = run_lda_li()
     # ci_checkfile = None
     # # 1. CI calculation
-    from scf_runs import run_lda_li, run_casci, run_lda_h2, run_lda_he, run_lda_c, run_lda_be, run_lda_f, run_lda_b
-    # scf_checkfile, _, mf_lda = run_lda_h2()
+    from scf_runs import run_casci, run_lda_he
     scf_checkfile, _, mf_lda = run_lda_he()
-    # scf_checkfile, _, mf_lda = run_lda_li()
-    # scf_checkfile, _, mf_lda = run_lda_be()
-    # scf_checkfile, _, mf_lda = run_lda_b()
-    # scf_checkfile, _, mf_lda = run_lda_f()
 
     ci_checkfile, mc, opt_checkfile, abvmc_checkfile = run_casci(scf_checkfile, nroots=2, ncas = 2, nelecas=(1, 1))
     
     print(opt_checkfile, abvmc_checkfile)
     
     # 2. Boson Jastrow optimization
-    reuse = False
+    reuse = True
     jastrow_kws = {"ion_cusp":False, "na":0}
     det_emax = 'singles'
     if not reuse:
@@ -79,40 +74,42 @@ if __name__=="__main__":
     nblocks = 1000
     tstep = 0.3
     
-    serial = False
+    serial = True
     if serial:
         print('Using Serial code')
-        bosonrecipes.ABVMC(scf_checkfile, 
+        bosonrecipes.ABVMC(
+                        scf_checkfile, 
                         abvmc_checkfile, 
-                        ci_checkfile = ci_checkfile,
-                        verbose = True,  
-                        jastrow_kws    = jastrow_kws,
-                        tstep   = tstep,
-                        nconfig = nconfig,
-                        nblocks = nblocks,
-                        accumulators = ['excitations'],
+                        ci_checkfile     = ci_checkfile,
+                        verbose          = True,  
+                        jastrow_kws      = jastrow_kws,
+                        tstep            = tstep,
+                        nconfig          = nconfig,
+                        nblocks          = nblocks,
+                        accumulators     = ['dmcexcitations'],
                         nsteps_per_block = 20,
-                        load_parameters = opt_checkfile, 
-                        det_emax = det_emax
+                        load_parameters  = opt_checkfile, 
+                        det_emax         = det_emax
                         )
-                        
     else:
         print('Using Parallel code')
         with concurrent.futures.ProcessPoolExecutor(max_workers=ncore) as client:
-            bosonrecipes.ABVMC(scf_checkfile, 
+            bosonrecipes.ABDMC(
+                            scf_checkfile, 
                             abvmc_checkfile, 
-                            ci_checkfile = ci_checkfile,
-                            verbose = True,  
-                            jastrow_kws    = jastrow_kws,
-                            tstep   = tstep,
-                            nconfig = nconfig,
-                            nblocks = nblocks,
+                            ci_checkfile    = ci_checkfile,
+                            verbose         = True,  
+                            jastrow_kws     = jastrow_kws,
+                            tstep           = tstep,
+                            nconfig         = nconfig,
+                            nblocks         = nblocks,
                             nsteps_per_block = 20,
                             load_parameters = opt_checkfile, 
-                            accumulators = ['excitations'],
-                            client = client, 
-                            npartitions=ncore, 
-                            det_emax = det_emax)
+                            accumulators    = ['dmcexcitations'],
+                            client          = client, 
+                            npartitions     = ncore, 
+                            det_emax        = det_emax
+                            )
 
 # with h5py.File("sj.hdf5") as f:
 #     print("keys", list(f.keys()))

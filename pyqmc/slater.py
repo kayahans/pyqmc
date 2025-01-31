@@ -313,7 +313,7 @@ class Slater:
             vec,
             self._inverse[s][..., e - s * self._nelec[0]],
         )
-
+        
         upref = gpu.cp.amax(self._dets[0][1]).real
         dnref = gpu.cp.amax(self._dets[1][1]).real
 
@@ -327,6 +327,7 @@ class Slater:
                 - dnref
             )
         )
+        self.parameters["det_coeff"] = np.ones(self.parameters["det_coeff"].shape)/self.parameters["det_coeff"].shape[0]
         numer = gpu.cp.einsum(
             "ei...d,d,di->ei...",
             ratios[..., self._det_map[s]],
@@ -338,8 +339,16 @@ class Slater:
             self.parameters["det_coeff"],
             det_array,
         )
-        # curr_val = self.value()
         
+        # curr_val = self.value()
+        # print(np.sum(ratios))
+        # print(np.sum(det_array))
+        print(numer.shape, np.sum(numer))
+        print(denom.shape, np.sum(denom))
+        # print(self._det_map[s])
+        # print(self.parameters["det_coeff"])
+        # print(np.sum(ratios[..., self._det_map[s]]))
+        # import pdb; pdb.set_trace()
         if len(numer.shape) == 3:
             denom = denom[gpu.cp.newaxis, :, gpu.cp.newaxis]
         return numer / denom
@@ -399,8 +408,6 @@ class Slater:
         ao = gpu.cp.concatenate(
             [ao[:, 0:4, ...], ao[:, [4, 7, 9], ...].sum(axis=1, keepdims=True)], axis=1
         )
-        import pdb
-        pdb.set_trace()
         mo = self.orbitals.mos(ao, s)
         mo_vals = mo[:, :, self._det_occup[s]]
         ratios = self._testrowderiv(e, mo_vals)

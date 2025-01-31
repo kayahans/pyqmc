@@ -291,13 +291,17 @@ def initialize_boson_qmc_objects(
 
     acc = {}
     acc['energy'] = bosonaccumulators.ABQMCEnergyAccumulator(mf)
-
-    if isinstance(accumulators, list) and 'vmcexcitations' in accumulators:
-        acc['vmcexcitations'] = bosonaccumulators.ABVMCMatrixAccumulator()
+    possible_accumulators = {'ab_vmc_excitations':bosonaccumulators.ABVMCMatrixAccumulator(), 
+                             'ab_dmc_excitations':bosonaccumulators.ABDMCMatrixAccumulator(),
+                             'abc_dmc_excitations':bosonaccumulators.ABCDMCMatrixAccumulator()}
     
-    if isinstance(accumulators, list) and 'dmcexcitations' in accumulators:
-        acc['dmcexcitations'] = bosonaccumulators.ABDMCMatrixAccumulator()
-
+    for acc_name in accumulators:
+        if acc_name not in possible_accumulators:
+            raise ValueError(f"Accumulator {acc_name} not found in possible accumulators")
+        else:
+            acc[acc_name] = possible_accumulators[acc_name]
+            print(f"Using accumulator {acc_name}")
+    
     if opt_wf is True:
         acc = bosonaccumulators.boson_gradient_generator(
             mf, wf, to_opt, nodal_cutoff=nodal_cutoff

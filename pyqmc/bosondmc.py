@@ -149,6 +149,7 @@ def dmc_propagate(
     nsteps=5,
     accumulators=None,
     ekey=("energy", "total"),
+    no_branching=False,
 ):
     """
     Propagate DMC without branching
@@ -214,10 +215,14 @@ def dmc_propagate(
 
         Snew = compute_S(e_trial, e_est, branchcut_start, v2, tstep, eloc, nelec)
         Sold = compute_S(e_trial, e_est, branchcut_start, v2old, tstep, elocold, nelec)
-        wmult = np.exp(tstep * tdamp * (0.5 * Snew + 0.5 * Sold))
+        if no_branching:
+            wmult = 1
+        else:
+            wmult = np.exp(tstep * tdamp * (0.5 * Snew + 0.5 * Sold))
         weights *= wmult
         wavg = np.mean(weights)
-
+        # print(wavg)
+        
         avg = {}
         for k, accumulator in accumulators.items():
             dat = accumulator(configs, wf) if k != ekey[0] else energydat
@@ -409,6 +414,7 @@ def rundmc(
     branchtime=None,
     stepoffset=None,
     nsteps=None,
+    no_branching=False,
 ):
     """
     Run DMC
@@ -520,6 +526,7 @@ def rundmc(
                 nsteps=nsteps_per_block,
                 accumulators=accumulators,
                 ekey=ekey,
+                no_branching=no_branching,
             )
         else:
             df_, configs, weights = dmc_propagate_parallel(
@@ -535,6 +542,7 @@ def rundmc(
                 nsteps=nsteps_per_block,
                 accumulators=accumulators,
                 ekey=ekey,
+                no_branching=no_branching,  
             )
 
         df_["e_trial"] = e_trial
