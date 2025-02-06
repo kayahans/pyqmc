@@ -185,11 +185,13 @@ class ABVMCMatrixAccumulator:
             log_grad_b_e = boson_wf.gradient(e, epos)
             log_grad_n = boson_wf.gradient_dets(e, epos)
             grad_psi_n = np.einsum('nc, nxc->nxc', psi_n, log_grad_n-log_grad_b_e)
-            grad_j = jastrow_wf.gradient(e, configs.electron(e))
+            grad_j = -jastrow_wf.gradient(e, configs.electron(e))
+
             # variant 1 use acceptance from VMC
             # delta += nconf /np.sum(acc[e]) * np.einsum("nc,xc,lxc, c ->cnl", psi_basis, grad_j, grad_psi_basis, acc[e])
             # variant 2 do not use acceptance from VMC
             delta += np.einsum("lc,xc,nxc->cln", psi_n, grad_j, grad_psi_n)
+            # print('VMC', e, np.sum(grad_j), np.sum(grad_psi_n), np.sum(psi_n), np.sum(delta), delta[0,0,0],)
 
         results = {'delta':delta, 'ovlp': ovlp_ij}
         return results 
@@ -271,7 +273,7 @@ class ABCDMCMatrixAccumulator:
     @timer_func
     def __call__(self, configs, wf):
         
-        nconf, nelec, ndets = configs.configs.shape
+        nconf, nelec, nx = configs.configs.shape
 
         wave_functions = wf.wf_factors
         for wave in wave_functions:
@@ -292,6 +294,7 @@ class ABCDMCMatrixAccumulator:
         # Matrix element by integration parts on the ∇f_B term of the eq. 23 
         # For integration by parts see eq. 17 in the reference paper
         matel = np.einsum('lc, ln, nc->cln', psi_n, boson_wf.hmf, psi_n) # Psi_l * H * Psi_n
+        delta = 0
         # phases, log_vals = boson_wf.value_dets() #log(Phi_l)
         # psis = phases * np.nan_to_num(np.exp(log_vals)) # Phi_l
         
@@ -311,7 +314,9 @@ class ABCDMCMatrixAccumulator:
             lap_phi_n = boson_wf.laplacian_dets(e, epos_s) 
             # ∇log(Psi_B^T)
             loggrad_psi_bt = wf.gradient(e, epos_s)
-
+            jgrad          = jastrow_wf.gradient(e, epos_s)
+            # print('DMC-J', e, np.sum(jgrad))
+            
             # lap_psi_n: (eq. before eq. 23)
             # ∇²(Phi_n/Phi_B) = [∇²(Phi_n)*Phi_B - Phi_n*∇²(Phi_B)]/(Phi_B^2) 
             #                   - 2*∇(Phi_B)·∇(Phi_n/Phi_B)/Phi_B
@@ -319,12 +324,29 @@ class ABCDMCMatrixAccumulator:
             lap_psi_n -= np.einsum('c, nc->cn', lap_phi_b, psi_n) # -∇²(Phi_B)/Phi_B * Psi_n or -∇²(Phi_B)/Phi_B^2 * Phi_n 
             lap_psi_n -= 2 * np.einsum('xc, nxc->cn', loggrad_b, grad_psi_n) # - 2*∇(log(Psi_B))*∇(Psi_n)
 
-            matel += np.einsum('lxc, nxc->cln', grad_psi_n, grad_psi_n) # ∇Psi_l \dot ∇Psi_n 
-            matel += np.einsum('lc, cn->cln', psi_n, lap_psi_n) # Psi_l * ∇²Psi_n
-            matel += np.einsum('lc, xc, nxc->cln', psi_n, loggrad_b + loggrad_psi_bt, grad_psi_n) # Psi_l * [∇(log(Phi_B)) + ∇(log(Psi_BT))] \dot ∇Psi_n        
-
+            delta1 = np.einsum('lxc, nxc->cln', grad_psi_n, grad_psi_n) # ∇Psi_l \dot ∇Psi_n 
+            delta2 = np.einsum('lc, cn->cln', psi_n, lap_psi_n) # Psi_l * ∇²Psi_n
+            
+            delta3 = np.einsum('lc, xc, nxc->cln', psi_n, loggrad_b + loggrad_psi_bt, grad_psi_n) # Psi_l * [∇(log(Phi_B)) + ∇(log(Psi_BT))] \dot ∇Psi_n        
+            # delta4 = np.einsum('lc, xc, nxc->cln', psi_n, -2 * loggrad_b, grad_psi_n)
+            # delta6 = np.einsum('lc, xc, nxc->cln', psi_n, -2 * loggrad_psi_bt, grad_psi_n)
+            # delta5 = delta1 + delta2
+            delta += delta1 + delta2 + delta3
+            # print('DMC', e, np.sum(grad_psi_n), np.sum(psi_n), np.sum(delta1), np.sum(delta2), np.sum(delta3), np.sum(delta), delta[0,0,0])
+            # print()
+            # ndets = lap_phi_n.shape[1]
+            # print(e,ndets)
+            # for i in range(ndets):
+            #     a = np.sum(delta5, axis=0)[i,i]
+            #     b = np.sum(delta6, axis=0)[i,i]
+            #     print(a, b, b/a)
+            # import pdb; pdb.set_trace()
+            matel += delta
+            
+        # exit()
         results = {'matel':matel, 
-                    'ovlp': ovlp_ij}
+                   'delta': delta,
+                   'ovlp': ovlp_ij}
         return results 
 
     def avg(self, configs, wf):

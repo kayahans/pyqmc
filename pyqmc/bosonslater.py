@@ -134,8 +134,10 @@ class BosonWF:
             ncore = (0,0)
             self._nelec = mol.nelec
         self.eval_gto_precision = eval_gto_precision
-        
-        self.num_det = mc.ci.shape[0] * mc.ci.shape[1]
+        try:
+            self.num_det = mc.ci.shape[0] * mc.ci.shape[1]
+        except:
+            self.num_det = 1
 
         self.myparameters = {}
         (
@@ -149,8 +151,9 @@ class BosonWF:
         self.det_info_file = 'det_info.hdf5'
         self.hmf_file      = 'hmf.hdf5'
 
-        self.filter_determinants(det_emax, mf.mo_energy, ncore)
-        self.get_hmf(mf.mo_energy, ncore)
+        if self.num_det > 1:
+            self.filter_determinants(det_emax, mf.mo_energy, ncore)
+            self.get_hmf(mf.mo_energy, ncore)
 
         # Use constant weight 
         # self.myparameters["det_coeff"] = np.ones(self.num_det)/self.num_det
@@ -537,23 +540,38 @@ class BosonWF:
         Returns:
             gradient: [# of determinants, cartesian(3), nconfigs]
         """
+
         s = int(e >= self._nelec[0])
         aograd = self.orbitals.aos("GTOval_sph_deriv1", epos)
         mograd = self.orbitals.mos(aograd, s)
+
         mograd_vals = mograd[:, :, self._det_occup[s]]
-        jacobi = gpu.cp.einsum(
+
+        ratios = np.einsum(
             "ei...dj,idj...->ei...d",
             mograd_vals,
             self._inverse[s][..., e - s * self._nelec[0]],
         )
-        # import pdb
-        # pdb.set_trace()
-        jac =  gpu.cp.einsum(
-            "ei...d->dei...",
-            jacobi[..., self._det_map[s]],
+
+        # Removed detcoeff and ref values
+        det_array = (
+            self._dets[0][0, :, self._det_map[0]]
+            * self._dets[1][0, :, self._det_map[1]]
+            * np.exp(
+                self._dets[0][1, :, self._det_map[0]]
+                + self._dets[1][1, :, self._det_map[1]]
+            )
         )
-        # grads = jac[:, 1:, :]
-        grads = np.einsum('dei, di->dei', jac[:,1:,:], 1./jac[:, 0, :])
+
+        numer = np.einsum(
+            "ei...d,di->edi...",
+            ratios[..., self._det_map[s]],
+            det_array,
+        )
+        
+        # denom has the sum of Multideterminant WF, not needed
+        grads = numer[1:] / numer[0]
+        grads = np.einsum('edi->dei', grads)
 
         if test:
             tol = 1E-6
@@ -563,8 +581,10 @@ class BosonWF:
             gc = np.einsum('d, id,dei->ei', det_coeff, np.exp(2*(dv-v[:, None])), grads)
             try:
                 assert ((np.abs(gc - self.gradient(e, epos)) < tol).all())
+                print('gradient_dets test passed')
             except:
                 print('gradient_dets error', np.max(np.abs(gc - self.gradient(e, epos))))
+            exit()
         return grads
     
     def laplacian_dets(self, e, epos, test=False):
