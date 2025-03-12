@@ -6,7 +6,7 @@ import pyqmc.supercell as supercell
 import h5py
 import pandas as pd
 import bosonmc
-import linemin
+from pyqmc import bosonlinemin
 import bosondmc
 import wftools
 import pyqmc
@@ -69,7 +69,7 @@ def ABOPTIMIZE(
         det_emax=det_emax,
     )
     if anchors is None:
-        wf, df = linemin.line_minimization(wf, configs, acc, **linemin_kws)
+        wf, df = bosonlinemin.line_minimization(wf, configs, acc, **linemin_kws)
     return wf, df
 
 def ABVMC(
@@ -306,7 +306,7 @@ def initialize_boson_qmc_objects(
         acc = bosonaccumulators.boson_gradient_generator(
             mf, wf, to_opt, nodal_cutoff=nodal_cutoff
         )
-    
+
     return wf, configs, acc
 
 def read_abvmc(fname):

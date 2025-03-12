@@ -149,15 +149,16 @@ def line_minimization(
             coords.load_hdf(hdf)
     else:  # not restarting -- VMC warm up period
         if verbose:
-            print("starting warmup")
-        # _, coords = abvmc(
-        #     wf,
-        #     coords,
-        #     accumulators={},
-        #     client=client,
-        #     npartitions=npartitions,
-        #     **warmup_options,
-        # )
+            print("starting warmup")    
+            
+            _, coords = abvmc(
+                wf,
+                coords,
+                accumulators={},
+                client=client,
+                npartitions=npartitions,
+                **warmup_options,
+            )
         if verbose:
             print("finished warmup", flush=True)
 
