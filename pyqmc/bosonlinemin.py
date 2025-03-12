@@ -108,7 +108,7 @@ def line_minimization(
     update=sr_update,
     update_kws=None,
     verbose=False,
-    npts=10,
+    npts=5,
     hdf_file=None,
     client=None,
     npartitions=None,
@@ -262,7 +262,7 @@ def line_minimization(
         if client is None:
             stepsdata = correlated_compute_boson(wf, coords, params, pgrad_acc)
         else:
-            raise NotImplementedError("Parallel linemin not implemented")
+            stepsdata = correlated_compute_boson_parallel(wf, coords, params, pgrad_acc, client, npartitions)
 
         stepsdata["weight"] = (
             stepsdata["weight"] / np.mean(stepsdata["weight"], axis=1)[:, np.newaxis]
@@ -305,6 +305,18 @@ def line_minimization(
 
     return wf, df
 
+
+def correlated_compute_boson_parallel(wf, configs, params, pgrad_acc, client, npartitions):
+    config = configs.split(npartitions)
+    runs = [
+        client.submit(correlated_compute_boson, wf, conf, params, pgrad_acc)
+        for conf in config
+    ]
+    allresults = [r.result() for r in runs]
+    block_avg = {}
+    for k in allresults[0].keys():
+        block_avg[k] = np.hstack([res[k] for res in allresults])
+    return block_avg
 
 
 def correlated_compute_boson(wf, configs, params, pgrad_acc):
