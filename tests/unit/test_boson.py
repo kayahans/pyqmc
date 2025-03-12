@@ -5,7 +5,7 @@ import pytest
 import os
 import numpy as np
 from pyqmc.mc import initial_guess
-from bosonslater import BosonWF
+from pyqmc.bosonslater import BosonWF
 
 @pytest.mark.boson
 def test_boson_wf(H2_ccecp_casci_s0):
@@ -86,6 +86,7 @@ def test_boson_derivatives(H2_ccecp_uhf):
     wfb_lap = wfb.laplacian(e, epos)
     wfs_lap = wfs.laplacian(e, epos)
     assert np.allclose(wfb_lap, wfs_lap)
+    
 
 @pytest.mark.boson
 def test_boson_derivatives_li(Li_ccecp_casci_s1):
@@ -114,10 +115,11 @@ def test_boson_derivatives_li(Li_ccecp_casci_s1):
     wfb_lap = wfb.laplacian(e, epos)
     wfs_lap = wfs.laplacian(e, epos)
     assert np.allclose(wfb_lap, wfs_lap)
+    
 
 @pytest.mark.boson
 def test_boson_dets_value_singlet(H2_ccecp_casci_s0):
-    '''Given \Phi_B = \sqrt{\sum_{n}{\Phi_n^2}}
+    r'''Given \Phi_B = \sqrt{\sum_{n}{\Phi_n^2}}
     Check that \Phi_B = \sqrt{\sum_{n}{\Phi_n^2}}'''
     mol, mf, mc = H2_ccecp_casci_s0
     wfbj, to_opt = bosonwftools.generate_boson_wf(mol, mf, mc=mc)
@@ -137,10 +139,11 @@ def test_boson_dets_value_singlet(H2_ccecp_casci_s0):
     det_coeff = wfb.myparameters['det_coeff']
     phi_b = 1./2 * np.log(np.einsum('d, id->i', det_coeff,np.exp(2*wfb_val_dets) ))
     assert np.allclose(phi_b, wfb_val)
+    os.remove('hmf.hdf5')
     
 @pytest.mark.boson
 def test_boson_dets_value_triplet(H2_ccecp_casci_s2):
-    '''Given \Phi_B = \sqrt{\sum_{n}{\Phi_n^2}}
+    r'''Given \Phi_B = \sqrt{\sum_{n}{\Phi_n^2}}
     Check that \Phi_B = \sqrt{\sum_{n}{\Phi_n^2}}'''
     mol, mf, mc = H2_ccecp_casci_s2
     wfbj, to_opt = bosonwftools.generate_boson_wf(mol, mf, mc=mc)
@@ -160,10 +163,11 @@ def test_boson_dets_value_triplet(H2_ccecp_casci_s2):
     det_coeff = wfb.myparameters['det_coeff']
     phi_b = 1./2 * np.log(np.einsum('d, id->i', det_coeff,np.exp(2*wfb_val_dets) ))
     assert np.allclose(phi_b, wfb_val)
+    os.remove('hmf.hdf5')
     
 @pytest.mark.boson
 def test_boson_dets_grad_singlet(H2_ccecp_casci_s0):
-    '''Given \Phi_B = \sqrt{\sum_{n}{\Phi_n^2}}
+    r'''Given \Phi_B = \sqrt{\sum_{n}{\Phi_n^2}}
     Check that ∇\Phi_B = \sum_{n}{\frac{\Phi_n^2}{\Phi_B}∇log(\Phi_n)}'''
     mol, mf, mc = H2_ccecp_casci_s0
     wfbj, to_opt = bosonwftools.generate_boson_wf(mol, mf, mc=mc)
@@ -186,10 +190,10 @@ def test_boson_dets_grad_singlet(H2_ccecp_casci_s0):
     det_coeff = wfb.myparameters['det_coeff']
     gc = np.einsum('d, id,dei->ei', det_coeff, np.exp(2*(dv-v[:, None])), wfb_grad_dets)
     assert np.allclose(gc, wfb_grad)
-    
+    os.remove('hmf.hdf5')
 @pytest.mark.boson
 def test_boson_dets_grad_triplet(H2_ccecp_casci_s2):
-    '''Given \Phi_B = \sqrt{\sum_{n}{\Phi_n^2}}
+    r'''Given \Phi_B = \sqrt{\sum_{n}{\Phi_n^2}}
     Check that ∇\Phi_B = \sum_{n}{\frac{\Phi_n^2}{\Phi_B}∇log(\Phi_n)}'''
     mol, mf, mc = H2_ccecp_casci_s2
     wfbj, to_opt = bosonwftools.generate_boson_wf(mol, mf, mc=mc)
@@ -212,10 +216,10 @@ def test_boson_dets_grad_triplet(H2_ccecp_casci_s2):
     det_coeff = wfb.myparameters['det_coeff']
     gc = np.einsum('d, id,dei->ei', det_coeff, np.exp(2*(dv-v[:, None])), wfb_grad_dets)
     assert np.allclose(gc, wfb_grad)
-    
+    os.remove('hmf.hdf5')
 @pytest.mark.boson
 def test_boson_gradient_analytical_vs_numerical(H2_ccecp_casci_s0):
-    '''For an N-electron system, where N-1 electrons are fixed, and the Nth electron is moved on a line
+    r'''For an N-electron system, where N-1 electrons are fixed, and the Nth electron is moved on a line
     the gradient of the wavefunction can be calculated analytically, and numerically (using np.gradient)'''
     mol, mf, mc = H2_ccecp_casci_s0
     wfbj, to_opt = bosonwftools.generate_boson_wf(mol, mf, mc=mc)
@@ -245,11 +249,11 @@ def test_boson_gradient_analytical_vs_numerical(H2_ccecp_casci_s0):
     dz = configs.configs[1]-configs.configs[0]
     dz = dz[dz!=0][0]
     assert np.allclose(wfb_grad_z, num_grad/dz, rtol=1e-4)
-
+    os.remove('hmf.hdf5')        
 
 @pytest.mark.boson
 def test_boson_gradient_analytical_vs_numerical_triplet(H2_ccecp_casci_s2):
-    '''For an N-electron system, where N-1 electrons are fixed, and the Nth electron is moved on a line
+    r'''For an N-electron system, where N-1 electrons are fixed, and the Nth electron is moved on a line
     the gradient of the wavefunction can be calculated analytically, and numerically (using np.gradient)'''
     mol, mf, mc = H2_ccecp_casci_s2
     wfbj, to_opt = bosonwftools.generate_boson_wf(mol, mf, mc=mc)
@@ -279,6 +283,7 @@ def test_boson_gradient_analytical_vs_numerical_triplet(H2_ccecp_casci_s2):
     dz = configs.configs[1]-configs.configs[0]
     dz = dz[dz!=0][0]
     assert np.allclose(wfb_grad_z, num_grad/dz, rtol=1e-4)    
+    os.remove('hmf.hdf5')
 
 @pytest.mark.boson
 def test_boson_jastrow_gradient_analytical_vs_numerical(H2_ccecp_casci_s0):
@@ -306,6 +311,7 @@ def test_boson_jastrow_gradient_analytical_vs_numerical(H2_ccecp_casci_s0):
     dz = configs.configs[1]-configs.configs[0]
     dz = dz[dz!=0][0]
     assert np.allclose(wfb_grad_z, num_grad/dz, rtol=1e-4)
+    os.remove('hmf.hdf5')
 
 @pytest.mark.boson
 def test_boson_jastrow_gradient_analytical_vs_numerical_triplet(H2_ccecp_casci_s2):
@@ -332,7 +338,8 @@ def test_boson_jastrow_gradient_analytical_vs_numerical_triplet(H2_ccecp_casci_s
     wfb_grad_z = wfb_grad[2]
     dz = configs.configs[1]-configs.configs[0]
     dz = dz[dz!=0][0]
-    assert np.allclose(wfb_grad_z, num_grad/dz, rtol=1e-4)    
+    assert np.allclose(wfb_grad_z, num_grad/dz, rtol=1e-4) 
+    os.remove('hmf.hdf5')   
 
 @pytest.mark.boson_slow
 def test_boson_aboptimize(H2_ccecp_casci_s2):
@@ -355,9 +362,10 @@ def test_boson_aboptimize(H2_ccecp_casci_s2):
     )
         
     linemin_kws = {'max_iterations': 2}
-    import pdb; pdb.set_trace()
+    
     wf, df = line_minimization(wfb, configs, acc, **linemin_kws)
-    import pdb; pdb.set_trace()
+    os.remove('hmf.hdf5')
+    os.remove('linemin.hdf5')
     
     
 if __name__ == "__main__":
