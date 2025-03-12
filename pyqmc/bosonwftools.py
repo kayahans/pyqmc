@@ -3,7 +3,7 @@ from pyqmc import multiplywf
 import pyqmc.gpu as gpu
 import numpy as np
 import copy
-from wftools import default_jastrow_basis, read_wf, generate_jastrow, generate_wf, generate_slater
+from pyqmc.wftools import default_jastrow_basis, read_wf, generate_jastrow, generate_wf, generate_slater
 
 
 def generate_boson(

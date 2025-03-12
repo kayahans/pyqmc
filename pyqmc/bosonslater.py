@@ -3,7 +3,7 @@ import pyqmc.gpu as gpu
 import warnings
 import pyqmc
 import copy
-from wftools import generate_slater
+from pyqmc.wftools import generate_slater
 import h5py
 import time
 report_timer = False

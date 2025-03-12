@@ -366,7 +366,29 @@ def test_boson_aboptimize(H2_ccecp_casci_s2):
     wf, df = line_minimization(wfb, configs, acc, **linemin_kws)
     os.remove('hmf.hdf5')
     os.remove('linemin.hdf5')
+
+@pytest.mark.boson
+def test_boson_pgradient(H2_ccecp_casci_s2):
+    r'''Partial derivatives of jastrow factor from auxiliary boson and Slater wavefunctions 
+    should be identical. AB-VMC has no e-i terms, thus the jastrow_kws below.'''
     
+    mol, mf, mc = H2_ccecp_casci_s2
+    jastrow_kws = {"ion_cusp":False, "na":0, "nb":3}
+    wfb, to_opt = bosonwftools.generate_boson_wf(mol, mf, mc=mc, jastrow_kws=jastrow_kws)
+    wfs, to_opt = wftools.generate_wf(mol, mf, mc=mc, jastrow_kws=jastrow_kws)
+    
+    configs = initial_guess(mol, 10)
+    wfb.recompute(configs)
+    wfs.recompute(configs)
+    
+    pgradb = wfb.pgradient()
+    pgrads = wfs.pgradient()
+
+    for wfb_key, wfb_val in pgradb.items():
+        wfs_val = pgrads[wfb_key]
+        assert np.allclose(wfb_val, wfs_val)
+    
+    os.remove('hmf.hdf5')
     
 if __name__ == "__main__":
     test_boson_wf()
