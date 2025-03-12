@@ -65,7 +65,7 @@ def ABOPTIMIZE(
         S=S,
         jastrow_kws=jastrow_kws,
         slater_kws=slater_kws,
-        accumulators=bosonaccumulators,
+        # accumulators=bosonaccumulators,
         det_emax=det_emax,
     )
     if anchors is None:
@@ -294,14 +294,14 @@ def initialize_boson_qmc_objects(
     possible_accumulators = {'ab_vmc_excitations':bosonaccumulators.ABVMCMatrixAccumulator(), 
                              'ab_dmc_excitations':bosonaccumulators.ABDMCMatrixAccumulator(),
                              'abc_dmc_excitations':bosonaccumulators.ABCDMCMatrixAccumulator()}
-    
-    for acc_name in accumulators:
-        if acc_name not in possible_accumulators:
-            raise ValueError(f"Accumulator {acc_name} not found in possible accumulators")
-        else:
-            acc[acc_name] = possible_accumulators[acc_name]
-            print(f"Using accumulator {acc_name}")
-    
+    if accumulators is not None and len(accumulators) > 0:
+        for acc_name in accumulators:
+            if acc_name not in possible_accumulators:
+                raise ValueError(f"Accumulator {acc_name} not found in possible accumulators")
+            else:
+                acc[acc_name] = possible_accumulators[acc_name]
+                print(f"Using accumulator {acc_name}")
+        
     if opt_wf is True:
         acc = bosonaccumulators.boson_gradient_generator(
             mf, wf, to_opt, nodal_cutoff=nodal_cutoff

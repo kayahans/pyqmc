@@ -5,8 +5,9 @@ import pyqmc.ewald as ewald
 import copy
 
 from accumulators import LinearTransform
-import bosonslater
-import jastrowspin
+from pyqmc import bosonslater
+from pyqmc import jastrowspin
+
 
 from bosonslater import timer_func
 
