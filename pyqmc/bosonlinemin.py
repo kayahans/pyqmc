@@ -125,6 +125,7 @@ def line_minimization(
     :parameter boolean verbose: print output if True
     :return: optimized wave function, optimization data
     """
+
     if vmcoptions is None:
         vmcoptions = {}
     vmcoptions.update({"verbose": verbose})
@@ -137,6 +138,7 @@ def line_minimization(
     if "tstep" not in warmup_options and "tstep" in vmcoptions:
         warmup_options["tstep"] = vmcoptions["tstep"]
     assert npts >= 3, f"linemin npts={npts}; need npts >= 3 for correlated sampling"
+
     iteration_offset = 0
     if hdf_file is not None and os.path.isfile(hdf_file):  # restarting -- read in data
         with h5py.File(hdf_file, "r") as hdf:
@@ -150,7 +152,6 @@ def line_minimization(
     else:  # not restarting -- VMC warm up period
         if verbose:
             print("starting warmup")    
-            
             _, coords = abvmc(
                 wf,
                 coords,
@@ -203,12 +204,12 @@ def line_minimization(
         # Calculate gradient accurately
         # print('it', it, '='*20)
         # print('x0', x0)
-        coords, pgrad, Sij, en, var, sigma, ratio = gradient_energy_function(x0, coords)
+        coords, pgrad, Sij, en, en_err, sigma, ratio = gradient_energy_function(x0, coords)
         # print('en', en, 'en_err', en_err)
         # print('pgrad', pgrad)
         step_data = {}
         step_data["energy"] = en
-        step_data["var"] = var
+        step_data["energy_error"] = en_err
         step_data["ratio"] = ratio
         step_data["x"] = x0
         step_data["pgradient"] = pgrad
@@ -216,7 +217,7 @@ def line_minimization(
         step_data["nconfig"] = coords.configs.shape[0]
 
         if verbose:
-            print("descent en", en, var, " estimated sigma ", sigma)
+            print("descent en", en, en_err, " estimated sigma ", sigma)
             print("descent |grad|", np.linalg.norm(pgrad), flush=True)
             # print(pgrad)
             # print('a', wf.parameters.data['wf2']['acoeff'])
