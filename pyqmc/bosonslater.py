@@ -274,7 +274,7 @@ class BosonWF:
         
     @timer_func
     def recompute(self, configs):
-        """This computes the value from scratch. Returns the logarithm of the wave function as
+        r"""This computes the value from scratch. Returns the logarithm of the wave function as
         (phase,logdet). If the wf is real, phase will be +/- 1."""
         nconf, nelec, ndim = configs.configs.shape
         aos = self.orbitals.aos("GTOval_sph", configs)
@@ -307,7 +307,7 @@ class BosonWF:
 
     @timer_func
     def updateinternals(self, e, epos, configs, mask=None, saved_values=None):
-        """Update any internals given that electron e moved to epos. mask is a Boolean array
+        r"""Update any internals given that electron e moved to epos. mask is a Boolean array
         which allows us to update only certain walkers"""
 
         s = int(e >= self._nelec[0])
@@ -339,7 +339,7 @@ class BosonWF:
     
     @timer_func
     def value(self):
-        """Returns the logarithmic value of the bosonic wavefunction: log(\Phi_B)
+        r"""Returns the logarithmic value of the bosonic wavefunction: log(\Phi_B)
 
         Returns:
             sign, logval: sign and logatithmic value of the bosonic wavefunction
@@ -359,7 +359,7 @@ class BosonWF:
     
     @timer_func
     def value_dets(self, test = False):
-        """Returns logarithmic values of all Slater determinants used to form bosonic wavefunction
+        r"""Returns logarithmic values of all Slater determinants used to form bosonic wavefunction
 
         Args:
             test (bool, optional): Calculates the value of bosonic wavefunction using values in this function.
@@ -387,7 +387,7 @@ class BosonWF:
     
     @timer_func
     def gradient(self, e, epos):
-        """Compute the gradient of the log wave function ∇log(Psi_B) 
+        r"""Compute the gradient of the log wave function ∇log(Psi_B) 
         Note that this can be called even if the internals have not been updated for electron e,
         if epos differs from the current position of electron e."""
         #returns \nabla ln(\Phi_B)=\frac{\nabla \Phi_B}{\Phi_B}
@@ -446,7 +446,7 @@ class BosonWF:
     
     @ timer_func
     def laplacian(self, e, epos):
-        """Returns ∇²(Phi_B)/Phi_B of bosonic wave function for electron e at position epos
+        r"""Returns ∇²(Phi_B)/Phi_B of bosonic wave function for electron e at position epos
         Returns array of shape (nconfigs,)
         \[
         \nabla^2 \Phi_B = \frac{\sum_l \left( \nabla \Phi_l \cdot \nabla \Phi_l + \Phi_l \nabla^2 \Phi_l \right)}{\Phi_B} 
@@ -500,7 +500,7 @@ class BosonWF:
     
     
     def gradient_value(self, e, epos):
-        """Returns the ∇log(Phi_B) gradient of bosonic wavefunction and its log value log(Phi_B)
+        r"""Returns the ∇log(Phi_B) gradient of bosonic wavefunction and its log value log(Phi_B)
         Phi_B is defined in eq. 4, Phi_B = \sqrt{\sum_{n}{\Phi_n^2}}
         Returns array of shape (nconfigs, 3) and (nconfigs,)"""
 
@@ -551,7 +551,7 @@ class BosonWF:
     
     @timer_func
     def gradient_dets(self, e, epos, test=False):
-        """Returns the ∇log(Phi_l) gradient of each slater determinant forming the bosonic wavefunction
+        r"""Returns the ∇log(Phi_l) gradient of each slater determinant forming the bosonic wavefunction
         Phi_l is defined in eq. 14, psi_l = Phi_l/Phi_B
 
         Args:
@@ -611,7 +611,7 @@ class BosonWF:
         return grads
     
     def laplacian_dets(self, e, epos, test=False):
-        """Returns laplacian ∇²(Phi_l) of each slater determinant forming the bosonic wavefunction
+        r"""Returns laplacian ∇²(Phi_l) of each slater determinant forming the bosonic wavefunction
         Phi_l is defined in eq. 14, psi_l = Phi_l/Phi_B
 
         Args:
