@@ -9,6 +9,11 @@ from bosonmc import abvmc
 from pyqmc import bosonslater
 
 
+def np_pretty_print(nparray):
+    c = '\n'
+    with np.printoptions(formatter={'all': lambda x: f'{x:10.4g}'}):
+        c += nparray.__str__()
+    return c
 def sr_update(pgrad, Sij, step, eps=0.1):
     invSij = np.linalg.inv(Sij + eps * np.eye(Sij.shape[0]))
     v = np.einsum("ij,j->i", invSij, pgrad)
@@ -103,7 +108,7 @@ def line_minimization(
     update=sr_update,
     update_kws=None,
     verbose=False,
-    npts=5,
+    npts=10,
     hdf_file=None,
     client=None,
     npartitions=None,
@@ -152,6 +157,7 @@ def line_minimization(
     else:  # not restarting -- VMC warm up period
         if verbose:
             print("starting warmup")    
+            print('Using default ABVMC parameters for warmup')
             _, coords = abvmc(
                 wf,
                 coords,
@@ -160,7 +166,6 @@ def line_minimization(
                 npartitions=npartitions,
                 **warmup_options,
             )
-        if verbose:
             print("finished warmup", flush=True)
 
     # Attributes for linemin
@@ -168,6 +173,12 @@ def line_minimization(
 
     def gradient_energy_function(x, coords):
         newparms = pgrad_acc.transform.deserialize(wf, x)
+        if verbose:
+            c = ''
+            for key, value in newparms.items():
+                c += f'{key}({value.flatten().shape[0]} elements): {np_pretty_print(value.flatten())}\n'
+            print('Wavefunction parameters: ', c)
+
         for k in newparms:
             wf.parameters[k] = newparms[k]
         df, coords = abvmc(
@@ -202,11 +213,18 @@ def line_minimization(
     # Gradient descent cycles
     for it in range(max_iterations):
         # Calculate gradient accurately
-        # print('it', it, '='*20)
+        print('it', it, 'starting ' + '='*20)
         # print('x0', x0)
         coords, pgrad, Sij, en, en_err, sigma, ratio = gradient_energy_function(x0, coords)
         # print('en', en, 'en_err', en_err)
         # print('pgrad', pgrad)
+        if verbose:
+            print(f'pgrad: {pgrad.shape} {np_pretty_print(pgrad)}')
+            print(f'Sij: {Sij.shape} {np_pretty_print(np.diag(Sij))}')
+            print(f'en: {en}')
+            print(f'sigma: {sigma}')
+            print(f'ratio: {ratio}')
+
         step_data = {}
         step_data["energy"] = en
         step_data["energy_error"] = en_err
@@ -233,8 +251,11 @@ def line_minimization(
         params = [x0 + update(pgrad, Sij, step, **update_kws) for step in steps]
         # print('params', params[-2])
         step_data['params'] = params[-2]
+        
         if client is None:
             stepsdata = correlated_compute_boson(wf, coords, params, pgrad_acc)
+        else:
+            raise NotImplementedError("Parallel linemin not implemented")
 
         stepsdata["weight"] = (
             stepsdata["weight"] / np.mean(stepsdata["weight"], axis=1)[:, np.newaxis]
@@ -244,15 +265,32 @@ def line_minimization(
         xfit.extend(steps)
         est_min = stable_fit(xfit, yfit)
         # print('est_min', est_min)
+        import pdb; pdb.set_trace()
         x0 += update(pgrad, Sij, est_min, **update_kws)
         step_data["tau"] = xfit
         step_data["yfit"] = yfit
         step_data["est_min"] = est_min
 
+        x0_deserialized = pgrad_acc.transform.deserialize(wf, x0)
+        if verbose:
+            c = ''
+            for key, value in x0_deserialized.items():
+                c += f'{key}({value.flatten().shape[0]} elements): {value.flatten()}\n'
+            print('Wavefunction parameters: ', c)
+
+            print('x_fit', np_pretty_print(np.array(xfit)))
+            print('y_fit', np_pretty_print(np.array(yfit)))
+            print('est_min', est_min)
+            plot_fit = False
+            if plot_fit:
+                import matplotlib.pyplot as plt
+                plt.plot(xfit, yfit, 'o-')
+                plt.show()
         opt_hdf(
-            hdf_file, step_data, attr, coords, pgrad_acc.transform.deserialize(wf, x0)
+            hdf_file, step_data, attr, coords, x0_deserialized
         )
         df.append(step_data)
+        print('it', it, ' finished ' + '='*20)
 
     newparms = pgrad_acc.transform.deserialize(wf, x0)
     for k in newparms:
@@ -275,14 +313,35 @@ def correlated_compute_boson(wf, configs, params, pgrad_acc):
 
     """
     
+    # data = []
+
+    # jastrow_wf = None
+
+    # for wave in wf.wf_factors:
+    #     if isinstance(wave, pyqmc.jastrowspin.JastrowSpin):
+    #         jastrow_wf = wave    
+    
+    # psi0 = jastrow_wf.recompute(configs)[1]  # recompute gives det
+
+    # current_state = np.random.get_state()
+    # for p in params:
+    #     np.random.set_state(current_state)
+    #     newparms = pgrad_acc.transform.deserialize(wf, p)
+    #     for k in newparms:
+    #         wf.parameters[k] = newparms[k]
+    #     psi = jastrow_wf.recompute(configs)[1]  # recompute gives det
+    #     rawweights = (psi/psi0)**2
+    #     df = pgrad_acc.enacc(configs, wf)
+    #     df["weight"] = rawweights
+    #     data.append(df)
+    # data_ret = {}
+    # for k in data[0].keys():
+    #     data_ret[k] = np.asarray([d[k] for d in data])
+    # return data_ret
+
+
     data = []
-
-    jastrow_wf = None
-
-    for wave in wf.wf_factors:
-        if isinstance(wave, pyqmc.jastrowspin.JastrowSpin):
-            jastrow_wf = wave    
-    psi0 = jastrow_wf.recompute(configs)[1]  # recompute gives det
+    psi0 = wf.recompute(configs)[1]  # recompute gives det
 
     current_state = np.random.get_state()
     for p in params:
@@ -290,8 +349,8 @@ def correlated_compute_boson(wf, configs, params, pgrad_acc):
         newparms = pgrad_acc.transform.deserialize(wf, p)
         for k in newparms:
             wf.parameters[k] = newparms[k]
-        psi = jastrow_wf.recompute(configs)[1]  # recompute gives det
-        rawweights = (psi/psi0)**2
+        psi = wf.recompute(configs)[1]  # recompute gives det
+        rawweights = np.exp(2 * (psi - psi0))  # convert from log(|psi|) to |psi|**2
         df = pgrad_acc.enacc(configs, wf)
         df["weight"] = rawweights
         data.append(df)
@@ -299,5 +358,3 @@ def correlated_compute_boson(wf, configs, params, pgrad_acc):
     for k in data[0].keys():
         data_ret[k] = np.asarray([d[k] for d in data])
     return data_ret
-
-
