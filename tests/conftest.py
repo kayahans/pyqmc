@@ -89,6 +89,19 @@ def H2_ccecp_casci_s2(H2_ccecp_uhf):
     mc.kernel()
     return mol, mf, mc
 
+@pytest.fixture(scope="module")
+def Li_ccecp_casci_s1():
+    mol = gto.M(
+        atom="Li 0. 0. 0.",
+        basis="aug-ccpvqz",
+        unit="bohr",
+        spin=1,
+        verbose=1,
+    )
+    mf = scf.UHF(mol).run()
+    mc = pyscf.mcscf.CASCI(mf, ncas=4, nelecas=(2, 1))
+    mc.kernel()
+    return mol, mf, mc
 
 @pytest.fixture(scope="module")
 def H2_ccecp_uhf():
