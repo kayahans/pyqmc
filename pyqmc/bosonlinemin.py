@@ -130,7 +130,7 @@ def line_minimization(
     :parameter boolean verbose: print output if True
     :return: optimized wave function, optimization data
     """
-
+    
     if vmcoptions is None:
         vmcoptions = {}
     vmcoptions.update({"verbose": verbose})
@@ -156,8 +156,14 @@ def line_minimization(
             coords.load_hdf(hdf)
     else:  # not restarting -- VMC warm up period
         if verbose:
-            print("starting warmup")    
-            print('Using default ABVMC parameters for warmup')
+            print("starting warmup")  
+            if len(warmup_options.keys()) == 0:
+                print('Using default ABVMC parameters for warmup')
+            else:
+                print('Using user-provided parameters for ABVMC warmup')
+                for k, v in warmup_options.items():
+                    print(f'{k}: {v}')
+            
             _, coords = abvmc(
                 wf,
                 coords,
@@ -222,6 +228,7 @@ def line_minimization(
             print(f'pgrad: {pgrad.shape} {np_pretty_print(pgrad)}')
             print(f'Sij: {Sij.shape} {np_pretty_print(np.diag(Sij))}')
             print(f'en: {en}')
+            print(f'en_err: {en_err}')
             print(f'sigma: {sigma}')
             print(f'ratio: {ratio}')
 
@@ -265,8 +272,8 @@ def line_minimization(
         xfit.extend(steps)
         est_min = stable_fit(xfit, yfit)
         # print('est_min', est_min)
-        import pdb; pdb.set_trace()
-        x0 += update(pgrad, Sij, est_min, **update_kws)
+        dx = update(pgrad, Sij, est_min, **update_kws)
+        x0 += dx
         step_data["tau"] = xfit
         step_data["yfit"] = yfit
         step_data["est_min"] = est_min
@@ -277,7 +284,7 @@ def line_minimization(
             for key, value in x0_deserialized.items():
                 c += f'{key}({value.flatten().shape[0]} elements): {value.flatten()}\n'
             print('Wavefunction parameters: ', c)
-
+            print('Change in parameters: ', np_pretty_print(dx))
             print('x_fit', np_pretty_print(np.array(xfit)))
             print('y_fit', np_pretty_print(np.array(yfit)))
             print('est_min', est_min)
