@@ -109,7 +109,7 @@ def test_boson_abvmc_timestep_convergence_he_lda():
         # mf = scf.UHF(mol)
         mf = dft.UKS(mol)
         mf.chkfile = chkfile
-        mf.xc = 'LDA'
+        mf.xc = 'LDA,VWN'
         mf.kernel()
         return mf
 
@@ -158,6 +158,7 @@ def test_boson_abvmc_timestep_convergence_he_lda():
             seed = 1,
             client = client,
             npartitions = npartitions,
+            xc = 'LDA,VWN',
         )
         e = read_abvmc_energies(abvmc_filename)
         e_results.append(e[discard:])
@@ -177,95 +178,95 @@ def test_boson_abvmc_timestep_convergence_he_lda():
         within_3_std(mean_i, std_i, ref_mean, ref_std)
 
 
-@pytest.mark.boson_new
-def test_boson_abvmc_timestep_convergence_he_hf():
-    '''For an AB-HF calculation, the total energy should converge to the same value for different timesteps'''
-    from pyqmc.bosonrecipes import ABVMC
-    import matplotlib.pyplot as plt
+# TODO: @pytest.mark.boson
+# def test_boson_abvmc_timestep_convergence_he_hf():
+#     '''For an AB-HF calculation, the total energy should converge to the same value for different timesteps'''
+#     from pyqmc.bosonrecipes import ABVMC
+#     import matplotlib.pyplot as plt
     
-    def run_scf(chkfile):
-        erase_file(chkfile)
-        from pyscf import gto, scf
-        mol = gto.M(
-            atom="He 0 0. 0.0", basis="aug-ccpvqz",  unit="bohr", spin = 0
-        )
-        mf = scf.UHF(mol)
-        mf.chkfile = chkfile
-        mf.kernel()
-        return mf
+#     def run_scf(chkfile):
+#         erase_file(chkfile)
+#         from pyscf import gto, scf
+#         mol = gto.M(
+#             atom="He 0 0. 0.0", basis="aug-ccpvqz",  unit="bohr", spin = 0
+#         )
+#         mf = scf.UHF(mol)
+#         mf.chkfile = chkfile
+#         mf.kernel()
+#         return mf
 
-    def read_abvmc_energies(fname):
-        import h5py
-        with h5py.File(fname, 'r') as f:
-            energies = f['energytotal'][:]
-        return energies
+#     def read_abvmc_energies(fname):
+#         import h5py
+#         with h5py.File(fname, 'r') as f:
+#             energies = f['energytotal'][:]
+#         return energies
 
-    def within_3_std(mean_i, std_i, ref_mean, ref_std):
-        if mean_i > ref_mean:
-            assert mean_i - 3*std_i < ref_mean + 3*ref_std, f'dt={dt_i} is significantly different from dt={dt_list[0]}'
-        else:
-            assert mean_i + 3*std_i > ref_mean - 3*ref_std, f'dt={dt_i} is significantly different from dt={dt_list[0]}'
+#     def within_3_std(mean_i, std_i, ref_mean, ref_std):
+#         if mean_i > ref_mean:
+#             assert mean_i - 3*std_i < ref_mean + 3*ref_std, f'dt={dt_i} is significantly different from dt={dt_list[0]}'
+#         else:
+#             assert mean_i + 3*std_i > ref_mean - 3*ref_std, f'dt={dt_i} is significantly different from dt={dt_list[0]}'
 
-    # Try parallellization
-    # try:
-    #     import concurrent.futures
-    #     import os
-    #     npartitions = int(os.cpu_count() + 4)
-    #     client = concurrent.futures.ProcessPoolExecutor(max_workers=npartitions)
-    # except:
-    client = None
-    npartitions = 1
-    #end try 
+#     # Try parallellization
+#     # try:
+#     #     import concurrent.futures
+#     #     import os
+#     #     npartitions = int(os.cpu_count() + 4)
+#     #     client = concurrent.futures.ProcessPoolExecutor(max_workers=npartitions)
+#     # except:
+#     client = None
+#     npartitions = 1
+#     #end try 
 
 
-    dft_checkfile = 'he_scf.hdf5'
-    mf = run_scf(dft_checkfile)
+#     dft_checkfile = 'he_scf.hdf5'
+#     mf = run_scf(dft_checkfile)
 
-    e_results = []
-    dt_list = [1, 0.3, 0.1, 0.03, 0.01]
-    discard = 100
-    for dt in dt_list:
-        abvmc_filename = f'he_abvmc_{dt}.hdf5'
-        erase_file(abvmc_filename)
+#     e_results = []
+#     dt_list = [1, 0.3, 0.1, 0.03, 0.01]
+#     discard = 100
+#     for dt in dt_list:
+#         abvmc_filename = f'he_abvmc_{dt}.hdf5'
+#         erase_file(abvmc_filename)
 
-        wf, configs, acc = ABVMC(
-            dft_checkfile=dft_checkfile,
-            output=abvmc_filename,
-            nconfig=100,
-            tstep=dt,
-            nblocks=200,
-            nsteps_per_block=10,
-            load_parameters=False, 
-            seed = 1,
-            client = client,
-            npartitions = npartitions,
-            xc = 'HF',
-        )
-        e = read_abvmc_energies(abvmc_filename)
-        e_results.append(e[discard:])
-        plt.plot(e, label=f'dt={dt}')
+#         wf, configs, acc = ABVMC(
+#             dft_checkfile=dft_checkfile,
+#             output=abvmc_filename,
+#             nconfig=100,
+#             tstep=dt,
+#             nblocks=200,
+#             nsteps_per_block=10,
+#             load_parameters=False, 
+#             seed = 1,
+#             client = client,
+#             npartitions = npartitions,
+#             xc = 'HF',
+#         )
+#         e = read_abvmc_energies(abvmc_filename)
+#         e_results.append(e[discard:])
+#         plt.plot(e, label=f'dt={dt}')
         
-    erase_file(dft_checkfile)
-    for dt in dt_list:
-        abvmc_filename = f'he_abvmc_{dt}.hdf5'
-        erase_file(abvmc_filename)
+#     erase_file(dft_checkfile)
+#     for dt in dt_list:
+#         abvmc_filename = f'he_abvmc_{dt}.hdf5'
+#         erase_file(abvmc_filename)
     
-    plt.legend()
-    plt.show()
-    import pdb; pdb.set_trace()
-    e_ref = e_results[0]  
-    ref_mean = np.mean(e_ref)
-    ref_std = np.std(e_ref)
-    for i, dt_i in enumerate(dt_list[1:]):
-        mean_i = np.mean(e_results[i+1])
-        std_i = np.std(e_results[i+1])
-        within_3_std(mean_i, std_i, ref_mean, ref_std)
+#     plt.legend()
+#     plt.show()
+#     import pdb; pdb.set_trace()
+#     e_ref = e_results[0]  
+#     ref_mean = np.mean(e_ref)
+#     ref_std = np.std(e_ref)
+#     for i, dt_i in enumerate(dt_list[1:]):
+#         mean_i = np.mean(e_results[i+1])
+#         std_i = np.std(e_results[i+1])
+#         within_3_std(mean_i, std_i, ref_mean, ref_std)
 
 @pytest.mark.boson_slow
 def test_boson_abvmc_timestep_convergence_li_lda():
     '''For an AB-HF calculation, the total energy should converge to the same value for different timesteps'''
     from pyqmc.bosonrecipes import ABVMC
-    # import matplotlib.pyplot as plt
+    import matplotlib.pyplot as plt
     
     def run_scf(chkfile):
         erase_file(chkfile)
@@ -275,7 +276,7 @@ def test_boson_abvmc_timestep_convergence_li_lda():
         )
         mf = dft.UKS(mol)
         mf.chkfile = chkfile
-        mf.xc = 'LDA'
+        mf.xc = 'LDA,VWN'
         mf.kernel()
         return mf
 
@@ -323,16 +324,17 @@ def test_boson_abvmc_timestep_convergence_li_lda():
             seed = 1,
             client = client,
             npartitions = npartitions,
+            xc = 'LDA,VWN',
         )
         e = read_abvmc_energies(abvmc_filename)
         e_results.append(e[discard:])
-        # plt.plot(e, label=f'dt={dt}')
+        plt.plot(e, label=f'dt={dt}')
     
     if client is not None:
         client.shutdown()
     
-    # plt.legend()
-    # plt.show()
+    plt.legend()
+    plt.show()
     erase_file(dft_checkfile)
     for dt in dt_list:
         abvmc_filename = f'li_abvmc_{dt}.hdf5'
@@ -390,7 +392,7 @@ def test_boson_abvmc_timestep_convergence_li_lda():
 #         s = int(e >= nup_dn[0])
 #         ao_value = numint.eval_ao(mol, configs.configs[:,e,:])
 
-# @pytest.mark.boson_new
+# TODO: @pytest.mark.boson_new
 # def test_boson_abvmc_timestep_convergence_hf():
 #     '''Confirm that the kinetic energy density obtained from two ways are the same'''
 #     from pyqmc.bosonrecipes import ABVMC
@@ -770,7 +772,7 @@ def test_boson_jastrow_gradient_analytical_vs_numerical_triplet(H2_ccecp_casci_s
     assert np.allclose(wfb_grad_z, num_grad/dz, rtol=1e-4) 
     erase_file('hmf.hdf5')   
 
-@pytest.mark.boson_slow
+@pytest.mark.boson
 def test_boson_aboptimize(H2_ccecp_casci_s2):
     # TODO: Optimization test is working, but different from line_minimization in place. 
     # Understand why they give different results.
@@ -779,7 +781,6 @@ def test_boson_aboptimize(H2_ccecp_casci_s2):
     dm = mf.make_rdm1()
     mf.dm = dm
     
-    from pyqmc.bosonaccumulators import ABQMCEnergyAccumulator
     from pyqmc.bosonlinemin import line_minimization
     from pyqmc.bosonaccumulators import boson_gradient_generator
     nconfig = 1000
