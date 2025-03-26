@@ -5,7 +5,7 @@ import h5py
 import os
 import pyqmc
 
-from bosonmc import abvmc
+from pyqmc.bosonmc import abvmc
 from pyqmc import bosonslater
 
 

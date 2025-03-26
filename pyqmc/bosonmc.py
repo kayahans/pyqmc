@@ -201,7 +201,6 @@ def abvmc(
                     )
 
     df = []
-
     if blockoffset >= nblocks:
         logging.warning(f"blockoffset {blockoffset} >= nblocks {nblocks}; no steps will be run.")
     for block in range(blockoffset, nblocks):

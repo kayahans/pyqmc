@@ -15,7 +15,7 @@
 import os
 import numpy as np
 # import pyqmc.mc as mc
-import mc
+from pyqmc import mc
 import sys
 import h5py
 import logging
