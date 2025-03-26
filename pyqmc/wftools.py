@@ -155,14 +155,19 @@ def generate_wf(
         jastrow_kws = [jastrow_kws]
 
     wf1, to_opt1 = generate_slater(mol, mf, mc=mc, **slater_kws)
-
-    pack = [jast(mol, **kw) for jast, kw in zip(jastrow, jastrow_kws)]
-    wfs = [p[0] for p in pack]
-    to_opts = [p[1] for p in pack]
-    wf = multiplywf.MultiplyWF(wf1, *wfs)
     to_opt = {"wf1" + k: v for k, v in to_opt1.items()}
-    for i, to_opt2 in enumerate(to_opts):
-        to_opt.update({f"wf{i+2}" + k: v for k, v in to_opt2.items()})
+
+    if None in jastrow:
+        wf = wf1
+    else:
+        pack = [jast(mol, **kw) for jast, kw in zip(jastrow, jastrow_kws)]
+        wfs = [p[0] for p in pack]
+        to_opts = [p[1] for p in pack]
+        wf = multiplywf.MultiplyWF(wf1, *wfs)
+        
+        for i, to_opt2 in enumerate(to_opts):
+            to_opt.update({f"wf{i+2}" + k: v for k, v in to_opt2.items()})
+
     return wf, to_opt
 
 
