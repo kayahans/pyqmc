@@ -1,21 +1,85 @@
 import numpy as np
-import energy
-import bosonenergy
+from pyqmc import energy
+from pyqmc import bosonenergy
 import pyqmc.ewald as ewald
 import copy
 
-from accumulators import LinearTransform
+from pyqmc.accumulators import LinearTransform
 from pyqmc import bosonslater
 from pyqmc import jastrowspin
 
 
-from bosonslater import timer_func
+from pyqmc.bosonslater import timer_func
 
-from accumulators import PGradTransform
+from pyqmc.accumulators import PGradTransform
+
+def calculate_mf_density(mol, dm):
+    """
+    Calculate electron density on a grid given density matrix
+    
+    Args:
+        mol: PySCF Mole object
+        dm: Density matrix (2D or 3D array, based on AO basis)
+    
+    Returns:
+        coords: Grid coordinates (N x 3 array)
+        rho: Electron density at each point (array of length N)
+        weights: Grid weights for integration
+    """
+    # Create a grid
+    try:
+        from pyscf import dft
+    except:
+        raise ImportError("pyscf is not installed")
+    
+    grids = dft.gen_grid.Grids(mol)
+    grids.level = 3  # Can be adjusted for accuracy vs. speed (1-9)
+    grids.build()
+    
+    # Get grid coordinates and weights
+    coords = grids.coords
+    weights = grids.weights
+    
+    # Evaluate AO values on the grid
+    ao_value = dft.numint.eval_ao(mol, coords)
+    
+    # Calculate density at each point
+    # rho(r) = Σ_μν P_μν φ_μ(r) φ_ν(r)
+    if len(dm.shape) == 3:
+        # UHF case - dm is (dm_a, dm_b)
+        dm_up = dm[0]
+        dm_dn = dm[1]
+        rho_up = np.einsum('pi,ij,pj->p', ao_value, dm_up, ao_value)
+        rho_dn = np.einsum('pi,ij,pj->p', ao_value, dm_dn, ao_value)
+        rho = rho_up + rho_dn
+    else:
+        raise ValueError("RHF case not implemented")
+        # Once implemented, uncomment the following line
+        # RHF case - dm is single matrix
+        # rho = np.einsum('pi,ij,pj->p', ao_value, dm, ao_value)    
+    print("Total number of electrons in Mean Field method (numerical integration):", 
+        np.sum(rho * weights))  # Should be close to the total number of electrons        
+    return rho, grids
 
 def boson_gradient_generator(mf, wf, to_opt=None, nodal_cutoff=1e-3, **ewald_kwargs):
+    mf_inputs = {}
+    try:
+        mf_inputs['dm'] = mf.make_rdm1()
+    except:
+        print("WARNING: mf.make_rdm1() is not available, cannot use DFT as Mean Field")
+
+    rho, grids = calculate_mf_density(mf.mol, mf_inputs['dm'])
+
+    mf_inputs.update({'xc':'LDA,VWN',
+                 'mol':mf.mol,
+                 'nelec': mf.nelec,
+                 'mo_energy': mf.mo_energy,
+                 'mo_occ': mf.mo_occ, 
+                 'grids': grids, 
+                 'rho' : rho })
+
     return PGradTransform(
-        ABQMCEnergyAccumulator(mf, **ewald_kwargs),
+        ABQMCEnergyAccumulator(mf_inputs, **ewald_kwargs),
         LinearTransform(wf.parameters, to_opt),
         nodal_cutoff=nodal_cutoff,
     )
@@ -23,13 +87,14 @@ def boson_gradient_generator(mf, wf, to_opt=None, nodal_cutoff=1e-3, **ewald_kwa
 class ABQMCEnergyAccumulator:
     """Returns local energy of each configuration in a dictionary."""
 
-    def __init__(self, mf, **kwargs):
-        self.mol = mf.mol
-        self.dm = mf.dm
-        self.mo_energy = mf.mo_energy
-        self.mo_occ = mf.mo_occ
+    def __init__(self, mf_inputs, **kwargs):
+        try:
+            self.mol = mf_inputs['mol']
+        except:
+            import pdb; pdb.set_trace()
+            
+        self.mf_inputs = mf_inputs
         
-
         if hasattr(self.mol, "a"):
             self.coulomb = ewald.Ewald(self.mol, **kwargs)
         else:
@@ -53,7 +118,7 @@ class ABQMCEnergyAccumulator:
                         nup_dn = wfi._nelec
                     except:
                         pass
-        vh,vxc,ecorr = bosonenergy.dft_energy(self.mol, self.dm, self.mo_energy, self.mo_occ, configs, nup_dn)
+        v_mf, ecorr, saved_results = bosonenergy.dft_energy(self.mf_inputs, configs)
         ke1, ke2, grad2 = bosonenergy.boson_kinetic(configs, wf)
         # ke1 *= 0
         # ke2 *= 0
@@ -64,8 +129,6 @@ class ABQMCEnergyAccumulator:
             "grad2": grad2,
             "ke": ke,
             "ee": ee,
-            "vh": vh,
-            "vxc": vxc,
             "corr": np.ones(ee.shape)*ecorr,
             "ei": ei, # For debugging, ei is not used in ABQMC
             "ii":np.ones(ee.shape)*ii,
@@ -73,8 +136,10 @@ class ABQMCEnergyAccumulator:
             # Therefore ii term is added here
             # V_MF = V_H + V_XC (only supports LDA for now)
             # E_Corr is the sum of KS eigenvalues 
-            "total": ke + ee - (vh + vxc) + ecorr + ii,
+            "total": ke + ee - (v_mf) + ecorr + ii,
         }
+        if len(saved_results.keys()) > 0:
+            energies.update(saved_results)
         # print(np.mean(ke1), np.mean(ke2), np.mean(ee), np.mean(vh), np.mean(vxc), np.mean(ecorr), np.mean(ei), np.mean(ii), np.mean(energies['total']))
         return energies 
 

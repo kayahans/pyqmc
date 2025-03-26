@@ -1,16 +1,17 @@
 import os
+import pyqmc
 import numpy as np
-import bosonwftools
+from pyqmc import bosonwftools
 import pyqmc.pyscftools as pyscftools
 import pyqmc.supercell as supercell
 import h5py
 import pandas as pd
-import bosonmc
+from pyqmc import bosonmc
 from pyqmc import bosonlinemin
-import bosondmc
-import wftools
-import pyqmc
-import bosonaccumulators
+from pyqmc import bosondmc
+from pyqmc import wftools
+
+from pyqmc import bosonaccumulators
 
 def ABOPTIMIZE(
     dft_checkfile: str,
@@ -22,6 +23,7 @@ def ABOPTIMIZE(
     jastrow_kws = {"ion_cusp":False, 'na':0},
     slater_kws:  list|None = None,
     det_emax: float|None=None,
+    xc: str = 'LDA,VWN',
     **linemin_kws,
 ):
     """Auxiliary Boson wavefunction Slater Jastrow optimization
@@ -67,6 +69,7 @@ def ABOPTIMIZE(
         slater_kws=slater_kws,
         # accumulators=bosonaccumulators,
         det_emax=det_emax,
+        xc=xc,
     )
     if anchors is None:
         wf, df = bosonlinemin.line_minimization(wf, configs, acc, **linemin_kws)
@@ -86,6 +89,7 @@ def ABVMC(
     det_emax: float|None=None,
     nwarmup: int = 0,
     dtwarmup: float|None=None,
+    xc: str = 'LDA,VWN',
     **vmc_kws,
 ):
     """Auxiliary Boson VMC recipe
@@ -113,6 +117,7 @@ def ABVMC(
         accumulators=accumulators,
         seed=seed,
         det_emax=det_emax,
+        xc=xc,
     )
     
     if nwarmup > 0:
@@ -135,6 +140,7 @@ def ABVMC(
         )
         
     bosonmc.abvmc(wf, configs, accumulators=acc, **vmc_kws)
+    return wf, configs, acc
 
 def ABDMC(
     dft_checkfile: str,
@@ -148,6 +154,7 @@ def ABDMC(
     accumulators: list|None = None,
     seed: int|None=None,
     det_emax: float|None=None,
+    xc: str = 'LDA,VWN',
     **dmc_kws,
 ):  
     """Auxiliary Boson DMC recipe
@@ -176,6 +183,7 @@ def ABDMC(
         accumulators=accumulators,
         seed=seed,
         det_emax=det_emax,
+        xc=xc,
     )
     bosondmc.rundmc(wf, configs, accumulators=acc, **dmc_kws)
 
@@ -231,6 +239,8 @@ def initial_guess(mol, nconfig, r=1.0, seed = None):
         epos = OpenConfigs(epos)
     return epos
 
+
+
 def initialize_boson_qmc_objects(
     dft_checkfile,
     nconfig=1000,
@@ -243,6 +253,7 @@ def initialize_boson_qmc_objects(
     opt_wf=False,
     seed = None,
     det_emax = None,
+    xc = 'LDA,VWN',
 ):  
     
     target_root=0
@@ -257,8 +268,25 @@ def initialize_boson_qmc_objects(
             # print('Selecting target CI root #', target_root)
             mc.ci = mc.ci[target_root]
 
-    dm = mf.make_rdm1()
-    mf.dm = dm
+    available_xc = ['LDA,VWN', 'HF']
+    mf_inputs = {}
+    if xc not in available_xc:
+        raise ValueError(f"xc={xc} not in available_xc={available_xc}")
+
+    try:
+        mf_inputs['dm'] = mf.make_rdm1()
+    except:
+        print("WARNING: mf.make_rdm1() is not available, cannot use DFT as Mean Field")
+
+    rho, grids = bosonaccumulators.calculate_mf_density(mol, mf_inputs['dm'])
+
+    mf_inputs.update({'xc':xc,
+                 'mol':mf.mol,
+                 'nelec': mf.nelec,
+                 'mo_energy': mf.mo_energy,
+                 'mo_occ': mf.mo_occ, 
+                 'grids': grids, 
+                 'rho' : rho })
 
     if jastrow_kws == None:
         jastrow_kws = dict()
@@ -290,7 +318,8 @@ def initialize_boson_qmc_objects(
     configs = initial_guess(mol, nconfig,seed=seed)
 
     acc = {}
-    acc['energy'] = bosonaccumulators.ABQMCEnergyAccumulator(mf)
+    acc['energy'] = bosonaccumulators.ABQMCEnergyAccumulator(mf_inputs)
+
     possible_accumulators = {'ab_vmc_excitations':bosonaccumulators.ABVMCMatrixAccumulator(), 
                              'ab_dmc_excitations':bosonaccumulators.ABDMCMatrixAccumulator(),
                              'abc_dmc_excitations':bosonaccumulators.ABCDMCMatrixAccumulator()}
@@ -300,12 +329,16 @@ def initialize_boson_qmc_objects(
                 raise ValueError(f"Accumulator {acc_name} not found in possible accumulators")
             else:
                 acc[acc_name] = possible_accumulators[acc_name]
+                acc['energy'].__dict__.update(mf_inputs)
                 print(f"Using accumulator {acc_name}")
         
     if opt_wf is True:
         acc = bosonaccumulators.boson_gradient_generator(
             mf, wf, to_opt, nodal_cutoff=nodal_cutoff
         )
+
+    # Bind MF inputs
+    wf.mf_inputs = mf_inputs
 
     return wf, configs, acc
 

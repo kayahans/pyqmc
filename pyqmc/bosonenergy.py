@@ -2,7 +2,7 @@ import numpy as np
 from pyscf.dft import numint, libxc
 
 #kayahan added below
-def dft_energy(mol, dm, mo_energy, mo_occ, configs, nup_dn):
+def dft_energy(mf_inputs, configs):
     '''
     Returns the KS related terms in  Eq. 21 in doi: 10.1063/5.0155513. 
     MF is assumed to be LDA ('LDA, VWN'), therefore, for another input DFT functional, 
@@ -12,26 +12,75 @@ def dft_energy(mol, dm, mo_energy, mo_occ, configs, nup_dn):
         vxc: XC potential
         ecorr: sum of the occupied KS eigenvalues (E_0^MF)
     '''
-    xc = 'LDA,VWN'
-    mol = mol
     nconf, nelec, ndim = configs.configs.shape
-    #Hartree potential
-    dm = dm
-    vj = np.zeros(nconf)
-    #Eigenvalue sum
-    ecorr = np.sum(mo_energy*mo_occ) 
-    #Vxc potential
-    vxc = np.zeros(nconf)
-    # _ = mf.energy_tot() # Why do we need this? TODO: check later, disable now
-    for e in range(nelec):
-        s = int(e >= nup_dn[0])
-        ao_value = numint.eval_ao(mol, configs.configs[:,e,:])
-        rho_u = numint.eval_rho(mol, ao_value, dm[0], xctype='LDA')
-        rho_d = numint.eval_rho(mol, ao_value, dm[1], xctype='LDA')
-        excd, vxcs  = libxc.eval_xc(xc, np.array([rho_u, rho_d]), spin=1)[:2]
-        vxc += vxcs[0][:,s]
-        vj += np.einsum('pij,sij->p', mol.intor('int1e_grids', grids=configs.configs[:,e,:]), dm)
-    return vj, vxc, ecorr
+    v_mf = 0
+    xc = mf_inputs['xc']
+    nup_dn = mf_inputs['nelec']
+    mo_energy = mf_inputs['mo_energy']
+    mo_occ = mf_inputs['mo_occ']
+    mol = mf_inputs['mol']
+    dm = mf_inputs['dm']
+    # grids = mf_inputs['grids']
+    # rho = mf_inputs['rho']
+
+    def get_vj(configs):
+        vj = 0
+        dm_total = dm[0] + dm[1]
+        for e in range(nelec):
+            # Fast (x10^3)
+            r = configs.configs[:,e,:]
+            vj += np.einsum('pij,ij->p', mol.intor('int1e_grids', grids=r), dm_total)
+            # Slow 
+            # for i, r in enumerate(configs.configs[:,e,:]):
+                # distances = np.linalg.norm(grids.coords - r, axis=1)
+                # mask = distances > 1e-2 # Do not include grids that are very close
+                # vj[i] += np.sum(rho[mask] / distances[mask] * grids.weights[mask])    
+        return vj
+
+    def get_vxc(configs):
+        vxc = 0
+        for e in range(nelec):
+            s = int(e >= nup_dn[0])
+            r = configs.configs[:,e,:]
+            ao = numint.eval_ao(mol, r, deriv=0)
+            rho_up = np.einsum('pi,ij,pj->p', ao, dm[0], ao)
+            rho_down = np.einsum('pi,ij,pj->p', ao, dm[1], ao)
+            _, vxcs, _, _  = libxc.eval_xc(xc, np.array([rho_up, rho_down]), spin = len(nup_dn)-1)
+            vxc += vxcs[0][:,s]
+        return vxc
+    
+    if xc == 'LDA,VWN':
+        vj = get_vj(configs)
+        vxc = get_vxc(configs)
+        ecorr = np.sum(mo_energy*mo_occ) 
+        # Older code for reference
+        # vj = np.zeros(nconf)
+        # vxc = np.zeros(nconf)
+        # for e in range(nelec):
+        #     s = int(e >= nup_dn[0])
+        #     ao_value = numint.eval_ao(mol, configs.configs[:,e,:])
+        #     # rho_u = numint.eval_rho(mol, ao_value, dm[0], xctype='LDA')
+        #     # rho_d = numint.eval_rho(mol, ao_value, dm[1], xctype='LDA')
+        #     rho_u = np.einsum('pi,ij,pj->p', ao_value, dm[0], ao_value)
+        #     rho_d = np.einsum('pi,ij,pj->p', ao_value, dm[0], ao_value)
+
+        #     excd, vxcs  = libxc.eval_xc(xc, np.array([rho_u, rho_d]), spin=1)[:2]
+        #     vxc += vxcs[0][:,s]
+        #     vj += np.einsum('pij,sij->p', mol.intor('int1e_grids', grids=configs.configs[:,e,:]), dm)
+        # #end for 
+        v_mf = vj + vxc
+        saved_results = {'vj': vj, 'vxc': vxc}
+    elif xc == 'HF':
+        v_mf = np.zeros(nconf)
+        ecorr = np.sum(mo_energy*mo_occ) 
+        V_eff_ao = mf_inputs['veff']
+        for e in range(nelec):
+            s = int(e >= nup_dn[0])
+            ao_value = numint.eval_ao(mol, configs.configs[:,e,:])
+            v_mf = np.einsum('gp, pq, gq -> g', ao_value, V_eff_ao[s], ao_value)
+        saved_results = {}
+        
+    return v_mf, ecorr, saved_results
 
 def boson_kinetic(configs, wf):
     '''
