@@ -6,6 +6,12 @@ import os
 import pyqmc.mc
 
 
+def np_pretty_print(nparray):
+    c = '\n'
+    with np.printoptions(formatter={'all': lambda x: f'{x:10.4g}'}, linewidth=150):
+        c += nparray.__str__()
+    return c
+
 def sr_update(pgrad, Sij, step, eps=0.1):
     invSij = np.linalg.inv(Sij + eps * np.eye(Sij.shape[0]))
     v = np.einsum("ij,j->i", invSij, pgrad)
@@ -177,6 +183,8 @@ def line_minimization(
         )
         en = np.real(np.mean(df["pgradtotal"], axis=0))
         en_err = np.std(df["pgradtotal"], axis=0) / np.sqrt(df["pgradtotal"].shape[0])
+        var = np.sqrt(1./(df["pgradtotal"].shape[0]-1)*np.sum(df['pgradtotal']**2-np.mean(df['pgradtotal'])**2))
+        ratio = abs(var/en)
         sigma = np.std(df["pgradtotal"], axis=0) * np.sqrt(np.mean(df["nconfig"]))
         dpH = np.mean(df["pgraddpH"], axis=0)
         dp = np.mean(df["pgraddppsi"], axis=0)
@@ -189,7 +197,7 @@ def line_minimization(
                 print(nm, quant)
             raise ValueError("NaN detected in derivatives")
 
-        return coords, grad, Sij, en, en_err, sigma
+        return coords, grad, Sij, en, en_err, sigma, ratio
 
     x0 = pgrad_acc.transform.serialize_parameters(wf.parameters)
 
@@ -197,7 +205,8 @@ def line_minimization(
     # Gradient descent cycles
     for it in range(max_iterations):
         # Calculate gradient accurately
-        coords, pgrad, Sij, en, en_err, sigma = gradient_energy_function(x0, coords)
+        
+        coords, pgrad, Sij, en, en_err, sigma, ratio = gradient_energy_function(x0, coords)
         step_data = {}
         step_data["energy"] = en
         step_data["energy_error"] = en_err
@@ -207,8 +216,15 @@ def line_minimization(
         step_data["nconfig"] = coords.configs.shape[0]
 
         if verbose:
+            print('it', it, 'starting ' + '='*20)
             print("descent en", en, en_err, " estimated sigma ", sigma)
             print("descent |grad|", np.linalg.norm(pgrad), flush=True)
+            print(f'pgrad: {pgrad.shape} {np_pretty_print(pgrad)}')
+            print(f'Sij: {Sij.shape} {np_pretty_print(np.diag(Sij))}')
+            print(f'en: {en}')
+            print(f'en_err: {en_err}')
+            print(f'sigma: {sigma}')
+            print(f'ratio: {ratio}')
 
         xfit = []
         yfit = []
@@ -233,10 +249,30 @@ def line_minimization(
         yfit.extend(en)
         xfit.extend(steps)
         est_min = stable_fit(xfit, yfit)
-        x0 += update(pgrad, Sij, est_min, **update_kws)
+        dx = update(pgrad, Sij, est_min, **update_kws)
+        x0 += dx
         step_data["tau"] = xfit
+        step_data["x0"] = x0
         step_data["yfit"] = yfit
         step_data["est_min"] = est_min
+
+        x0_deserialized = pgrad_acc.transform.deserialize(wf, x0)
+        if verbose:
+            c = ''
+            for key, value in x0_deserialized.items():
+                c += f'{key}({value.flatten().shape[0]} elements): {value.flatten()}\n'
+            print('Wavefunction parameters: ', c)
+            print('Change in parameters: ', np_pretty_print(dx))
+            print('x0', np_pretty_print(x0))
+            print('est_min', est_min)
+            print('x_fit', np_pretty_print(np.array(xfit)))
+            print('y_fit', np_pretty_print(np.array(yfit)))
+            print('est_min', est_min)
+            plot_fit = False
+            if plot_fit:
+                import matplotlib.pyplot as plt
+                plt.plot(xfit, yfit, 'o-')
+                plt.show()
 
         opt_hdf(
             hdf_file, step_data, attr, coords, pgrad_acc.transform.deserialize(wf, x0)

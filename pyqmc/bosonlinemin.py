@@ -11,7 +11,7 @@ from pyqmc import bosonslater
 
 def np_pretty_print(nparray):
     c = '\n'
-    with np.printoptions(formatter={'all': lambda x: f'{x:10.4g}'}):
+    with np.printoptions(formatter={'all': lambda x: f'{x:10.4g}'}, linewidth=150):
         c += nparray.__str__()
     return c
 def sr_update(pgrad, Sij, step, eps=0.1):
@@ -195,6 +195,7 @@ def line_minimization(
             npartitions=npartitions,
             **vmcoptions,
         )
+        # import pdb; pdb.set_trace()
         en = np.real(np.mean(df["pgradtotal"], axis=0))
         # en_err = np.std(df["pgradtotal"], axis=0) / np.sqrt(df["pgradtotal"].shape[0])
         var = np.sqrt(1./(df["pgradtotal"].shape[0]-1)*np.sum(df['pgradtotal']**2-np.mean(df['pgradtotal'])**2))
@@ -205,13 +206,16 @@ def line_minimization(
         dpdp = np.mean(df["pgraddpidpj"], axis=0)
         grad = 2 * np.real(dpH - en * dp)
         Sij = np.real(dpdp - np.einsum("i,j->ij", dp, dp))
+        saved_results = {}
+        for k in df.keys():
+            saved_results[k] = np.mean(df[k], axis=0)
 
         if np.any(np.isnan(grad)):
             for nm, quant in {"dpH": dpH, "dp": dp, "en": en}.items():
                 print(nm, quant)
             raise ValueError("NaN detected in derivatives")
 
-        return coords, grad, Sij, en, var, sigma, ratio
+        return coords, grad, Sij, en, var, sigma, ratio, saved_results
     
     x0 = pgrad_acc.transform.serialize_parameters(wf.parameters)
     
@@ -221,7 +225,7 @@ def line_minimization(
         # Calculate gradient accurately
         print('it', it, 'starting ' + '='*20)
         # print('x0', x0)
-        coords, pgrad, Sij, en, en_err, sigma, ratio = gradient_energy_function(x0, coords)
+        coords, pgrad, Sij, en, en_err, sigma, ratio, saved_results = gradient_energy_function(x0, coords)
         # print('en', en, 'en_err', en_err)
         # print('pgrad', pgrad)
         if verbose:
@@ -234,6 +238,14 @@ def line_minimization(
 
         step_data = {}
         step_data["energy"] = en
+        
+        step_data["ka"] = saved_results["pgradka"]
+        step_data["kb"] = saved_results["pgradkb"]
+        step_data["ee"] = saved_results["pgradee"]
+        step_data["ei"] = saved_results["pgradei"]
+        step_data["vj"] = saved_results["pgradvj"]
+        step_data["vxc"] = saved_results["pgradvxc"]
+        step_data["corr"] = saved_results["pgradcorr"]
         step_data["energy_error"] = en_err
         step_data["ratio"] = ratio
         step_data["x"] = x0
@@ -271,10 +283,10 @@ def line_minimization(
         yfit.extend(en)
         xfit.extend(steps)
         est_min = stable_fit(xfit, yfit)
-        # print('est_min', est_min)
         dx = update(pgrad, Sij, est_min, **update_kws)
         x0 += dx
         step_data["tau"] = xfit
+        step_data["x0"] = x0
         step_data["yfit"] = yfit
         step_data["est_min"] = est_min
 
@@ -285,6 +297,8 @@ def line_minimization(
                 c += f'{key}({value.flatten().shape[0]} elements): {value.flatten()}\n'
             print('Wavefunction parameters: ', c)
             print('Change in parameters: ', np_pretty_print(dx))
+            print('x0', np_pretty_print(x0))
+            print('est_min', est_min)
             print('x_fit', np_pretty_print(np.array(xfit)))
             print('y_fit', np_pretty_print(np.array(yfit)))
             print('est_min', est_min)
