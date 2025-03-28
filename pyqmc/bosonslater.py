@@ -156,6 +156,8 @@ class BosonWF:
         if self.num_det > 1:
             self.filter_determinants(det_emax, mf.mo_energy, ncore)
             self.get_hmf(mf.mo_energy, ncore)
+        else:
+            print('Using only one determinant')
 
         # Use constant weight 
         # self.myparameters["det_coeff"] = np.ones(self.num_det)/self.num_det
