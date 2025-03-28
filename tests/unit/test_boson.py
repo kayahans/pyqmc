@@ -178,90 +178,6 @@ def test_boson_abvmc_timestep_convergence_he_lda():
         within_3_std(mean_i, std_i, ref_mean, ref_std)
 
 
-# TODO: @pytest.mark.boson
-# def test_boson_abvmc_timestep_convergence_he_hf():
-#     '''For an AB-HF calculation, the total energy should converge to the same value for different timesteps'''
-#     from pyqmc.bosonrecipes import ABVMC
-#     import matplotlib.pyplot as plt
-    
-#     def run_scf(chkfile):
-#         erase_file(chkfile)
-#         from pyscf import gto, scf
-#         mol = gto.M(
-#             atom="He 0 0. 0.0", basis="aug-ccpvqz",  unit="bohr", spin = 0
-#         )
-#         mf = scf.UHF(mol)
-#         mf.chkfile = chkfile
-#         mf.kernel()
-#         return mf
-
-#     def read_abvmc_energies(fname):
-#         import h5py
-#         with h5py.File(fname, 'r') as f:
-#             energies = f['energytotal'][:]
-#         return energies
-
-#     def within_3_std(mean_i, std_i, ref_mean, ref_std):
-#         if mean_i > ref_mean:
-#             assert mean_i - 3*std_i < ref_mean + 3*ref_std, f'dt={dt_i} is significantly different from dt={dt_list[0]}'
-#         else:
-#             assert mean_i + 3*std_i > ref_mean - 3*ref_std, f'dt={dt_i} is significantly different from dt={dt_list[0]}'
-
-#     # Try parallellization
-#     # try:
-#     #     import concurrent.futures
-#     #     import os
-#     #     npartitions = int(os.cpu_count() + 4)
-#     #     client = concurrent.futures.ProcessPoolExecutor(max_workers=npartitions)
-#     # except:
-#     client = None
-#     npartitions = 1
-#     #end try 
-
-
-#     dft_checkfile = 'he_scf.hdf5'
-#     mf = run_scf(dft_checkfile)
-
-#     e_results = []
-#     dt_list = [1, 0.3, 0.1, 0.03, 0.01]
-#     discard = 100
-#     for dt in dt_list:
-#         abvmc_filename = f'he_abvmc_{dt}.hdf5'
-#         erase_file(abvmc_filename)
-
-#         wf, configs, acc = ABVMC(
-#             dft_checkfile=dft_checkfile,
-#             output=abvmc_filename,
-#             nconfig=100,
-#             tstep=dt,
-#             nblocks=200,
-#             nsteps_per_block=10,
-#             load_parameters=False, 
-#             seed = 1,
-#             client = client,
-#             npartitions = npartitions,
-#             xc = 'HF',
-#         )
-#         e = read_abvmc_energies(abvmc_filename)
-#         e_results.append(e[discard:])
-#         plt.plot(e, label=f'dt={dt}')
-        
-#     erase_file(dft_checkfile)
-#     for dt in dt_list:
-#         abvmc_filename = f'he_abvmc_{dt}.hdf5'
-#         erase_file(abvmc_filename)
-    
-#     plt.legend()
-#     plt.show()
-#     import pdb; pdb.set_trace()
-#     e_ref = e_results[0]  
-#     ref_mean = np.mean(e_ref)
-#     ref_std = np.std(e_ref)
-#     for i, dt_i in enumerate(dt_list[1:]):
-#         mean_i = np.mean(e_results[i+1])
-#         std_i = np.std(e_results[i+1])
-#         within_3_std(mean_i, std_i, ref_mean, ref_std)
-
 @pytest.mark.boson_slow
 def test_boson_abvmc_timestep_convergence_li_lda():
     '''For an AB-HF calculation, the total energy should converge to the same value for different timesteps'''
@@ -812,7 +728,7 @@ def test_boson_pgradient(H2_ccecp_casci_s2):
     
     pgradb = wfb.pgradient()
     pgrads = wfs.pgradient()
-
+    
     for wfb_key, wfb_val in pgradb.items():
         wfs_val = pgrads[wfb_key]
         assert np.allclose(wfb_val, wfs_val)
@@ -828,3 +744,88 @@ if __name__ == "__main__":
     test_boson_dets_grad_singlet()
     test_boson_dets_grad_triplet()
     test_boson_gradient_analytical_vs_numerical()
+
+
+# TODO: @pytest.mark.boson
+# def test_boson_abvmc_timestep_convergence_he_hf():
+#     '''For an AB-HF calculation, the total energy should converge to the same value for different timesteps'''
+#     from pyqmc.bosonrecipes import ABVMC
+#     import matplotlib.pyplot as plt
+    
+#     def run_scf(chkfile):
+#         erase_file(chkfile)
+#         from pyscf import gto, scf
+#         mol = gto.M(
+#             atom="He 0 0. 0.0", basis="aug-ccpvqz",  unit="bohr", spin = 0
+#         )
+#         mf = scf.UHF(mol)
+#         mf.chkfile = chkfile
+#         mf.kernel()
+#         return mf
+
+#     def read_abvmc_energies(fname):
+#         import h5py
+#         with h5py.File(fname, 'r') as f:
+#             energies = f['energytotal'][:]
+#         return energies
+
+#     def within_3_std(mean_i, std_i, ref_mean, ref_std):
+#         if mean_i > ref_mean:
+#             assert mean_i - 3*std_i < ref_mean + 3*ref_std, f'dt={dt_i} is significantly different from dt={dt_list[0]}'
+#         else:
+#             assert mean_i + 3*std_i > ref_mean - 3*ref_std, f'dt={dt_i} is significantly different from dt={dt_list[0]}'
+
+#     # Try parallellization
+#     # try:
+#     #     import concurrent.futures
+#     #     import os
+#     #     npartitions = int(os.cpu_count() + 4)
+#     #     client = concurrent.futures.ProcessPoolExecutor(max_workers=npartitions)
+#     # except:
+#     client = None
+#     npartitions = 1
+#     #end try 
+
+
+#     dft_checkfile = 'he_scf.hdf5'
+#     mf = run_scf(dft_checkfile)
+
+#     e_results = []
+#     dt_list = [1, 0.3, 0.1, 0.03, 0.01]
+#     discard = 100
+#     for dt in dt_list:
+#         abvmc_filename = f'he_abvmc_{dt}.hdf5'
+#         erase_file(abvmc_filename)
+
+#         wf, configs, acc = ABVMC(
+#             dft_checkfile=dft_checkfile,
+#             output=abvmc_filename,
+#             nconfig=100,
+#             tstep=dt,
+#             nblocks=200,
+#             nsteps_per_block=10,
+#             load_parameters=False, 
+#             seed = 1,
+#             client = client,
+#             npartitions = npartitions,
+#             xc = 'HF',
+#         )
+#         e = read_abvmc_energies(abvmc_filename)
+#         e_results.append(e[discard:])
+#         plt.plot(e, label=f'dt={dt}')
+        
+#     erase_file(dft_checkfile)
+#     for dt in dt_list:
+#         abvmc_filename = f'he_abvmc_{dt}.hdf5'
+#         erase_file(abvmc_filename)
+    
+#     plt.legend()
+#     plt.show()
+#     import pdb; pdb.set_trace()
+#     e_ref = e_results[0]  
+#     ref_mean = np.mean(e_ref)
+#     ref_std = np.std(e_ref)
+#     for i, dt_i in enumerate(dt_list[1:]):
+#         mean_i = np.mean(e_results[i+1])
+#         std_i = np.std(e_results[i+1])
+#         within_3_std(mean_i, std_i, ref_mean, ref_std)    
