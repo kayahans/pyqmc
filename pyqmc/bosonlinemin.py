@@ -163,7 +163,6 @@ def line_minimization(
                 print('Using user-provided parameters for ABVMC warmup')
                 for k, v in warmup_options.items():
                     print(f'{k}: {v}')
-            
             _, coords = abvmc(
                 wf,
                 coords,
