@@ -311,6 +311,7 @@ def initialize_boson_qmc_objects(
             mol, mf, mc=mc, jastrow_kws=jastrow_kws, slater_kws=slater_kws, det_emax=det_emax
         )
         if load_parameters is not None:
+            print('Loading WF parameters from', load_parameters)
             wftools.read_wf(wf, load_parameters)    
 
     
