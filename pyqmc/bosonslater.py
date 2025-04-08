@@ -153,6 +153,7 @@ class BosonWF:
         self.det_info_file = 'det_info.hdf5'
         self.hmf_file      = 'hmf.hdf5'
 
+        
         if self.num_det > 1:
             self.filter_determinants(det_emax, mf.mo_energy, ncore)
             self.get_hmf(mf.mo_energy, ncore)
@@ -196,7 +197,7 @@ class BosonWF:
         self.hmf = np.diag(total_energies)
         hf.close()
     
-    def filter_determinants(self, emax, mo_energies, ncore):
+    def filter_determinants(self, emax, mo_energies, ncore, print_info = True):
         
         determinants_filtered = False
         print("Filtering determinants, energy units are in Hartree")
@@ -207,6 +208,8 @@ class BosonWF:
             dn_energies = np.sum(mo_energies[1][self._det_occup[1]+ncore[1]], axis=1)
             total_energies = up_energies[self._det_map[0]] + dn_energies[self._det_map[1]]
             min_energy = np.min(total_energies)
+            if print_info:
+                print("Eigenvalues: ", np.round(np.sort(total_energies), 3))
             emax = emax + min_energy
             print("Determinants being filtered with emax + min eigenvalue", emax)
             mask = total_energies < emax
@@ -229,6 +232,8 @@ class BosonWF:
             dn_energies = np.sum(mo_energies[1][self._det_occup[1]+ncore[1]], axis=1)
             total_energies = up_energies[self._det_map[0]] + dn_energies[self._det_map[1]]
             emax = np.percentile(total_energies, percentile)
+            if print_info:
+                print("Eigenvalues: ", np.round(np.sort(total_energies), 3))
 
             mask = total_energies < emax
             temp_det_map = self._det_map[np.row_stack((mask, mask))]
