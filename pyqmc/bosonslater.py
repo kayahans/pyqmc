@@ -201,6 +201,7 @@ class BosonWF:
         determinants_filtered = False
         print("Filtering determinants, energy units are in Hartree")
         if isinstance(emax, float):
+            assert emax > 0, "Emax must be positive for energy based determinant filtering"
             determinants_filtered = True
             up_energies = np.sum(mo_energies[0][self._det_occup[0]+ncore[0]], axis=1)
             dn_energies = np.sum(mo_energies[1][self._det_occup[1]+ncore[1]], axis=1)
@@ -220,6 +221,7 @@ class BosonWF:
             print('Min eigenvalue', np.round(np.min(total_energies), 3))
             print('Max eigenvalue', np.round(np.max(total_energies), 3))
         elif isinstance(emax, int):
+            assert emax > 0 and emax <= 100, "Emax must be between 0 and 100 for percentage based determinant filtering"
             determinants_filtered = True
             percentile = emax
             print("Determinants being filtered with percentage ", percentile)
