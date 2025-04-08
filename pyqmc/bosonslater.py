@@ -209,7 +209,8 @@ class BosonWF:
             total_energies = up_energies[self._det_map[0]] + dn_energies[self._det_map[1]]
             min_energy = np.min(total_energies)
             if print_info:
-                print("Eigenvalues: ", np.round(np.sort(total_energies), 3))
+                info_string = "Eigenvalues: " + ' '.join([str(np.round(x - min_energy, 3)) for x in total_energies])
+                print(info_string)
             emax = emax + min_energy
             print("Determinants being filtered with emax + min eigenvalue", emax)
             mask = total_energies < emax
@@ -233,7 +234,9 @@ class BosonWF:
             total_energies = up_energies[self._det_map[0]] + dn_energies[self._det_map[1]]
             emax = np.percentile(total_energies, percentile)
             if print_info:
-                print("Eigenvalues: ", np.round(np.sort(total_energies), 3))
+                energy_range = np.max(total_energies) - np.min(total_energies)
+                info_string = "Eigenvalues percentiles: " + ' '.join([str(np.round((x - np.min(total_energies))/energy_range, 3)) for x in total_energies])
+                print(info_string)
 
             mask = total_energies < emax
             temp_det_map = self._det_map[np.row_stack((mask, mask))]
