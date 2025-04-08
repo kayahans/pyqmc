@@ -199,7 +199,7 @@ class BosonWF:
     def filter_determinants(self, emax, mo_energies, ncore):
         
         determinants_filtered = False
-        
+        print("Filtering determinants, energy units are in Hartree")
         if isinstance(emax, float):
             determinants_filtered = True
             up_energies = np.sum(mo_energies[0][self._det_occup[0]+ncore[0]], axis=1)
@@ -270,6 +270,8 @@ class BosonWF:
             print('Initial # of determinants', num_init_dets)
             print('Filtered # of determinants', num_init_dets-num_used_dets)
             print('Used # of determinants', num_used_dets)
+            if num_used_dets == 0:
+                raise ValueError("No determinants left after filtering")
             hf = h5py.File(self.det_info_file, 'w')
             hf.create_dataset('det_map_orig', data=self._det_map_orig)
             hf.create_dataset('det_map_mask', data=self._det_map_mask)
