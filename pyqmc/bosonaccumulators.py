@@ -240,20 +240,21 @@ class ABVMCMatrixAccumulator:
         ovlp_ij = np.einsum("lc,nc->cln", psi_n.conj(), psi_n)
 
         delta = 0
-        
+        grad_j = 0
         for e in range(nelec):
             epos = configs.electron(e)
             # grad_b_e = wf.gradient(e, epos) ## Jan 31, 2025
             log_grad_b_e = boson_wf.gradient(e, epos)
             log_grad_n = boson_wf.gradient_dets(e, epos)
             grad_psi_n = np.einsum('nc, nxc->nxc', psi_n, log_grad_n-log_grad_b_e)
-            grad_j = -jastrow_wf.gradient(e, configs.electron(e))
+            grad_j -= jastrow_wf.gradient(e, configs.electron(e))
 
-            # variant 1 use acceptance from VMC
-            # delta += nconf /np.sum(acc[e]) * np.einsum("nc,xc,lxc, c ->cnl", psi_basis, grad_j, grad_psi_basis, acc[e])
-            # variant 2 do not use acceptance from VMC
-            delta += np.einsum("lc,xc,nxc->cln", psi_n, grad_j, grad_psi_n)
-            # print('VMC', e, np.sum(grad_j), np.sum(grad_psi_n), np.sum(psi_n), np.sum(delta), delta[0,0,0],)
+        # Inside or outside loop?
+        # variant 1 use acceptance from VMC
+        # delta += nconf /np.sum(acc[e]) * np.einsum("nc,xc,lxc, c ->cnl", psi_basis, grad_j, grad_psi_basis, acc[e])
+        # variant 2 do not use acceptance from VMC
+        delta += np.einsum("lc,xc,nxc->cln", psi_n, grad_j, grad_psi_n)
+        # print('VMC', e, np.sum(grad_j), np.sum(grad_psi_n), np.sum(psi_n), np.sum(delta), delta[0,0,0],)
 
         results = {'delta':delta, 'ovlp': ovlp_ij}
         return results 
