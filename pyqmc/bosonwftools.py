@@ -25,7 +25,7 @@ def generate_boson(
     :returns: slater, to_opt
     """
     
-    wf = bosonslater.BosonWF(mol, mf, mc=mc, det_emax=det_emax)
+    wf = bosonslater.BosonWF(mol, mf, mc=mc, det_emax=det_emax, **kwargs)
     # TODO: update here later
     to_opt = {}
     # to_opt["det_coeff"] = np.zeros_like(wf.parameters["det_coeff"], dtype=bool)

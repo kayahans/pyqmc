@@ -109,7 +109,7 @@ def compute_boson_value(updets, dndets, det_coeffs):
 
 class BosonWF:
 
-    def __init__(self, mol, mf, mc=None, tol=None, twist=None, determinants=None, eval_gto_precision=None, det_emax = None):
+    def __init__(self, mol, mf, mc=None, tol=None, twist=None, determinants=None, eval_gto_precision=None, det_emax = None, print_mf_dets = False):
         """
         Create Bosonic wavefunction
         Args:
@@ -124,7 +124,7 @@ class BosonWF:
         """
         self.tol = -1 if tol is None else tol
         self._mol = mol
-
+        self.print_mf_dets = print_mf_dets
         if hasattr(mc, "nelecas"):
             # In case nelecas overrode the information from the molecule object.
             ncore = mc.ncore
@@ -197,7 +197,7 @@ class BosonWF:
         self.hmf = np.diag(total_energies)
         hf.close()
     
-    def filter_determinants(self, emax, mo_energies, ncore, print_info = True):
+    def filter_determinants(self, emax, mo_energies, ncore):
         
         determinants_filtered = False
         print("Filtering determinants, energy units are in Hartree")
@@ -208,7 +208,7 @@ class BosonWF:
             dn_energies = np.sum(mo_energies[1][self._det_occup[1]+ncore[1]], axis=1)
             total_energies = up_energies[self._det_map[0]] + dn_energies[self._det_map[1]]
             min_energy = np.min(total_energies)
-            if print_info:
+            if self.print_mf_dets:
                 info_string = "Eigenvalues: " + ' '.join([str(np.round(x - min_energy, 3)) for x in np.sort(total_energies)])
                 print(info_string)
             emax = emax + min_energy
@@ -233,7 +233,7 @@ class BosonWF:
             dn_energies = np.sum(mo_energies[1][self._det_occup[1]+ncore[1]], axis=1)
             total_energies = up_energies[self._det_map[0]] + dn_energies[self._det_map[1]]
             emax = np.percentile(total_energies, percentile)
-            if print_info:
+            if self.print_mf_dets:
                 energy_range = np.max(total_energies) - np.min(total_energies)
                 info_string = "Eigenvalues percentiles: " + ' '.join([str(np.round((x - np.min(total_energies))/energy_range, 3)) for x in np.sort(total_energies)])
                 print(info_string)
