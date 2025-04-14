@@ -175,7 +175,8 @@ class BosonWF:
     def get_hmf(self, mo_energies, ncore):
         mask_up = np.array(self._det_occup[0]) + ncore[0]
         mask_dn = np.array(self._det_occup[1]) + ncore[1]
-
+        if isinstance(mo_energies, list):
+            mo_energies = np.array(mo_energies)
         if len(mo_energies.shape) == 1:
             if np.sum(mask_up) == 0:
                 raise ValueError("No occupied orbitals for up spin in RHF")

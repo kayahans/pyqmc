@@ -3,7 +3,7 @@ import pyscf.pbc
 import pyscf.mcscf
 import h5py
 import json
-
+import numpy as np
 
 def recover_pyscf(chkfile, ci_checkfile=None, cancel_outputs=True):
     """Generate pyscf objects from a pyscf checkfile, in a way that is easy to use for pyqmc. The chkfile should be saved by setting mf.chkfile in a pyscf SCF object.
@@ -27,7 +27,18 @@ def recover_pyscf(chkfile, ci_checkfile=None, cancel_outputs=True):
     if not periodic:
         mol = pyscf.lib.chkfile.load_mol(chkfile)
         with h5py.File(chkfile, "r") as f:
-            mo_occ_shape = f["scf/mo_occ"].shape
+            if "mo_occ" in f["/scf"].keys():
+                mo_occ_shape = f["scf/mo_occ"].shape
+            elif "mo_occ__from_list__" in f["/scf"].keys():
+                unrestricted = False
+                if len(f["/scf/mo_occ__from_list__/"].keys()) == 2:
+                    unrestricted = True
+                    mo_occ_shape = [f["/scf/mo_occ__from_list__/000000"].shape[0], f["/scf/mo_occ__from_list__/000001"].shape[0]]
+                else:
+                    mo_occ_shape = [f["/scf/mo_occ__from_list__/000000"].shape[0]]
+            else:
+                raise Exception("Couldn't determine type from chkfile")
+        
         if cancel_outputs:
             mol.output = None
             mol.stdout = None
@@ -57,7 +68,7 @@ def recover_pyscf(chkfile, ci_checkfile=None, cancel_outputs=True):
         else:
             mf = pyscf.pbc.scf.UHF(mol)
     mf.__dict__.update(pyscf.scf.chkfile.load(chkfile, "scf"))
-
+    mf.mo_occ = np.array(mf.mo_occ)
     if ci_checkfile is not None:
         casdict = pyscf.lib.chkfile.load(ci_checkfile, "ci")
         if casdict is None:
