@@ -220,7 +220,7 @@ class ABVMCMatrixAccumulator:
     """
 
     @timer_func
-    def __call__(self, configs, wf):
+    def __call__(self, configs, wf, use_symm = False):
         
         wave_functions = wf.wf_factors
         for wave in wave_functions:
@@ -255,6 +255,12 @@ class ABVMCMatrixAccumulator:
             delta += np.einsum("lc,xc,nxc->cln", psi_n, grad_j, grad_psi_n)
             # print('VMC', e, np.sum(grad_j), np.sum(grad_psi_n), np.sum(psi_n), np.sum(delta), delta[0,0,0],)
 
+        if use_symm:
+            symm_mask = boson_wf._det_prod_filter
+            # If symm mask is True, then keep the calculated values, otherwise set to zero
+            delta = np.einsum('cln, ln->cln', delta, symm_mask)
+            ovlp_ij = np.einsum('cln, ln->cln', ovlp_ij, symm_mask)
+            
         results = {'delta':delta, 'ovlp': ovlp_ij}
         return results 
 

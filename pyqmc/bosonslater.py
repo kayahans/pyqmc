@@ -1,7 +1,9 @@
 import numpy as np
+import pandas as pd
 import pyqmc.gpu as gpu
 import warnings
 import pyqmc
+import pyscf
 import copy
 from pyqmc.wftools import generate_slater
 import h5py
@@ -153,9 +155,14 @@ class BosonWF:
         self.det_info_file = 'det_info.hdf5'
         self.hmf_file      = 'hmf.hdf5'
 
+        if mol.symmetry:
+            self.symm_data = self.symm_utils(mol, mol.groupname)
+            self.mo_coeff = mf.mo_coeff
+        else:
+            self.symm_data = None
         
         if self.num_det > 1:
-            self.filter_determinants(det_emax, mf.mo_energy, ncore)
+            self.filter_determinants(det_emax, mf.mo_energy, ncore, use_symm = True)
             self.get_hmf(mf.mo_energy, ncore)
         else:
             print('Using only one determinant')
@@ -171,7 +178,93 @@ class BosonWF:
         self.dtype = complex if iscomplex else float
 
         self.get_phase = get_complex_phase if iscomplex else gpu.cp.sign
+
+    @staticmethod
+    def direct_product_table(characters, irrep_names = None, irrep_ids = None, print_table = True):
+        """
+        Compute the direct product table for irreducible representations.
         
+        Parameters:
+        characters (dict): A dictionary where keys are irrep labels and values are lists of characters
+        
+        Returns:
+        dict: A dictionary where keys are tuples of irrep labels and values are the resulting irrep from the direct product
+        """
+        irreps = list(characters.keys())
+        if irrep_ids is not None and irrep_names is not None:
+            irrep_to_idx = {name: id for name, id in zip(irrep_names, irrep_ids)}
+        else:
+            irrep_to_idx = {irrep: i for i, irrep in enumerate(irreps)}
+        print(irrep_to_idx)
+        
+        n_irreps = len(irreps)
+        n_ops = len(list(characters.values())[0])
+        
+        # Initialize the direct product table
+        dp_table = {}
+        n = len(irreps)
+        matrix = np.zeros((n, n), dtype=int)
+        plot_data = np.zeros((n, n), dtype=np.dtype('<U10'))
+
+        # Compute the direct product for each pair of irreps
+        for i, irrep1 in enumerate(irreps):
+            for j, irrep2 in enumerate(irreps):
+                # Calculate the product of characters
+                product = [characters[irrep1][k] * characters[irrep2][k] for k in range(n_ops)]
+                
+                # Find which irrep this corresponds to
+                for irrep in irreps:
+                    # Check if the characters match any irrep
+                    # Normalize by the order of the group
+                    projection = sum(product[k] * characters[irrep][k] for k in range(n_ops)) / n_ops
+                    
+                    if abs(projection - 1.0) < 1e-10:  # Numerical tolerance
+                        dp_table[(irrep1, irrep2)] = irrep
+                        plot_data[i, j] = irrep
+                        matrix[irrep_to_idx[irrep1], irrep_to_idx[irrep2]] = irrep_to_idx[irrep]
+                        break
+        
+        if print_table:
+            df_plot = pd.DataFrame(plot_data, index=irreps, columns=irreps)
+            print(df_plot)
+        return {"table": dp_table, "matrix": matrix, "irrep_to_idx": irrep_to_idx}
+        
+    @staticmethod
+    def symm_utils(mol, abel_group):
+        """Given a molecule and its abelian group, returns direct product table"
+
+        Args:
+            mol (_type_): _description_
+            abel_group (_type_): _description_
+        """
+        from pyscf.symm.param import CHARACTER_TABLE as character_table 
+        available_groups = character_table.keys()
+        if abel_group not in available_groups:
+            raise ValueError(f"Group {abel_group} not in available groups {available_groups}")
+        
+        ct = character_table[abel_group]
+        ct_dict = {}
+        for item in ct:
+            key = item[0]
+            value = np.array(item[1:])
+            ct_dict[key] = value
+        print('='*100)
+        print("Using Symmetric MOs: ")
+        print("Miller indices, irrep_ids, orb_shape")
+        for s,i,c in zip(mol.irrep_name, mol.irrep_id, mol.symm_orb):
+            print(s, i, c.shape)
+        pt = BosonWF.direct_product_table(ct_dict, irrep_names = mol.irrep_name, irrep_ids = mol.irrep_id)
+        print(pt["matrix"])
+        print('='*100)
+        results = {
+            "matrix": pt["matrix"],
+            "irrep_to_idx": pt["irrep_to_idx"],
+            "irrep_names": mol.irrep_name,
+            "irrep_ids": mol.irrep_id
+        }
+        return results
+
+    
     def get_hmf(self, mo_energies, ncore):
         mask_up = np.array(self._det_occup[0]) + ncore[0]
         mask_dn = np.array(self._det_occup[1]) + ncore[1]
@@ -198,7 +291,7 @@ class BosonWF:
         self.hmf = np.diag(total_energies)
         hf.close()
     
-    def filter_determinants(self, emax, mo_energies, ncore):
+    def filter_determinants(self, emax, mo_energies, ncore, use_symm = False):
         
         determinants_filtered = False
         print("Filtering determinants, energy units are in Hartree")
@@ -272,6 +365,52 @@ class BosonWF:
         else:
             num_used_dets = len(self._det_map[0])
             print('Used # of determinants', num_used_dets)
+
+        if use_symm:
+            symm_data = self.symm_data
+            prod_matrix = symm_data["matrix"]
+            det_map_up = det_map[0]
+            det_map_dn = det_map[1]
+            det_mo_occ_up = np.array(self._det_occup[0])[det_map_up]
+            det_mo_occ_dn = np.array(self._det_occup[1])[det_map_dn]
+            det_prod_matrix_up = np.zeros((num_used_dets, num_used_dets), dtype=bool)
+            det_prod_matrix_dn = np.zeros((num_used_dets, num_used_dets), dtype=bool)
+            up_orbsym = pyscf.symm.label_orb_symm(self._mol, self._mol.irrep_id, self._mol.symm_orb, self.mo_coeff[0])
+            down_orbsym = pyscf.symm.label_orb_symm(self._mol, self._mol.irrep_id, self._mol.symm_orb, self.mo_coeff[1])
+            for i in range(num_used_dets):
+                for j in range(num_used_dets):
+                    # Using det_mo_occ_up[i], calculate the product of the irreps of the orbitals recursively
+                    # using the direct product table    
+                    # Get the irrep indices for the occupied orbitals in determinant i
+                    up_irreps_i = [up_orbsym[orb] for orb in det_mo_occ_up[i]]
+                    dn_irreps_i = [down_orbsym[orb] for orb in det_mo_occ_dn[i]]
+                    
+                    # Get the irrep indices for the occupied orbitals in determinant j
+                    up_irreps_j = [up_orbsym[orb] for orb in det_mo_occ_up[j]]
+                    dn_irreps_j = [down_orbsym[orb] for orb in det_mo_occ_dn[j]]
+                    
+                    # Calculate the product of irreps for up determinants
+                    up_prod_i = 0  # Start with identity irrep
+                    for irrep in up_irreps_i:
+                        up_prod_i = prod_matrix[up_prod_i, irrep]
+                    
+                    up_prod_j = 0  # Start with identity irrep
+                    for irrep in up_irreps_j:
+                        up_prod_j = prod_matrix[up_prod_j, irrep]
+                    
+                    det_prod_matrix_up[i, j] = up_prod_i == up_prod_j
+                    
+
+                    # Calculate the product of irreps for down determinants
+                    dn_prod_i = 0  # Start with identity irrep
+                    for irrep in dn_irreps_i:
+                        dn_prod_i = prod_matrix[dn_prod_i, irrep]
+                    dn_prod_j = 0  # Start with identity irrep
+                    for irrep in dn_irreps_j:
+                        dn_prod_j = prod_matrix[dn_prod_j, irrep]
+                    det_prod_matrix_dn[i, j] = dn_prod_i == dn_prod_j
+            
+            self._det_prod_filter = det_prod_matrix_up & det_prod_matrix_dn
 
         if determinants_filtered:
             self._det_map_orig = copy.deepcopy(self._det_map)
