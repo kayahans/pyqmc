@@ -426,7 +426,10 @@ class BosonWF:
             hf.create_dataset('det_map_orig', data=self._det_map_orig)
             hf.create_dataset('det_map_mask', data=self._det_map_mask)
             hf.create_dataset('det_map',      data=self._det_map)
+            if use_symm:
+                hf.create_dataset('det_symm', data=self._det_prod_filter)
             hf.close()
+            exit()
         
     @timer_func
     def recompute(self, configs):
