@@ -219,12 +219,7 @@ def dmc_propagate(
             wmult = 1
         else:
             wmult = np.exp(tstep * tdamp * (0.5 * Snew + 0.5 * Sold))
-        
-        branching = True #Branching enabled Kayahan added
-        if branching:
-            weights *= wmult
-        else:
-            weights *= 1
+        weights *= wmult
         wavg = np.mean(weights)
         # print(wavg)
         
