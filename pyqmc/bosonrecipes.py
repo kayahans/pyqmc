@@ -106,6 +106,7 @@ def ABVMC(
         accumulators (list | None, optional): List of accumulators. Defaults to None.
     """
     vmc_kws["hdf_file"] = output
+    print("Running ABVMC")
     wf, configs, acc = initialize_boson_qmc_objects(
         dft_checkfile,
         nconfig=nconfig,
@@ -171,7 +172,7 @@ def ABDMC(
         accumulators (list | None, optional): List of accumulators. Defaults to None.
     """    
     dmc_kws["hdf_file"] = output
-    
+    print("Running ABDMC")
     wf, configs, acc = initialize_boson_qmc_objects(
         dft_checkfile,
         nconfig=nconfig,
@@ -331,7 +332,7 @@ def initialize_boson_qmc_objects(
             else:
                 acc[acc_name] = possible_accumulators[acc_name]
                 acc['energy'].__dict__.update(mf_inputs)
-                print(f"Using accumulator {acc_name}")
+                print(f"Using accumulator: {acc_name}")
         
     if opt_wf is True:
         acc = bosonaccumulators.boson_gradient_generator(

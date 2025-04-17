@@ -111,7 +111,15 @@ def compute_boson_value(updets, dndets, det_coeffs):
 
 class BosonWF:
 
-    def __init__(self, mol, mf, mc=None, tol=None, twist=None, determinants=None, eval_gto_precision=None, det_emax = None, print_mf_dets = False):
+    def __init__(self, mol, mf, 
+                 mc=None, 
+                 tol=None, 
+                 twist=None, 
+                 determinants=None, 
+                 eval_gto_precision=None, 
+                 det_emax = None, 
+                 print_mf_dets = False, 
+                 use_symm = True):
         """
         Create Bosonic wavefunction
         Args:
@@ -294,6 +302,7 @@ class BosonWF:
     def filter_determinants(self, emax, mo_energies, ncore, use_symm = False):
         
         determinants_filtered = False
+        print("="*20 + "Filtering determinants start" + "="*20)
         print("Filtering determinants, energy units are in Hartree")
         if isinstance(emax, float):
             assert emax > 0, "Emax must be positive for energy based determinant filtering"
@@ -429,8 +438,8 @@ class BosonWF:
             if use_symm:
                 hf.create_dataset('det_symm', data=self._det_prod_filter)
             hf.close()
-            exit()
-        
+        print("="*20 + "Filtering determinants end" + "="*20)
+
     @timer_func
     def recompute(self, configs):
         r"""This computes the value from scratch. Returns the logarithm of the wave function as

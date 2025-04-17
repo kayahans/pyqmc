@@ -296,7 +296,7 @@ class ABVMCMatrixAccumulator:
             matel += np.einsum('lc, nxc, nxc->cln', psi_n, grad_j, grad_psi_n)
 
 class ABCDMCMatrixAccumulator:
-    """Accumulator for computing matrix elements in Auxiliary-field Boson Diffusion Monte Carlo (ABCDMC).
+    """Accumulator for computing matrix elements in Auxiliary-field Boson Corrected Diffusion Monte Carlo (ABCDMC).
     
     Specifically calculates:
     1. Overlap matrices between different basis states
@@ -410,10 +410,10 @@ class ABCDMCMatrixAccumulator:
             #     b = np.sum(delta6, axis=0)[i,i]
             #     print(a, b, b/a)
             # import pdb; pdb.set_trace()
-            matel += delta
+            # matel += delta
             
         # exit()
-        results = {'matel':matel, 
+        # results = {'matel':matel, 
                    'delta': delta,
                    'ovlp': ovlp_ij}
         return results 

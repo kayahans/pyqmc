@@ -194,7 +194,6 @@ def read_wf(wf, wf_file):
         grp = hdf["wf"]
         for k in grp.keys():
             new_parms = gpu.cp.array(grp[k])
-            print('new_parms', k, new_parms.shape)
             if wf.parameters[k].shape != new_parms.shape:
                 raise Exception(
                     f"For wave function parameter {k}, shape in {wf_file} is {new_parms.shape}, while current shape is {wf.parameters[k].shape}"
