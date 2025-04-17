@@ -188,7 +188,7 @@ class BosonWF:
         self.get_phase = get_complex_phase if iscomplex else gpu.cp.sign
 
     @staticmethod
-    def direct_product_table(characters, irrep_names = None, irrep_ids = None, print_table = True):
+    def direct_product_table(characters, irrep_names = None, irrep_ids = None):
         """
         Compute the direct product table for irreducible representations.
         
@@ -232,10 +232,7 @@ class BosonWF:
                         matrix[irrep_to_idx[irrep1], irrep_to_idx[irrep2]] = irrep_to_idx[irrep]
                         break
         
-        if print_table:
-            df_plot = pd.DataFrame(plot_data, index=irreps, columns=irreps)
-            print(df_plot)
-        return {"table": dp_table, "matrix": matrix, "irrep_to_idx": irrep_to_idx}
+        return {"table": dp_table, "matrix": matrix, "irrep_to_idx": irrep_to_idx, "plot_data": plot_data}
         
     @staticmethod
     def symm_utils(mol, abel_group):
@@ -256,14 +253,19 @@ class BosonWF:
             key = item[0]
             value = np.array(item[1:])
             ct_dict[key] = value
-        print('='*100)
+        print('='*20+"Symmetry data"+"="*20)
         print("Using Symmetric MOs: ")
         print("Miller indices, irrep_ids, orb_shape")
         for s,i,c in zip(mol.irrep_name, mol.irrep_id, mol.symm_orb):
             print(s, i, c.shape)
         pt = BosonWF.direct_product_table(ct_dict, irrep_names = mol.irrep_name, irrep_ids = mol.irrep_id)
+        print("Direct product table (irrep_id):")
         print(pt["matrix"])
-        print('='*100)
+        df_plot = pd.DataFrame(pt["plot_data"], index=mol.irrep_name, columns=mol.irrep_name)
+        print("Direct product table (irrep_name):")
+        print(df_plot)
+
+        print('='*20+"Symmetry data end"+"="*20)
         results = {
             "matrix": pt["matrix"],
             "irrep_to_idx": pt["irrep_to_idx"],
