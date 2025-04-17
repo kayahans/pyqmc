@@ -413,7 +413,7 @@ class ABCDMCMatrixAccumulator:
             # matel += delta
             
         # exit()
-        # results = {'matel':matel, 
+        results = { #'matel':matel, 
                    'delta': delta,
                    'ovlp': ovlp_ij}
         return results 
