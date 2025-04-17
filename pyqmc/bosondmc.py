@@ -494,7 +494,7 @@ def rundmc(
         if vmc_options is not None:
             vmc_options_default.update(vmc_options) 
 
-        df, configs = bosonmc.vmc(
+        df, configs = bosonmc.abvmc(
             wf,
             configs,
             client=client,
