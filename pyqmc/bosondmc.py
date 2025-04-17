@@ -20,6 +20,7 @@ import sys
 import h5py
 import logging
 import copy
+import pyqmc.bosonmc as bosonmc
 
 def limdrift(g, tau, acyrus=0.25):
     """
@@ -493,7 +494,7 @@ def rundmc(
         if vmc_options is not None:
             vmc_options_default.update(vmc_options) 
 
-        df, configs = mc.vmc(
+        df, configs = bosonmc.vmc(
             wf,
             configs,
             client=client,
