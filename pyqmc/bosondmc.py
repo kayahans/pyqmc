@@ -408,7 +408,7 @@ def rundmc(
     client=None,
     npartitions=None,
     ekey=("energy", "total"),
-    vmc_warmup=10,
+    vmc_options=None,
     branchcut_start=10,
     feedback=1.0,
     branchtime=None,
@@ -489,13 +489,19 @@ def rundmc(
             if verbose:
                 print(f"Restarting calculation {continue_from} from block {blockoffset}")
     else:
+        vmc_options_default = {'nsteps_per_block': 10, 'nblocks': 100,  'tstep': 0.3}
+        if vmc_options is not None:
+            vmc_options_default.update(vmc_options) 
+
         df, configs = mc.vmc(
             wf,
             configs,
             client=client,
             npartitions=npartitions,
             verbose=verbose,
-            nblocks=vmc_warmup,
+            nblocks=vmc_options_default['nblocks'],
+            nsteps_per_block=vmc_options_default['nsteps_per_block'],
+            tstep=vmc_options_default['tstep'],
         )
         en = evaluate_energies(wf, configs, accumulators[ekey[0]], client, npartitions)[
             ekey[1]
