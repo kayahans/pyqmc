@@ -267,7 +267,7 @@ def abvmc(
     if accumulators is None:
         accumulators = {}
         if verbose:
-            print("WARNING: running VMC with no accumulators")
+            print("WARNING: running ABVMC with no accumulators")
 
     # Restart
     if continue_from is None:
