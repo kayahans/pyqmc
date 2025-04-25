@@ -24,6 +24,7 @@ def ABOPTIMIZE(
     slater_kws:  list|None = None,
     det_emax: float|None=None,
     xc: str = 'LDA,VWN',
+    use_symm = False,
     **linemin_kws,
 ):
     """Auxiliary Boson wavefunction Slater Jastrow optimization
@@ -70,6 +71,7 @@ def ABOPTIMIZE(
         # accumulators=bosonaccumulators,
         det_emax=det_emax,
         xc=xc,
+        use_symm=use_symm,
     )
     if anchors is None:
         wf, df = bosonlinemin.line_minimization(wf, configs, acc, **linemin_kws)
@@ -90,6 +92,7 @@ def ABVMC(
     nwarmup: int = 0,
     dtwarmup: float|None=None,
     xc: str = 'LDA,VWN',
+    use_symm = False,
     **vmc_kws,
 ):
     """Auxiliary Boson VMC recipe
@@ -119,6 +122,7 @@ def ABVMC(
         seed=seed,
         det_emax=det_emax,
         xc=xc,
+        use_symm=use_symm,
     )
     
     if nwarmup > 0:
@@ -156,6 +160,7 @@ def ABDMC(
     seed: int|None=None,
     det_emax: float|None=None,
     xc: str = 'LDA,VWN',
+    use_symm = False,
     **dmc_kws,
 ):  
     """Auxiliary Boson DMC recipe
@@ -185,6 +190,7 @@ def ABDMC(
         seed=seed,
         det_emax=det_emax,
         xc=xc,
+        use_symm=use_symm,
     )
     bosondmc.rundmc(wf, configs, accumulators=acc, **dmc_kws)
 
@@ -254,6 +260,7 @@ def initialize_boson_qmc_objects(
     opt_wf=False,
     seed = None,
     det_emax = None,
+    use_symm = False,
     xc = 'LDA,VWN',
 ):  
     
@@ -305,11 +312,11 @@ def initialize_boson_qmc_objects(
     # Use when testing HF
     if load_parameters is False:
         wf, to_opt = bosonwftools.generate_boson_wf(
-            mol, mf, mc=mc, jastrow = None, jastrow_kws=jastrow_kws, slater_kws=slater_kws, det_emax=det_emax
+            mol, mf, mc=mc, jastrow = None, jastrow_kws=jastrow_kws, slater_kws=slater_kws, det_emax=det_emax, use_symm=use_symm
         )
     else:
         wf, to_opt = bosonwftools.generate_boson_wf(
-            mol, mf, mc=mc, jastrow_kws=jastrow_kws, slater_kws=slater_kws, det_emax=det_emax
+            mol, mf, mc=mc, jastrow_kws=jastrow_kws, slater_kws=slater_kws, det_emax=det_emax, use_symm=use_symm
         )
         if load_parameters is not None:
             print('Loading WF parameters from', load_parameters)

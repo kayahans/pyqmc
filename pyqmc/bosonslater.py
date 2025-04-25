@@ -170,7 +170,7 @@ class BosonWF:
             self.symm_data = None
         
         if self.num_det > 1:
-            self.filter_determinants(det_emax, mf.mo_energy, ncore, use_symm = True)
+            self.filter_determinants(det_emax, mf.mo_energy, ncore, use_symm = use_symm)
             self.get_hmf(mf.mo_energy, ncore)
         else:
             print('Using only one determinant')
@@ -375,6 +375,7 @@ class BosonWF:
             self._tot_used_exc = tot_used_exc
         else:
             num_used_dets = len(self._det_map[0])
+            det_map = self._det_map
             print('Used # of determinants', num_used_dets)
 
         if use_symm:
