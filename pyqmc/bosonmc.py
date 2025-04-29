@@ -291,11 +291,15 @@ def abvmc(
                     )
     # Print simulation parameters
     print(f"ABVMC simulation parameters:")
+    print(f"Number of walkers: {configs.configs.shape[0]}")
     print(f"tstep: {tstep}")
     print(f"nblocks: {nblocks}")
     print(f"nsteps_per_block: {nsteps_per_block}")
     print(f"nsteps: {nsteps}")
     print(f"blockoffset: {blockoffset}")
+    print(f"converged_parameter: {converged_parameter}")
+    print(f"convergence_threshold: {convergence_threshold}")
+
     
     def vmc_run(wf, configs, tstep, nsteps_per_block, accumulators, client, npartitions, block, df):
         if verbose:
