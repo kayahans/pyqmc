@@ -289,7 +289,14 @@ def abvmc(
                     print(
                         f"Restarting calculation {continue_from} from block {blockoffset}"
                     )
-
+    # Print simulation parameters
+    print(f"ABVMC simulation parameters:")
+    print(f"tstep: {tstep}")
+    print(f"nblocks: {nblocks}")
+    print(f"nsteps_per_block: {nsteps_per_block}")
+    print(f"nsteps: {nsteps}")
+    print(f"blockoffset: {blockoffset}")
+    
     def vmc_run(wf, configs, tstep, nsteps_per_block, accumulators, client, npartitions, block, df):
         if verbose:
             print(f"-", end="", flush=True)
