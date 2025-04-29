@@ -433,8 +433,6 @@ class ABCDMCMatrixAccumulator:
 
     def shapes(self):
         return {"matrix": ()}
-
-
 class ABDMCMatrixAccumulator:
     """Accumulator for computing matrix elements in Auxiliary Boson Diffusion Monte Carlo.
     

@@ -95,7 +95,7 @@ def generate_boson_wf(
             jastrow = [jastrow]
             jastrow_kws = [jastrow_kws]
 
-        wf1, to_opt1 = generate_boson(mol, mf, mc=mc, det_emax=det_emax, **slater_kws)
+        wf1, to_opt1 = generate_boson(mol, mf, mc=mc, det_emax=det_emax, use_symm=use_symm, **slater_kws)
         to_opt = {"wf1" + k: v for k, v in to_opt1.items()}
 
         pack = [jast(mol, **kw) for jast, kw in zip(jastrow, jastrow_kws)]

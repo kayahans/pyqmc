@@ -156,13 +156,13 @@ def line_minimization(
             coords.load_hdf(hdf)
     else:  # not restarting -- VMC warm up period
         if verbose:
-            print("starting warmup")  
-            if len(warmup_options.keys()) == 0:
-                print('Using default ABVMC parameters for warmup')
-            else:
-                print('Using user-provided parameters for ABVMC warmup')
-                for k, v in warmup_options.items():
-                    print(f'{k}: {v}')
+            print("starting ABVMC warmup")  
+            # if len(warmup_options.keys()) == 0:
+            #     print('Using default ABVMC parameters for warmup')
+            # else:
+            #     print('Using user-provided parameters for ABVMC warmup')
+            #     for k, v in warmup_options.items():
+            #         print(f'{k}: {v}')
             _, coords = abvmc(
                 wf,
                 coords,
@@ -171,7 +171,7 @@ def line_minimization(
                 npartitions=npartitions,
                 **warmup_options,
             )
-            print("finished warmup", flush=True)
+            print("finished ABVMC warmup", flush=True)
 
     # Attributes for linemin
     attr = dict(max_iterations=max_iterations, npts=npts, steprange=steprange)
