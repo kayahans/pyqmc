@@ -284,12 +284,12 @@ def line_minimization(
         est_min = stable_fit(xfit, yfit)
         dx = update(pgrad, Sij, est_min, **update_kws)
         
-        # # Change parameters more slowly
-        # abs_x0 = np.abs(x0)
-        # relative_change = np.where(abs_x0 != 0, np.abs(dx/abs_x0), np.abs(dx))
-        # max_relative_change = 0.25
-        # scale_factor = np.minimum(1.0, max_relative_change / (relative_change + 1e-10))
-        # dx = dx * scale_factor
+        # Change parameters more slowly
+        abs_x0 = np.abs(x0)
+        relative_change = np.where(abs_x0 != 0, np.abs(dx/abs_x0), np.abs(dx))
+        max_relative_change = 0.5
+        scale_factor = np.minimum(1.0, max_relative_change / (relative_change + 1e-10))
+        dx = dx * scale_factor
 
         x0 += dx
         step_data["tau"] = xfit
