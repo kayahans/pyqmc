@@ -461,3 +461,53 @@ class JastrowSpin:
         u_twobody["dndn"] = gpu.cp.dot(self.parameters["bcoeff"][1:, 2], b_value)
 
         return u_onebody, u_twobody
+
+    def print_electron_ion_terms(self, r_values=None, custom_coeffs=None):
+        """Print electron-ion interaction terms for given distances and coefficients.
+        
+        Args:
+            r_values (array-like, optional): Array of distances to evaluate. If None, uses default range.
+            custom_coeffs (array-like, optional): Custom coefficients to use. If None, uses current parameters.
+            
+        Returns:
+            None: Prints formatted output of electron-ion terms
+        """
+        from pyqmc.coord import OpenConfigs
+        nconfig = 50
+        nelec_up, nelec_down = self._mol.nelec
+        nelec = nelec_up + nelec_down
+        rmax = 100
+
+        if r_values is None:
+            r_values = np.linspace(0.1, 10.0, 50)  # Default range from 0.1 to 10.0 bohr
+
+
+        # e-i configuration 
+        epos = np.zeros((nconfig, nelec, 3)) 
+        epos[:, 0, 2 ] = r_values
+        for i in range(nelec-1):
+            epos[:, i+1, 2 ] = (i+1) * rmax
+        configs_ei = OpenConfigs(epos)
+
+        #e-e configuration
+        epos = np.zeros((nconfig, nelec, 3)) 
+        epos[:, 0, 2] += rmax + r_values
+        for i in range(nelec-1):
+            epos[:, i+1, 2 ] = (i+1) * rmax
+        configs_ee = OpenConfigs(epos)
+
+
+        
+        # Use custom coefficients if provided
+        if custom_coeffs is not None:
+            self.parameters["acoeff"] = gpu.cp.asarray(custom_coeffs["acoeff"])
+            self.parameters["bcoeff"] = gpu.cp.asarray(custom_coeffs["bcoeff"])
+        
+        # First e-i
+        self.recompute(configs_ei)
+        sign, u_ei = self.value()
+
+        self.recompute(configs_ee)
+        sign, u_ee = self.value()
+
+        return {'ee': u_ee, 'ei': u_ei, 'configs_ei': configs_ei, 'configs_ee': configs_ee, 'r_values': r_values}
