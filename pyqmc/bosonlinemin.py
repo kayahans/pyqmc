@@ -182,7 +182,7 @@ def line_minimization(
             c = ''
             for key, value in newparms.items():
                 c += f'{key}({value.flatten().shape[0]} elements): {np_pretty_print(value.flatten())}\n'
-            print('Wavefunction parameters: ', c)
+            print('Wavefunction parameters: \n', c)
 
         for k in newparms:
             wf.parameters[k] = newparms[k]
@@ -301,10 +301,9 @@ def line_minimization(
             c = ''
             for key, value in x0_deserialized.items():
                 c += f'{key}({value.flatten().shape[0]} elements): {value.flatten()}\n'
-            print('Wavefunction parameters: ', c)
+            print('Wavefunction parameters: \n', c)
             print('Change in parameters: ', np_pretty_print(dx))
             print('x0', np_pretty_print(x0))
-            print('est_min', est_min)
             print('x_fit', np_pretty_print(np.array(xfit)))
             print('y_fit', np_pretty_print(np.array(yfit)))
             print('est_min', est_min)

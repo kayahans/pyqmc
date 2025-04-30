@@ -71,13 +71,17 @@ def default_jastrow_basis(mol, ion_cusp=False, na=4, nb=3, rcut=None):
     return abasis, bbasis
 
 
-def generate_jastrow(mol, ion_cusp=None, na=4, nb=3, rcut=None):
+def generate_jastrow(mol, ion_cusp=None, na=4, nb=3, rcut=None, init_type='zero'):
     """
     Default 2-body jastrow from QWalk,
 
     :parameter boolean ion_cusp: add an extra term to satisfy electron-ion cusp.
+    :parameter str init_type: Type of initialization for non-cusp parameters. Options:
+        - 'zero': Initialize all non-cusp parameters to zero
+        - 'decay': Initialize with decaying values (default)
     :returns: jastrow, to_opt
     """
+    print("Initializing Jastrow with", init_type, "initialization")
     if ion_cusp == False:
         ion_cusp = []
         if not mol.has_ecp():
@@ -93,11 +97,32 @@ def generate_jastrow(mol, ion_cusp=None, na=4, nb=3, rcut=None):
 
     abasis, bbasis = default_jastrow_basis(mol, len(ion_cusp) > 0, na, nb, rcut)
     jastrow = jastrowspin.JastrowSpin(mol, a_basis=abasis, b_basis=bbasis)
+    
+    # Initialize electron-ion parameters
     if len(ion_cusp) > 0:
         coefs = mol.atom_charges().copy()
         coefs[[l[0] not in ion_cusp for l in mol._atom]] = 0.0
         jastrow.parameters["acoeff"][:, 0, :] = gpu.cp.asarray(coefs[:, None])
+    
+    # Initialize remaining electron-ion parameters
+    if init_type == 'decay':
+        if len(ion_cusp) > 0:       
+            first_basis = 1
+        else:
+            first_basis = 0
+        for i in range(first_basis, len(abasis)):
+            decay = 0.05 / (i + (2-first_basis))  # Decay factor that decreases with basis index
+            jastrow.parameters["acoeff"][:, i, :] = gpu.cp.asarray(mol.atom_charges()[:, None] * decay)
+    # Initialize electron-electron parameters
+    # First term (cusp) is fixed
     jastrow.parameters["bcoeff"][0, [0, 1, 2]] = gpu.cp.array([-0.25, -0.50, -0.25])
+    
+    # Initialize remaining electron-electron parameters
+    if init_type == 'decay':
+        # Added Kayahan: Initialize remaining electron-electron parameters with decaying values
+        for i in range(1, len(bbasis)):
+            decay = 0.03 / (i + 1)  # Decay factor that decreases with basis index
+            jastrow.parameters["bcoeff"][i, :] = gpu.cp.array([-0.2, -0.4, -0.2]) * decay
 
     to_opt = {"acoeff": np.ones(jastrow.parameters["acoeff"].shape).astype(bool)}
     if len(ion_cusp) > 0:
