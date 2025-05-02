@@ -60,26 +60,29 @@ def boson_vmc_worker(wf, configs, tstep, nsteps, accumulators):
     block_avg = {}
     wf.tstep = tstep
     
+    gauss = np.empty((nconf, 3))
+    grad = np.empty((nconf, 3))
+    new_grad = np.empty((nconf, 3))
     # wf.recompute(configs) 
     # nsteps = 1 # TODO: restore to proper form
     for _ in range(nsteps):
         acc = 0.0
-        wf.curr_config = copy.deepcopy(configs)
+        # wf.curr_config = copy.deepcopy(configs)
         # wf.accept_array = np.zeros((nelec, nconf))
         for e in range(nelec):
             # Propose move
             _, val_old = wf.recompute(configs)
-            wf_new = copy.deepcopy(wf)
+            # wf_new = copy.deepcopy(wf) # TODO: check if this is correct 
 
             g, _, _ = wf.gradient_value(e, configs.electron(e))
-            grad = limdrift(np.real(g.T))
-            gauss = np.random.normal(scale=np.sqrt(tstep), size=(nconf, 3))
+            grad[:] = limdrift(np.real(g.T))
+            np.random.normal(scale=np.sqrt(tstep), size=(nconf, 3), out=gauss)
             newcoorde = configs.configs[:, e, :] + gauss + grad * tstep
             newcoorde = configs.make_irreducible(e, newcoorde)
 
             # Compute reverse move
             g, new_val, saved = wf.gradient_value(e, newcoorde)
-            new_grad = limdrift(np.real(g.T))
+            new_grad[:] = limdrift(np.real(g.T))
             forward = np.sum(gauss**2, axis=1)
             backward = np.sum((gauss + tstep * (grad + new_grad)) ** 2, axis=1)
 
@@ -88,11 +91,13 @@ def boson_vmc_worker(wf, configs, tstep, nsteps, accumulators):
             # ratio = np.abs(new_val) ** 2 * t_prob
             newcoord = copy.deepcopy(configs)
             newcoord.configs[:,e,:] = newcoorde.configs
-            _, val_new = wf_new.recompute(newcoord)
+            # _, val_new = wf_new.recompute(newcoord) # TODO: check if this is correct 
+            _, val_new = wf.recompute(newcoord)
             ratio = np.exp(2*(val_new-val_old))* t_prob
             accept = ratio > np.random.rand(nconf)
             # Update wave function
             configs.move(e, newcoorde, accept)
+            wf.recompute(configs) # TODO: check if this is correct 
             wf.updateinternals(e, newcoorde, configs, mask=accept, saved_values=saved)
             acc += np.mean(accept) / nelec
             # option 1 no electon resolution wf.accept_array += accept.astype(float)/nelec 
@@ -110,25 +115,80 @@ def boson_vmc_worker(wf, configs, tstep, nsteps, accumulators):
         
     return block_avg, configs
 
-
 def abvmc_parallel(
     wf, configs, tstep, nsteps_per_block, accumulators, client, npartitions
 ):
+    """
+    Run VMC in parallel using distributed computing.
+    
+    Args:
+        wf: Wave function object
+        configs: Configuration object
+        tstep: Time step
+        nsteps_per_block: Number of steps per block
+        accumulators: Dictionary of accumulators
+        client: Distributed computing client
+        npartitions: Number of partitions for parallel processing
+        
+    Returns:
+        block_avg: Dictionary of averaged results
+        configs: Updated configuration object
+    """
+    # Split configurations into partitions
     config = configs.split(npartitions)
-    runs = [
-        client.submit(boson_vmc_worker, wf, conf, tstep, nsteps_per_block, accumulators)
+    
+    # Submit all tasks at once for better parallelization
+    futures = [
+        client.submit(
+            boson_vmc_worker,
+            wf,
+            conf,
+            tstep,
+            nsteps_per_block,
+            accumulators,
+            pure=False  # Allow caching of results
+        )
         for conf in config
     ]
-    allresults = list(zip(*[r.result() for r in runs]))
+    
+    # Gather results
+    results = client.gather(futures)
+    allresults = list(zip(*results))
+    
+    # Join configurations
     configs.join(allresults[1])
+    
+    # Calculate weights for averaging
     confweight = np.array([len(c.configs) for c in config], dtype=float)
     confweight /= np.mean(confweight) * npartitions
+    
+    # Combine results with weights
     block_avg = {}
     for k in allresults[0][0].keys():
         block_avg[k] = np.sum(
             [res[k] * w for res, w in zip(allresults[0], confweight)], axis=0
         )
+    
     return block_avg, configs
+
+# def abvmc_parallel(
+#     wf, configs, tstep, nsteps_per_block, accumulators, client, npartitions
+# ):
+#     config = configs.split(npartitions)
+#     runs = [
+#         client.submit(boson_vmc_worker, wf, conf, tstep, nsteps_per_block, accumulators)
+#         for conf in config
+#     ]
+#     allresults = list(zip(*[r.result() for r in runs]))
+#     configs.join(allresults[1])
+#     confweight = np.array([len(c.configs) for c in config], dtype=float)
+#     confweight /= np.mean(confweight) * npartitions
+#     block_avg = {}
+#     for k in allresults[0][0].keys():
+#         block_avg[k] = np.sum(
+#             [res[k] * w for res, w in zip(allresults[0], confweight)], axis=0
+#         )
+#     return block_avg, configs
 
 
 def check_convergence(param_array, convergence_threshold):
