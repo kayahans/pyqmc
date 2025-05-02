@@ -79,6 +79,9 @@ def generate_jastrow(mol, ion_cusp=None, na=4, nb=3, rcut=None, init_type='zero'
     :parameter str init_type: Type of initialization for non-cusp parameters. Options:
         - 'zero': Initialize all non-cusp parameters to zero
         - 'decay': Initialize with decaying values (default)
+    : parameter int na: Number of electron-ion basis functions
+    : parameter int nb: Number of electron-electron basis functions
+    : parameter float rcut: Cutoff radius for basis functions
     :returns: jastrow, to_opt
     """
     print("Initializing Jastrow with", init_type, "initialization")
