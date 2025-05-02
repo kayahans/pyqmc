@@ -60,6 +60,7 @@ def boson_vmc_worker(wf, configs, tstep, nsteps, accumulators):
     block_avg = {}
     wf.tstep = tstep
     
+    # Pre-allocate arrays for better performance
     gauss = np.empty((nconf, 3))
     grad = np.empty((nconf, 3))
     new_grad = np.empty((nconf, 3))
@@ -76,13 +77,17 @@ def boson_vmc_worker(wf, configs, tstep, nsteps, accumulators):
 
             g, _, _ = wf.gradient_value(e, configs.electron(e))
             grad[:] = limdrift(np.real(g.T))
-            np.random.normal(scale=np.sqrt(tstep), size=(nconf, 3), out=gauss)
+            
+            # Generate random moves
+            gauss[:] = np.random.normal(scale=np.sqrt(tstep), size=(nconf, 3))
             newcoorde = configs.configs[:, e, :] + gauss + grad * tstep
             newcoorde = configs.make_irreducible(e, newcoorde)
 
             # Compute reverse move
             g, new_val, saved = wf.gradient_value(e, newcoorde)
             new_grad[:] = limdrift(np.real(g.T))
+            
+            # Compute acceptance ratio
             forward = np.sum(gauss**2, axis=1)
             backward = np.sum((gauss + tstep * (grad + new_grad)) ** 2, axis=1)
 
