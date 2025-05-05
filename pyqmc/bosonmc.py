@@ -156,8 +156,12 @@ def abvmc_parallel(
         for conf in config
     ]
     
-    # Gather results
-    results = client.gather(futures)
+    # Gather results - handle both MPIPoolExecutor and other executors
+    if hasattr(client, 'gather'):
+        results = client.gather(futures)
+    else:
+        results = [f.result() for f in futures]
+    
     allresults = list(zip(*results))
     
     # Join configurations
