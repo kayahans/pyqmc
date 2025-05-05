@@ -14,6 +14,15 @@ def np_pretty_print(nparray):
     with np.printoptions(formatter={'all': lambda x: f'{x:10.4g}'}, linewidth=150):
         c += nparray.__str__()
     return c
+
+from scipy.sparse.linalg import cg
+def sr_update_cg(pgrad, Sij, step, eps=0.1, tol=1e-4, maxiter=100):
+    Sij_reg = Sij + eps * np.eye(Sij.shape[0])
+    v, info = cg(Sij_reg, pgrad, tol=tol, maxiter=maxiter)
+    if info != 0:
+        raise RuntimeError("CG did not converge")
+    return -v * step
+
 def sr_update(pgrad, Sij, step, eps=0.1):
     invSij = np.linalg.inv(Sij + eps * np.eye(Sij.shape[0]))
     v = np.einsum("ij,j->i", invSij, pgrad)
@@ -105,7 +114,7 @@ def line_minimization(
     warmup_options=None,
     vmcoptions=None,
     lmoptions=None,
-    update=sr_update,
+    update=sr_update_cg,
     update_kws=None,
     verbose=False,
     npts=5,
