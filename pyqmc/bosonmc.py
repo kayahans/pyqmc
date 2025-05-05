@@ -143,26 +143,12 @@ def abvmc_parallel(
     config = configs.split(npartitions)
     
     # Submit all tasks at once for better parallelization
-    futures = [
-        client.submit(
-            boson_vmc_worker,
-            wf,
-            conf,
-            tstep,
-            nsteps_per_block,
-            accumulators,
-            pure=False  # Allow caching of results
-        )
+    runs = [
+        client.submit(boson_vmc_worker, wf, conf, tstep, nsteps_per_block, accumulators)
         for conf in config
     ]
     
-    # Gather results - handle both MPIPoolExecutor and other executors
-    if hasattr(client, 'gather'):
-        results = client.gather(futures)
-    else:
-        results = [f.result() for f in futures]
-    
-    allresults = list(zip(*results))
+    allresults = list(zip(*[r.result() for r in runs]))
     
     # Join configurations
     configs.join(allresults[1])
