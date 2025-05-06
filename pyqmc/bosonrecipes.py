@@ -92,6 +92,7 @@ def ABVMC(
     seed: int|None=None,
     det_emax: float|None=None,
     nwarmup: int = 0,
+    warmup_accumulators: list|None = None,
     dtwarmup: float|None=None,
     xc: str = 'LDA,VWN',
     use_symm = False,
@@ -140,11 +141,22 @@ def ABVMC(
                     eq_tags[kw] = 'eq_'+vmc_kws[kw]
                 else:
                     eq_tags[kw] = vmc_kws[kw]
+        if warmup_accumulators is not None:
+            warmup_acc = {} 
+            possible_accumulators = {
+                             'ab_vmc_excitations':bosonaccumulators.ABVMCMatrixAccumulator(), 
+                             'ab_dmc_excitations':bosonaccumulators.ABDMCMatrixAccumulator(),
+                             'abc_dmc_excitations':bosonaccumulators.ABCDMCMatrixAccumulator(), 
+                             'density':bosonaccumulators.DensityAccumulator(),
+                             'radial_density':bosonaccumulators.RadialDensityAccumulator()}
+            for acc_name in warmup_accumulators:
+                warmup_acc.update(possible_accumulators[acc_name])
         _, configs = bosonmc.abvmc(
                 wf,
                 configs,
                 nblocks = nwarmup,
                 tstep   = dtwarmup,
+                accumulators = warmup_acc,
                 **eq_tags
         )
         
