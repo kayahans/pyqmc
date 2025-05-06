@@ -13,6 +13,34 @@ from pyqmc.bosonslater import timer_func
 
 from pyqmc.accumulators import PGradTransform
 
+def calculate_radial_orbital_densities(mol, dm, mo_coeff):
+    """
+    Calculate radial orbital densities for each orbital in the mean field object
+    """
+    from pyscf import dft
+    grids = dft.gen_grid.Grids(mol)
+    grids.level = 3
+    grids.build()
+    coords = grids.coords
+    weights = grids.weights
+    ao_value = dft.numint.eval_ao(mol, coords)
+    mo_coeff = np.einsum('pi,ij,pj->p', ao_value, mo_coeff, ao_value)
+    # Calculate densit  y at each point for molecular 
+    # rho(r) = Σ_μν P_μν φ_μ(r) φ_ν(r)
+    if len(dm.shape) == 3:
+        # UHF case - dm is (dm_a, dm_b)
+        dm_up = dm[0]
+        dm_dn = dm[1]
+        rho_up = np.einsum('pi,ij,pj->p', ao_value, dm_up, ao_value)
+        rho_dn = np.einsum('pi,ij,pj->p', ao_value, dm_dn, ao_value)
+        rho = rho_up + rho_dn
+    else:
+        raise ValueError("RHF case not implemented")
+        # Once implemented, uncomment the following line
+        # rho = np.einsum('pi,ij,pj->p', ao_value, dm, ao_value)    
+    
+    return rho, coords, weights
+
 def calculate_mf_density(mol, dm):
     """
     Calculate electron density on a grid given density matrix
@@ -518,6 +546,184 @@ class ABDMCMatrixAccumulator:
 
     def shapes(self):
         return {"matrix": ()}
+
+class DensityAccumulator:
+    """Accumulates electron density in bins.
+    
+    This accumulator computes the electron density by binning electron positions
+    into a grid. The density is normalized by the bin volume and number of electrons.
+    
+    Args:
+        bins (tuple): Number of bins in each dimension (nx, ny, nz)
+        range (tuple): Range of coordinates to bin in each dimension ((xmin, xmax), (ymin, ymax), (zmin, zmax))
+    """
+    
+    def __init__(self, bins=(50, 50, 50), range=None):
+        self.bins = bins
+        self.range = range
+        
+    def __call__(self, configs, wf):
+        """Compute density for each configuration.
+        
+        Args:
+            configs: Electron configurations
+            wf: Wave function object
+            
+        Returns:
+            dict: Contains 'density' array of shape (nconf, *bins)
+        """
+        nconf, nelec, _ = configs.configs.shape
+        
+        # Reshape configs to (nconf*nelec, 3) for histogram
+        positions = configs.configs.reshape(-1, 3)
+        
+        # Compute histogram for each configuration
+        density = np.zeros((nconf, *self.bins))
+        for i in range(nconf):
+            start = i * nelec
+            end = (i + 1) * nelec
+            hist, _ = np.histogramdd(
+                positions[start:end],
+                bins=self.bins,
+                range=self.range,
+                density=True
+            )
+            density[i] = hist
+            
+        return {"density": density}
+    
+    def avg(self, configs, wf):
+        """Compute average density across configurations.
+        
+        Args:
+            configs: Electron configurations
+            wf: Wave function object
+            
+        Returns:
+            dict: Contains 'density' array of shape (*bins)
+        """
+        results = self(configs, wf)
+        return {k: np.mean(v, axis=0) for k, v in results.items()}
+    
+    def var(self, configs, wf):
+        """Compute variance of density across configurations.
+        
+        Args:
+            configs: Electron configurations
+            wf: Wave function object
+            
+        Returns:
+            dict: Contains 'density' array of shape (*bins)
+        """
+        results = self(configs, wf)
+        return {k: np.var(v, axis=0) for k, v in results.items()}
+    
+    def keys(self):
+        """Return set of keys in the accumulator results."""
+        return set(["density"])
+    
+    def shapes(self):
+        """Return shapes of arrays in the accumulator results."""
+        return {"density": self.bins}
+
+class RadialDensityAccumulator:
+    """Accumulates radial electron density.
+    
+    This accumulator computes the radial electron density by binning electron
+    distances from the origin into radial shells. The density is normalized by
+    the shell volume and number of electrons.
+    
+    Args:
+        nbins (int): Number of radial bins
+        rmax (float): Maximum radius to consider
+        rmin (float): Minimum radius to consider (default: 0)
+        center (array-like): Center point for radial distance calculation (default: origin)
+    """
+    
+    def __init__(self, nbins=400, rmax=40.0, rmin=0.0, center=None):
+        self.nbins = nbins
+        self.rmax = rmax
+        self.rmin = rmin
+        self.center = np.zeros(3) if center is None else np.array(center)
+        
+        # Pre-compute bin edges and volumes
+        self.bin_edges = np.linspace(rmin, rmax, nbins + 1)
+        self.bin_centers = (self.bin_edges[1:] + self.bin_edges[:-1]) / 2
+        
+        # Volume of each spherical shell
+        self.shell_volumes = 4/3 * np.pi * (self.bin_edges[1:]**3 - self.bin_edges[:-1]**3)
+        
+    def __call__(self, configs, wf):
+        """Compute radial density for each configuration.
+        
+        Args:
+            configs: Electron configurations
+            wf: Wave function object
+            
+        Returns:
+            dict: Contains 'radial_density' array of shape (nconf, nbins)
+        """
+        nconf, nelec, _ = configs.configs.shape
+        
+        # Reshape configs to (nconf*nelec, 3) for distance calculation
+        positions = configs.configs.reshape(-1, 3)
+        
+        # Calculate distances from center
+        distances = np.sqrt(np.sum((positions - self.center)**2, axis=1))
+        
+        # Compute histogram for each configuration
+        hist, _ = np.histogram(
+            distances,
+            bins=self.bin_edges,
+            density=True
+        )
+        results = {'r': self.bin_centers,
+                   'int_density': hist, 
+                   'radial_density': hist / self.shell_volumes}
+        return results
+    
+    def avg(self, configs, wf):
+        """Compute average radial density across configurations.
+        
+        Args:
+            configs: Electron configurations
+            wf: Wave function object
+            
+        Returns:
+            dict: Contains 'radial_density' array of shape (nbins,)
+        """
+        results = self(configs, wf)
+        # return {k: np.mean(v, axis=0) for k, v in results.items()}
+        return {k: v for k, v in results.items()}
+    
+    def var(self, configs, wf):
+        """Compute variance of radial density across configurations.
+        
+        Args:
+            configs: Electron configurations
+            wf: Wave function object
+            
+        Returns:
+            dict: Contains 'radial_density' array of shape (nbins,)
+        """
+        results = self(configs, wf)
+        return {k: np.var(v, axis=0) for k, v in results.items()}
+    
+    def keys(self):
+        """Return set of keys in the accumulator results."""
+        return set(["radial_density"])
+    
+    def shapes(self):
+        """Return shapes of arrays in the accumulator results."""
+        return {"radial_density": (self.nbins,)}
+    
+    def get_radial_points(self):
+        """Return the radial points (bin centers) for plotting.
+        
+        Returns:
+            array: Radial points where density is evaluated
+        """
+        return self.bin_centers
 
 
 

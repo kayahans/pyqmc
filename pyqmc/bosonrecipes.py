@@ -25,6 +25,7 @@ def ABOPTIMIZE(
     det_emax: float|None=None,
     xc: str = 'LDA,VWN',
     use_symm = False,
+    initial_guess_r = 15.0,
     **linemin_kws,
 ):
     """Auxiliary Boson wavefunction Slater Jastrow optimization
@@ -72,6 +73,7 @@ def ABOPTIMIZE(
         det_emax=det_emax,
         xc=xc,
         use_symm=use_symm,
+        initial_guess_r=initial_guess_r,
     )
     if anchors is None:
         wf, df = bosonlinemin.line_minimization(wf, configs, acc, **linemin_kws)
@@ -93,6 +95,7 @@ def ABVMC(
     dtwarmup: float|None=None,
     xc: str = 'LDA,VWN',
     use_symm = False,
+    initial_guess_r = 15.0,
     **vmc_kws,
 ):
     """Auxiliary Boson VMC recipe
@@ -123,6 +126,7 @@ def ABVMC(
         det_emax=det_emax,
         xc=xc,
         use_symm=use_symm,
+        initial_guess_r=initial_guess_r,
     )
     
     if nwarmup > 0:
@@ -161,6 +165,7 @@ def ABDMC(
     det_emax: float|None=None,
     xc: str = 'LDA,VWN',
     use_symm = False,
+    initial_guess_r = 15.0,
     **dmc_kws,
 ):  
     """Auxiliary Boson DMC recipe
@@ -191,10 +196,11 @@ def ABDMC(
         det_emax=det_emax,
         xc=xc,
         use_symm=use_symm,
+        initial_guess_r=initial_guess_r,
     )
     bosondmc.rundmc(wf, configs, accumulators=acc, **dmc_kws)
 
-def initial_guess(mol, nconfig, r=1.0, seed = None):
+def initial_guess(mol, nconfig, r=None, seed = None):
     """Generate an initial guess by distributing electrons near atoms
     proportional to their charge.
 
@@ -209,6 +215,9 @@ def initial_guess(mol, nconfig, r=1.0, seed = None):
     :rtype: ndarray
 
     """
+    if r == None:
+        r = 15.0
+    print("Initializing guess with r = ", r)
     from pyqmc.coord import OpenConfigs, PeriodicConfigs
     if seed is not None:
         rng = np.random.RandomState(seed)
@@ -244,8 +253,19 @@ def initial_guess(mol, nconfig, r=1.0, seed = None):
         epos = PeriodicConfigs(epos, mol.lattice_vectors())
     else:
         epos = OpenConfigs(epos)
-    return epos
 
+    show_radial_profile = False
+    if show_radial_profile:
+        import matplotlib.pyplot as plt
+        from pyqmc.coord import OpenConfigs
+        radial_density = bosonaccumulators.RadialDensityAccumulator()
+        results = radial_density(epos, None)
+        fig, axs = plt.subplots(1, 2, figsize=(10, 5))
+        axs[0].plot(results['r'], results['radial_density'])
+        axs[1].plot(results['r'], results['int_density'])
+        plt.show()
+        
+    return epos
 
 
 def initialize_boson_qmc_objects(
@@ -260,6 +280,7 @@ def initialize_boson_qmc_objects(
     opt_wf=False,
     seed = None,
     det_emax = None,
+    initial_guess_r = 15.0,
     use_symm = False,
     xc = 'LDA,VWN',
 ):  
@@ -324,14 +345,16 @@ def initialize_boson_qmc_objects(
 
     
     print('Using spherical guess')
-    configs = initial_guess(mol, nconfig,seed=seed)
+    configs = initial_guess(mol, nconfig, r=initial_guess_r, seed=seed)
 
     acc = {}
     acc['energy'] = bosonaccumulators.ABQMCEnergyAccumulator(mf_inputs)
 
     possible_accumulators = {'ab_vmc_excitations':bosonaccumulators.ABVMCMatrixAccumulator(), 
                              'ab_dmc_excitations':bosonaccumulators.ABDMCMatrixAccumulator(),
-                             'abc_dmc_excitations':bosonaccumulators.ABCDMCMatrixAccumulator()}
+                             'abc_dmc_excitations':bosonaccumulators.ABCDMCMatrixAccumulator(), 
+                             'density':bosonaccumulators.DensityAccumulator(),
+                             'radial_density':bosonaccumulators.RadialDensityAccumulator()}
     if accumulators is not None and len(accumulators) > 0:
         for acc_name in accumulators:
             if acc_name not in possible_accumulators:
