@@ -16,12 +16,67 @@ def np_pretty_print(nparray):
     return c
 
 from scipy.sparse.linalg import cg
-def sr_update_cg(pgrad, Sij, step, eps=0.1, tol=1e-4, maxiter=100):
+
+def get_sr_update_function(method="sr"):
+    """Return the appropriate update function based on the method name.
+    
+    Args:
+        method (str): Name of the update method. Options are:
+            - "sr": Standard stochastic reconfiguration update
+            - "sr_cg": SR update using conjugate gradient solver
+            - "sd": Steepest descent update 
+            - "sr12": SR update using square root of inverse S matrix
+            
+    Returns:
+        function: The corresponding update function
+    """
+    update_functions = {
+        "sr": sr_update,
+        "sr_cg": sr_update_cg,
+        "sr_adaptive": sr_update_adaptive,
+        "sr_gradient_based": sr_update_gradient_based,
+        "sd": sd_update,
+        "sr12": sr12_update
+    }
+    
+    if method not in update_functions:
+        raise ValueError(f"Unknown SR update method: {method}. Valid options are: {list(update_functions.keys())}")
+        
+    return update_functions[method]
+
+def sr_update_cg(pgrad, Sij, step, eps=0.1, atol=1e-4, maxiter=100):
+    import pdb; pdb.set_trace()
     Sij_reg = Sij + eps * np.eye(Sij.shape[0])
-    v, info = cg(Sij_reg, pgrad, tol=tol, maxiter=maxiter)
+    v, info = cg(Sij_reg, pgrad, atol=atol, maxiter=maxiter)
     if info != 0:
         raise RuntimeError("CG did not converge")
     return -v * step
+
+def sr_update_adaptive(pgrad, Sij, step, eps_min=1e-4, eps_max=0.1, cond_threshold=1e3):
+    Sij_reg = Sij + eps_min * np.eye(Sij.shape[0])
+    cond = np.linalg.cond(Sij_reg)
+    eps = eps_min * (cond / cond_threshold) if cond > cond_threshold else eps_min
+    eps = min(eps, eps_max)
+    invSij = np.linalg.inv(Sij + eps * np.eye(Sij.shape[0]))
+    v = np.einsum("ij,j->i", invSij, pgrad)
+    return -v * step
+
+def sr_update_gradient_based(pgrad, Sij, step, eps_min=1e-4, eps_max=0.1, grad_threshold=1.0):
+    grad_norm = np.linalg.norm(pgrad)
+    eps = eps_min * (grad_norm / grad_threshold) if grad_norm > grad_threshold else eps_min
+    eps = min(eps, eps_max)
+    invSij = np.linalg.inv(Sij + eps * np.eye(Sij.shape[0]))
+    v = np.einsum("ij,j->i", invSij, pgrad)
+    return -v * step
+
+# def sr_update_energy_based(pgrad, Sij, step, eps_min=1e-4, eps_max=0.1, energy_increase_threshold=1e-3):
+#     # Assume energy_old and energy_new are available
+#     energy_change = energy_new - energy_old
+#     eps = eps_min * (abs(energy_change) / energy_increase_threshold) if energy_change > energy_increase_threshold else eps_min
+#     eps = min(eps, eps_max)
+#     invSij = np.linalg.inv(Sij + eps * np.eye(Sij.shape[0]))
+#     v = np.einsum("ij,j->i", invSij, pgrad)
+#     return -v * step
 
 def sr_update(pgrad, Sij, step, eps=0.1):
     invSij = np.linalg.inv(Sij + eps * np.eye(Sij.shape[0]))
@@ -114,7 +169,7 @@ def line_minimization(
     warmup_options=None,
     vmcoptions=None,
     lmoptions=None,
-    update=sr_update_cg,
+    update="sr_cg",
     update_kws=None,
     verbose=False,
     npts=5,
@@ -139,7 +194,8 @@ def line_minimization(
     :parameter boolean verbose: print output if True
     :return: optimized wave function, optimization data
     """
-    
+    update = get_sr_update_function(update)
+
     if vmcoptions is None:
         vmcoptions = {}
     vmcoptions.update({"verbose": verbose})
@@ -277,7 +333,7 @@ def line_minimization(
         steps = np.linspace(-steprange / (npts - 2), steprange, npts)
         params = [x0 + update(pgrad, Sij, step, **update_kws) for step in steps]
         # print('params', params[-2])
-        step_data['params'] = params[-2]
+        # step_data['params'] = params[-2]
         
         if client is None:
             stepsdata = correlated_compute_boson(wf, coords, params, pgrad_acc)
