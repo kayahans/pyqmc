@@ -528,6 +528,42 @@ class BosonWF:
         wf_logval = 1./2 * np.nan_to_num(gpu.cp.log(gpu.cp.abs(wf_val)) + 2*(upref + dnref))        
         return wf_sign, wf_logval
     
+    def value_configs(self, configs):
+        r"""Returns the value of the bosonic wavefunction for a given configuration"""
+        nconf, nelec, ndim = configs.configs.shape
+        aos = self.orbitals.aos("GTOval_sph", configs)
+        aovals = aos.reshape(-1, nconf, nelec, aos.shape[-1])
+        dets = []
+        for s in [0, 1]:
+            begin = self._nelec[0] * s
+            end = self._nelec[0] + self._nelec[1] * s
+            mo = self.orbitals.mos(aovals[:, :, begin:end, :], s)
+            mo_vals = gpu.cp.swapaxes(mo[:, :, self._det_occup[s]], 1, 2)
+            dets.append(
+                gpu.cp.asarray(np.linalg.slogdet(mo_vals))
+            )  # Spin, (sign, val), nconf, [ndet_up, ndet_dn]
+            is_zero = np.sum(np.abs(dets[s][0]) < 1e-16)
+            compute = np.isfinite(dets[s][1])
+            if is_zero > 0:
+                warnings.warn(
+                    f"A wave function is zero. Found this proportion: {is_zero/nconf}"
+                )
+                # print(configs.configs[])
+                print(f"zero {is_zero/np.prod(compute.shape)}")
+
+        updets = dets[0][:, :, self._det_map[0]]
+        dndets = dets[1][:, :, self._det_map[1]]
+
+        upref = gpu.cp.amax(updets[1]).real
+        dnref = gpu.cp.amax(dndets[1]).real
+        det_coeff = self.myparameters['det_coeff']
+        logvals = 2*(updets[1] - upref + dndets[1] - dnref)
+        wf_val = gpu.cp.einsum("d, id->i", det_coeff, gpu.cp.exp(logvals))
+
+        wf_sign = np.nan_to_num(wf_val / gpu.cp.abs(wf_val))
+        wf_logval = 1./2 * np.nan_to_num(gpu.cp.log(gpu.cp.abs(wf_val)) + 2*(upref + dnref))        
+        return wf_sign, wf_logval
+    
     @timer_func
     def value_dets(self, test = False):
         r"""Returns logarithmic values of all Slater determinants used to form bosonic wavefunction

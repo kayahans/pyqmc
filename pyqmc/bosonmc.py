@@ -122,11 +122,11 @@ def boson_vmc_worker(wf, configs, tstep, nsteps, accumulators):
 
             newcoord = copy.deepcopy(configs)
             newcoord.configs[:,e,:] = newcoorde.configs
-            _, val_new = wf.recompute(newcoord)
+            _, val_new = wf.value_configs(newcoord)
             ratio = np.exp(2*(val_new-val_old)) * t_prob 
             accept = ratio > np.random.rand(nconf)
-            # Restore wave function
-            wf.recompute(configs) # TODO: check if this is correct 
+            # Restore wave function (not needed with value_configs)
+            # wf.recompute(configs) # TODO: check if this is correct 
 
             # Update configuration and wave function
             configs.move(e, newcoorde, accept)
