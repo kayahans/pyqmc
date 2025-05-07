@@ -66,6 +66,14 @@ def boson_vmc_worker(wf, configs, tstep, nsteps, accumulators):
     new_grad = np.empty((nconf, 3))
     # wf.recompute(configs) 
     # nsteps = 1 # TODO: restore to proper form
+    # from bosonaccumulators import RadialDensityAccumulator
+    # rda = RadialDensityAccumulator()
+    # res = rda(configs, wf)
+    # import matplotlib.pyplot as plt
+    # plt.plot(res['r'], res['radial_density'])
+    # plt.show()
+    # import pdb; pdb.set_trace()
+
     for _ in range(nsteps):
         acc = 0.0
         # wf.curr_config = copy.deepcopy(configs)
@@ -87,22 +95,41 @@ def boson_vmc_worker(wf, configs, tstep, nsteps, accumulators):
             g, new_val, saved = wf.gradient_value(e, newcoorde)
             new_grad[:] = limdrift(np.real(g.T))
             
-            # Compute acceptance ratio
-            forward = np.sum(gauss**2, axis=1)
-            backward = np.sum((gauss + tstep * (grad + new_grad)) ** 2, axis=1)
+            # Compute acceptance ratio (Lucas Wagner's implementation)
+            # forward = np.sum(gauss**2, axis=1)
+            # backward = np.sum((gauss + tstep * (grad + new_grad)) ** 2, axis=1)
+            # t_prob_old = np.exp(1 / (2 * tstep) * (forward - backward))
+            
+            # Detailed balance/Metropolis-Hastings proof
+            # q(y, x) = G(x, y; dt) * Psi^2(y)/ G(y, x; dt) * Psi^2(x)
+            # G(x, y; dt) = exp(-1/(2dt) (x-y -dt(grad(x))^2)
+            # y = x + dt grad(x) + gauss
+            # x - y = -dt grad(x) - gauss
+            # G(x, y; dt)/G(y, x; dt) = exp(-1/(2dt) (x-y -dt(grad(y))^2 - (y-x -dt(grad(x))^2))
+            #                         = exp(-1/(2dt) (x-y -dt(grad(y))^2 - (x-y +dt(grad(x))^2))
+            #                         = exp(-1/(2dt) (-2(x-y)dt[grad(x)+grad(y) + dt^2(grad(y)^2-grad(x)^2))
+            #                         = exp(((x-y)[grad(x)+grad(y) - dt/2(grad(y)^2-grad(x)^2))
+            #                         = exp([grad(x)+grad(y)]*[(x-y) - dt/2(grad(y)-grad(x))])
+            #                         = exp([grad(x)+grad(y)]*[-dt grad(x) -gauss - dt/2(grad(y) - grad(x))]
+            #                         = exp([grad(x)+grad(y)]*[-gauss - dt/2(grad(y) + grad(x))])
+            # grad_sum = grad(x) + grad(y)
+            #                         = exp(-[grad_sum]*[gauss + dt/2(grad_sum)])
+            # When the sign in the exponent is negative, it agrees with the previous implementation
 
-            # Acceptance
-            t_prob = np.exp(1 / (2 * tstep) * (forward - backward))
-            # ratio = np.abs(new_val) ** 2 * t_prob
+            # Current implementation
+            grad_sum = grad + new_grad
+            t_prob = np.exp(-np.sum(grad_sum * (gauss + tstep/2 * grad_sum), axis=1))
+
             newcoord = copy.deepcopy(configs)
             newcoord.configs[:,e,:] = newcoorde.configs
-            # _, val_new = wf_new.recompute(newcoord) # TODO: check if this is correct 
             _, val_new = wf.recompute(newcoord)
-            ratio = np.exp(2*(val_new-val_old))* t_prob
+            ratio = np.exp(2*(val_new-val_old)) * t_prob 
             accept = ratio > np.random.rand(nconf)
-            # Update wave function
-            configs.move(e, newcoorde, accept)
+            # Restore wave function
             wf.recompute(configs) # TODO: check if this is correct 
+
+            # Update configuration and wave function
+            configs.move(e, newcoorde, accept)
             wf.updateinternals(e, newcoorde, configs, mask=accept, saved_values=saved)
             acc += np.mean(accept) / nelec
             # option 1 no electon resolution wf.accept_array += accept.astype(float)/nelec 
