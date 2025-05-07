@@ -242,6 +242,48 @@ class JastrowSpin:
         u += gpu.cp.einsum("ijkl,jkl->i", self._avalues, self.parameters["acoeff"])
         return (np.ones(len(u)), gpu.asnumpy(u))
 
+    def value_configs(self, configs):
+        ''' Calculate the wavefunction value for a given set of configurations without updating the wavefunction or derivatives'''
+        nconf, nelec = configs.configs.shape[:2]
+        nexpand = len(self.b_basis)
+        aexpand = len(self.a_basis)
+        bvalues = gpu.cp.zeros((nconf, nexpand, 3))
+        avalues = gpu.cp.zeros((nconf, self._mol.natm, aexpand, 2))
+        
+        # electron-electron distances
+        nup = self._mol.nelec[0]
+        d_upup, ij = configs.dist.dist_matrix(configs.configs[:, :nup])
+        d_updown, ij = configs.dist.pairwise(
+            configs.configs[:, :nup], configs.configs[:, nup:]
+        )
+        d_downdown, ij = configs.dist.dist_matrix(configs.configs[:, nup:])
+
+        # Update bvalues according to spin case
+        for j, d in enumerate([d_upup, d_updown, d_downdown]):
+            d = gpu.cp.asarray(d)
+            r = gpu.cp.linalg.norm(d, axis=-1)
+            for i, b in enumerate(self.b_basis):
+                bvalues[:, i, j] = gpu.cp.sum(b.value(d, r), axis=1)
+
+        # electron-ion distances
+        di = gpu.cp.zeros((nelec, nconf, self._mol.natm, 3))
+        for e in range(nelec):
+            di[e] = gpu.cp.asarray(
+                configs.dist.dist_i(self._mol.atom_coords(), configs.configs[:, e, :])
+            )
+        ri = gpu.cp.linalg.norm(di, axis=-1)
+
+        # Update avalues according to spin case
+        for i, a in enumerate(self.a_basis):
+            avals = a.value(di, ri)
+            avalues[:, :, i, 0] = gpu.cp.sum(avals[:nup], axis=0)
+            avalues[:, :, i, 1] = gpu.cp.sum(avals[nup:], axis=0)
+
+        u = gpu.cp.sum(bvalues * self.parameters["bcoeff"], axis=(2, 1))
+        u += gpu.cp.einsum("ijkl,jkl->i", avalues, self.parameters["acoeff"])
+        return (np.ones(len(u)), gpu.asnumpy(u))
+
+
     def gradient(self, e, epos):
         r"""We compute the gradient for electron e as
         :math:`\nabla_e \ln \Psi_J = \sum_l c_l \left(\sum_{j > e} \nabla_e b_l(r_{ej}) + \sum_{i < e} \nabla_e b_l(r_{ie})\right)`

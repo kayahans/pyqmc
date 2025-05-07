@@ -85,6 +85,11 @@ class MultiplyWF:
         results = np.array([*results])
         return np.prod(results[:, 0, :], axis=0), np.sum(results[:, 1, :], axis=0)
 
+    def value_configs(self, configs):
+        results = [wf.value_configs(configs) for wf in self.wf_factors]
+        results = np.array([*results])
+        return np.prod(results[:, 0, :], axis=0), np.sum(results[:, 1, :], axis=0)
+    
     def gradient(self, e, epos):
         grads = [wf.gradient(e, epos) for wf in self.wf_factors]
         return np.sum(grads, axis=0)
