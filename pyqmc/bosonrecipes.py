@@ -26,6 +26,7 @@ def ABOPTIMIZE(
     xc: str = 'LDA,VWN',
     use_symm = False,
     initial_guess_r = 15.0,
+    opt_options: list|None = None,
     **linemin_kws,
 ):
     """Auxiliary Boson wavefunction Slater Jastrow optimization
@@ -71,6 +72,7 @@ def ABOPTIMIZE(
         slater_kws=slater_kws,
         # accumulators=bosonaccumulators,
         det_emax=det_emax,
+        opt_options=opt_options,
         xc=xc,
         use_symm=use_symm,
         initial_guess_r=initial_guess_r,
@@ -315,6 +317,7 @@ def initialize_boson_qmc_objects(
     initial_guess_r = 15.0,
     use_symm = False,
     xc = 'LDA,VWN',
+    opt_options = None
 ):  
     
     target_root=0
@@ -375,6 +378,16 @@ def initialize_boson_qmc_objects(
             print('Loading WF parameters from', load_parameters)
             wftools.read_wf(wf, load_parameters)    
 
+    if opt_options is not None:
+        allowed_opt_options = ['only_acoeff', 'only_bcoeff']
+        for opt_option in opt_options:
+            if opt_option in allowed_opt_options:
+                if opt_option == 'only_acoeff':
+                    to_opt['bcoeff'] = False
+                elif opt_option == 'only_bcoeff':
+                    to_opt['acoeff'] = False
+            else:
+                raise ValueError(f"Unknown opt_option: {opt_option}")
     
     print('Using spherical guess')
     configs = initial_guess(mol, nconfig, r=initial_guess_r, seed=seed)
