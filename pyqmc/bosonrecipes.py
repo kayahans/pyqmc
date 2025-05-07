@@ -114,6 +114,7 @@ def ABVMC(
     """
     vmc_kws["hdf_file"] = output
     print("Running ABVMC")
+    print('Statistical accumulators:', accumulators)
     wf, configs, acc = initialize_boson_qmc_objects(
         dft_checkfile,
         nconfig=nconfig,
@@ -131,6 +132,7 @@ def ABVMC(
     )
     
     if nwarmup > 0:
+        print('Running warmup')
         # First equilibration
         # Reused keywords
         eq_keywords = ['verbose', 'hdf_file', 'nsteps_per_block', 'client', 'npartitions']
@@ -138,19 +140,32 @@ def ABVMC(
         for kw in eq_keywords:
             if kw in vmc_kws.keys():
                 if kw == 'hdf_file':
-                    eq_tags[kw] = 'eq_'+vmc_kws[kw]
+                    if dtwarmup is None:
+                        dtwarmup = 0.5
+                    eq_tags[kw] = 'eq_{}.hdf5'.format(dtwarmup)
                 else:
                     eq_tags[kw] = vmc_kws[kw]
         if warmup_accumulators is not None:
             warmup_acc = {} 
             possible_accumulators = {
+                             'energy':bosonaccumulators.ABQMCEnergyAccumulator(wf.mf_inputs),
                              'ab_vmc_excitations':bosonaccumulators.ABVMCMatrixAccumulator(), 
                              'ab_dmc_excitations':bosonaccumulators.ABDMCMatrixAccumulator(),
                              'abc_dmc_excitations':bosonaccumulators.ABCDMCMatrixAccumulator(), 
                              'density':bosonaccumulators.DensityAccumulator(),
                              'radial_density':bosonaccumulators.RadialDensityAccumulator()}
+            print('Warmup accumulators:', warmup_accumulators)
             for acc_name in warmup_accumulators:
-                warmup_acc.update(possible_accumulators[acc_name])
+                warmup_acc[acc_name] = possible_accumulators[acc_name]
+        # from bosonaccumulators import RadialDensityAccumulator
+        # import pdb; pdb.set_trace()
+        # print('Prior to warmup')
+        # rda = RadialDensityAccumulator()
+        # res = rda(configs, wf)
+        # import matplotlib.pyplot as plt
+        # plt.plot(res['r'], res['radial_density'])
+        # plt.show()
+
         _, configs = bosonmc.abvmc(
                 wf,
                 configs,
@@ -159,7 +174,12 @@ def ABVMC(
                 accumulators = warmup_acc,
                 **eq_tags
         )
-        
+        # print('After warmup')
+        # res = rda(configs, wf)
+        # import matplotlib.pyplot as plt
+        # plt.plot(res['r'], res['radial_density'])
+        # plt.show()
+
     bosonmc.abvmc(wf, configs, accumulators=acc, **vmc_kws)
     return wf, configs, acc
 
