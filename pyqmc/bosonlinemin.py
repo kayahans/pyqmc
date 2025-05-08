@@ -45,7 +45,6 @@ def get_sr_update_function(method="sr"):
     return update_functions[method]
 
 def sr_update_cg(pgrad, Sij, step, eps=0.1, atol=1e-4, maxiter=100):
-    import pdb; pdb.set_trace()
     Sij_reg = Sij + eps * np.eye(Sij.shape[0])
     v, info = cg(Sij_reg, pgrad, atol=atol, maxiter=maxiter)
     if info != 0:
