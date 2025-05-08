@@ -26,6 +26,7 @@ def ABOPTIMIZE(
     xc: str = 'LDA,VWN',
     use_symm = False,
     initial_guess_r = 15.0,
+    njastrow = 2,
     opt_options: list|None = None,
     **linemin_kws,
 ):
@@ -76,6 +77,7 @@ def ABOPTIMIZE(
         xc=xc,
         use_symm=use_symm,
         initial_guess_r=initial_guess_r,
+        njastrow=njastrow,
     )
     if anchors is None:
         wf, df = bosonlinemin.line_minimization(wf, configs, acc, **linemin_kws)
