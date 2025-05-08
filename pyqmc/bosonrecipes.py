@@ -374,7 +374,6 @@ def initialize_boson_qmc_objects(
             mol, mf, mc=mc, jastrow = None, jastrow_kws=jastrow_kws, slater_kws=slater_kws, det_emax=det_emax, use_symm=use_symm
         )
     else:
-        njastrow = 3
         if njastrow == 2:
             wf, to_opt = bosonwftools.generate_boson_wf(
                 mol, mf, mc=mc, jastrow_kws=jastrow_kws, slater_kws=slater_kws, det_emax=det_emax, use_symm=use_symm
