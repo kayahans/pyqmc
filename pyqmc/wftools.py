@@ -136,7 +136,7 @@ def generate_jastrow(mol, ion_cusp=None, na=4, nb=3, rcut=None, init_type='zero'
             decay = weights[i]
             jastrow.parameters["bcoeff"][i, :] = gpu.cp.array([-0.2, -0.4, -0.2]) * decay
             
-
+    
     to_opt = {"acoeff": np.ones(jastrow.parameters["acoeff"].shape).astype(bool)}
     if len(ion_cusp) > 0:
         to_opt["acoeff"][:, 0, :] = False  # Cusp conditions
@@ -231,12 +231,15 @@ def read_wf(wf, wf_file):
             raise Exception("Did not find wf in hdf file")
         grp = hdf["wf"]
         for k in grp.keys():
-            new_parms = gpu.cp.array(grp[k])
-            if wf.parameters[k].shape != new_parms.shape:
-                raise Exception(
-                    f"For wave function parameter {k}, shape in {wf_file} is {new_parms.shape}, while current shape is {wf.parameters[k].shape}"
-                )
-            wf.parameters[k] = new_parms
+            try:
+                new_parms = gpu.cp.array(grp[k])
+                if wf.parameters[k].shape != new_parms.shape:
+                    raise Exception(
+                        f"For wave function parameter {k}, shape in {wf_file} is {new_parms.shape}, while current shape is {wf.parameters[k].shape}"
+                    )
+                wf.parameters[k] = new_parms
+            except:
+                raise Warning(f"For wave function parameter {k}, could not be read from {wf_file}")
     return wf
 
 
@@ -273,3 +276,5 @@ def read_superposition(mol, mf, wf_files, coeffs, mc=None):
             to_opt[f"wf{iwf}" + k] = v
     wf = addwf.AddWF(coeffs, wfs)
     return wf, to_opt
+
+
