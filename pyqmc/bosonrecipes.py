@@ -99,6 +99,7 @@ def ABVMC(
     xc: str = 'LDA,VWN',
     use_symm = False,
     initial_guess_r = 15.0,
+    njastrow = 2,
     **vmc_kws,
 ):
     """Auxiliary Boson VMC recipe
@@ -131,6 +132,7 @@ def ABVMC(
         xc=xc,
         use_symm=use_symm,
         initial_guess_r=initial_guess_r,
+        njastrow=njastrow,
     )
     
     if nwarmup > 0:
@@ -317,7 +319,8 @@ def initialize_boson_qmc_objects(
     initial_guess_r = 15.0,
     use_symm = False,
     xc = 'LDA,VWN',
-    opt_options = None
+    opt_options = None,
+    njastrow = 2
 ):  
     
     target_root=0
@@ -371,9 +374,16 @@ def initialize_boson_qmc_objects(
             mol, mf, mc=mc, jastrow = None, jastrow_kws=jastrow_kws, slater_kws=slater_kws, det_emax=det_emax, use_symm=use_symm
         )
     else:
-        wf, to_opt = bosonwftools.generate_boson_wf(
-            mol, mf, mc=mc, jastrow_kws=jastrow_kws, slater_kws=slater_kws, det_emax=det_emax, use_symm=use_symm
-        )
+        njastrow = 3
+        if njastrow == 2:
+            wf, to_opt = bosonwftools.generate_boson_wf(
+                mol, mf, mc=mc, jastrow_kws=jastrow_kws, slater_kws=slater_kws, det_emax=det_emax, use_symm=use_symm
+            )
+        elif njastrow == 3:
+            from pyqmc.wftools import generate_jastrow, generate_jastrow3
+            wf, to_opt = bosonwftools.generate_boson_wf(
+                mol, mf, mc=mc, jastrow = [generate_jastrow, generate_jastrow3], jastrow_kws=jastrow_kws, slater_kws=slater_kws, det_emax=det_emax, use_symm=use_symm
+            )
         if load_parameters is not None:
             print('Loading WF parameters from', load_parameters)
             wftools.read_wf(wf, load_parameters)    

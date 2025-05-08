@@ -140,6 +140,38 @@ class ThreeBodyJastrow:
         :returns: tuple (phases,values) of shape [nconfig]"""
         return (np.ones(len(self.val)), self.val.copy())
 
+    def value_configs(self, configs):
+        nconf, nelec = configs.configs.shape[:2]
+        na = len(self.a_basis)
+
+        # electron-ion distances
+        di = np.zeros((nelec, nconf, self._mol.natm, 3))
+        for e, epos in enumerate(configs.configs.swapaxes(0, 1)):
+            di[e] = configs.dist.dist_i(self._mol.atom_coords(), epos)
+        ri = np.linalg.norm(di, axis=-1)
+
+        a_values = np.zeros((self._nelec, nconf, self._mol.natm, na))
+        for i, a in enumerate(self.a_basis):
+            # di dim nconf,I,nelec
+            a_values[:, :, :, i] = a.value(di, ri)
+
+        C = (
+            self.parameters["ccoeff"] + self.parameters["ccoeff"].swapaxes(1, 2)
+        ) / 2
+
+        P_i = np.zeros((nelec, nconf))
+        arange_e = np.arange(nelec)
+        for e, epos in enumerate(configs.configs.swapaxes(0, 1)):
+            not_e = arange_e != e
+            P_i[e] = self.single_e_partial(configs, e, epos, a_values[not_e])[
+                0
+            ].sum(axis=0)
+
+        val = 0.5 * self.P_i.sum(axis=0)
+        a_values = a_values
+
+        return (np.ones(len(val)), val)
+    
     def single_e_partial(self, configs, e, epos, a_values):
         r"""Args:
         configs: OpenConfig object with total electron configuration
