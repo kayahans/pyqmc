@@ -166,11 +166,11 @@ class BosonWF:
         if mol.symmetry:
             self.symm_data = self.symm_utils(mol, mol.groupname)
             self.mo_coeff = mf.mo_coeff
+            self.filter_determinants(det_emax, mf.mo_energy, ncore, use_symm = use_symm)
         else:
             self.symm_data = None
         
         if self.num_det > 1:
-            self.filter_determinants(det_emax, mf.mo_energy, ncore, use_symm = use_symm)
             self.get_hmf(mf.mo_energy, ncore)
         else:
             print('Using only one determinant')
