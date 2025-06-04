@@ -128,7 +128,7 @@ def polyfit_relative(xfit, yfit, degree):
     relative_error = np.var(resid) / np.var(yfit)
     return p, relative_error
 
-def stable_fit(xfit, yfit, tolerance=1e-2, steprange=0.2, nblocks=1, min_step=0.01, step_factor=2):
+def stable_fit(xfit, yfit, tolerance=1e-2, steprange=0.2, nblocks=1, min_step=0.01, step_factor=2, pgrad_prev=None, pgrad=None):
     # """Fit a line and quadratic to xfit and yfit.
     
     # The function handles several cases:
@@ -208,6 +208,13 @@ def stable_fit(xfit, yfit, tolerance=1e-2, steprange=0.2, nblocks=1, min_step=0.
         new_steprange = np.abs(est_min)*step_factor
     # new_steprange = np.abs(cs(new_steprange))*2
     new_nblocks = nblocks
+    if np.linalg.norm(pgrad_prev) == 0.0:
+        new_steprange = steprange
+    else:
+        if np.linalg.norm(pgrad-pgrad_prev) < 0.01:
+            new_nblocks = nblocks * 2
+            
+
     return est_min, new_steprange, new_nblocks
 
 
@@ -360,19 +367,19 @@ def line_minimization(
     
     df = []
     # Gradient descent cycles
+    pgrad_prev = x0 * 0.0
     for it in range(max_iterations):
         # Calculate gradient accurately
         print('it', it, 'starting ' + '='*20)
         print('steprange', steprange)
         print('nblocks', vmcoptions['nblocks'])
         coords, pgrad, Sij, en, en_err, sigma, ratio, saved_results = gradient_energy_function(x0, coords)
-        
         # Track diagnostics
         diagnostic_data['iterations'].append(it)
         diagnostic_data['energies'].append(en)
         diagnostic_data['energy_errors'].append(en_err)
         diagnostic_data['gradient_norms'].append(np.linalg.norm(pgrad))
-        
+
         # Track SR parameters
         diagnostic_data['sr_params']['eps'].append(update_kws.get('eps', 0.1))
         diagnostic_data['sr_params']['Sij_condition'].append(np.linalg.cond(Sij))
@@ -454,7 +461,7 @@ def line_minimization(
         
         # Get current nblocks from vmcoptions
         current_nblocks = vmcoptions.get('nblocks', 1)
-        est_min, new_steprange, new_nblocks = stable_fit(xfit, yfit,steprange=steprange, nblocks=current_nblocks)
+        est_min, new_steprange, new_nblocks = stable_fit(xfit, yfit,steprange=steprange, nblocks=current_nblocks, pgrad_prev=pgrad_prev, pgrad=pgrad)
         
         # Update step range and nblocks if needed
         if new_steprange != steprange:
@@ -626,6 +633,7 @@ def line_minimization(
             hdf_file, step_data, attr, coords, x0_deserialized
         )
         df.append(step_data)
+        pgrad_prev = pgrad        
         print('it', it, ' finished ' + '='*20)
 
     # Save detailed diagnostic data
