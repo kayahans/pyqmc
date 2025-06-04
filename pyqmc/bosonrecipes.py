@@ -100,9 +100,7 @@ def ABVMC(
     accumulators: list|None = None,
     seed: int|None=None,
     det_emax: float|None=None,
-    nwarmup: int = 0,
-    warmup_accumulators: list|None = None,
-    dtwarmup: float|None=None,
+    warmup_options = None,
     xc: str = 'LDA,VWN',
     use_symm = False,
     initial_guess_r = 15.0,
@@ -141,22 +139,19 @@ def ABVMC(
         initial_guess_r=initial_guess_r,
         njastrow=njastrow,
     )
+    if warmup_options is None:
+        warmup_options = dict(nblocks=0, tstep=0.5, accumulators=None)
     
-    if nwarmup > 0:
+    if warmup_options['nblocks'] > 0:
         print('Running warmup')
-        # First equilibration
         # Reused keywords
-        eq_keywords = ['verbose', 'hdf_file', 'nsteps_per_block', 'client', 'npartitions']
-        eq_tags = {}
-        for kw in eq_keywords:
-            if kw in vmc_kws.keys():
-                if kw == 'hdf_file':
-                    if dtwarmup is None:
-                        dtwarmup = 0.5
-                    eq_tags[kw] = 'eq_{}.hdf5'.format(dtwarmup)
-                else:
-                    eq_tags[kw] = vmc_kws[kw]
-        if warmup_accumulators is not None:
+        # common_keywords = ['verbose', 'client', 'npartitions']
+        # for kw in common_keywords:
+        #     import pdb; pdb.set_trace()
+
+        #     warmup_options[kw] = vmc_kws[kw]
+        
+        if warmup_options['accumulators'] is not None:
             warmup_acc = {} 
             possible_accumulators = {
                              'energy':bosonaccumulators.ABQMCEnergyAccumulator(wf.mf_inputs),
@@ -165,8 +160,8 @@ def ABVMC(
                              'abc_dmc_excitations':bosonaccumulators.ABCDMCMatrixAccumulator(), 
                              'density':bosonaccumulators.DensityAccumulator(),
                              'radial_density':bosonaccumulators.RadialDensityAccumulator()}
-            print('Warmup accumulators:', warmup_accumulators)
-            for acc_name in warmup_accumulators:
+            print('Warmup accumulators:', warmup_options['accumulators'])
+            for acc_name in warmup_options['accumulators']:
                 warmup_acc[acc_name] = possible_accumulators[acc_name]
         # from bosonaccumulators import RadialDensityAccumulator
         # import pdb; pdb.set_trace()
@@ -180,10 +175,7 @@ def ABVMC(
         _, configs = bosonmc.abvmc(
                 wf,
                 configs,
-                nblocks = nwarmup,
-                tstep   = dtwarmup,
-                accumulators = warmup_acc,
-                **eq_tags
+                **warmup_options
         )
         # print('After warmup')
         # res = rda(configs, wf)
