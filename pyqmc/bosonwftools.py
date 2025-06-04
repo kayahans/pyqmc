@@ -3,7 +3,7 @@ from pyqmc import multiplywf
 import pyqmc.gpu as gpu
 import numpy as np
 import copy
-from pyqmc.wftools import default_jastrow_basis, read_wf, generate_jastrow, generate_wf, generate_slater
+from pyqmc.wftools import default_jastrow_basis, read_wf, generate_jastrow, generate_wf, generate_slater, generate_jastrow3
 
 
 def generate_boson(
@@ -93,11 +93,11 @@ def generate_boson_wf(
     else:        
         if not isinstance(jastrow, list):
             jastrow = [jastrow]
-            jastrow_kws = [jastrow_kws]
+        if len(jastrow_kws) == 2:
+            jastrow.append(generate_jastrow3)
 
         wf1, to_opt1 = generate_boson(mol, mf, mc=mc, det_emax=det_emax, use_symm=use_symm, **slater_kws)
         to_opt = {"wf1" + k: v for k, v in to_opt1.items()}
-
         pack = [jast(mol, **kw) for jast, kw in zip(jastrow, jastrow_kws)]
         wfs = [p[0] for p in pack]
         to_opts = [p[1] for p in pack]
