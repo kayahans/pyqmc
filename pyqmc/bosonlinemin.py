@@ -196,16 +196,19 @@ def stable_fit(xfit, yfit, tolerance=1e-2, steprange=0.2, nblocks=1, min_step=0.
     
     # pq, relative_errq = polyfit_relative(xfit, yfit, 2)
     from scipy.interpolate import CubicSpline
-    cs = CubicSpline(xfit, yfit)
-    xdense = np.linspace(xfit[0], xfit[-1], 100)
-    ydense = cs(xdense)
-    dense_ind = np.argmin(ydense)
-    est_min = xdense[dense_ind]
+    try:
+        cs = CubicSpline(xfit, yfit)
+        xdense = np.linspace(xfit[0], xfit[-1], 100)
+        ydense = cs(xdense)
+        dense_ind = np.argmin(ydense)
+        est_min = xdense[dense_ind]
+        if est_min < min_step:
+            new_steprange = min_step
+        else:
+            new_steprange = np.abs(est_min)*step_factor        
+    except:
+        est_min = min_step
     
-    if est_min < min_step:
-        new_steprange = min_step
-    else:
-        new_steprange = np.abs(est_min)*step_factor
     # new_steprange = np.abs(cs(new_steprange))*2
     new_nblocks = nblocks
     if np.linalg.norm(pgrad_prev) == 0.0:
