@@ -25,9 +25,10 @@ def ABOPTIMIZE(
     det_emax: float|None=None,
     xc: str = 'LDA,VWN',
     use_symm = False,
-    initial_guess_r = 15.0,
+    initial_guess_r = 10.0,
     njastrow = 2,
     opt_options: list|None = None,
+    opt_method: str = "linemin",
     **linemin_kws,
 ):
     """Auxiliary Boson wavefunction Slater Jastrow optimization
@@ -40,6 +41,7 @@ def ABOPTIMIZE(
         S (_type_, optional): _description_. Defaults to None.
         jastrow_kws (list | None, optional): _description_. Defaults to None.
         slater_kws (list | None, optional): _description_. Defaults to None.
+        opt_method (str, optional): Optimization method to use. Options are "linemin". Defaults to "linemin".
 
     Raises:
         RuntimeError: _description_
@@ -71,7 +73,6 @@ def ABOPTIMIZE(
         S=S,
         jastrow_kws=jastrow_kws,
         slater_kws=slater_kws,
-        # accumulators=bosonaccumulators,
         det_emax=det_emax,
         opt_options=opt_options,
         xc=xc,
@@ -80,7 +81,11 @@ def ABOPTIMIZE(
         njastrow=njastrow,
     )
     if anchors is None:
-        wf, df = bosonlinemin.line_minimization(wf, configs, acc, **linemin_kws)
+        if opt_method == "linemin":
+            wf, df = bosonlinemin.line_minimization(wf, configs, acc, **linemin_kws)
+        else:
+            raise ValueError(f"Unknown optimization method: {opt_method}. Valid options are 'linemin'")
+            
     return wf, df
 
 def ABVMC(
@@ -318,7 +323,7 @@ def initialize_boson_qmc_objects(
     opt_wf=False,
     seed = None,
     det_emax = None,
-    initial_guess_r = 15.0,
+    initial_guess_r = 10.0,
     use_symm = False,
     xc = 'LDA,VWN',
     opt_options = None,

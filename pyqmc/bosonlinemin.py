@@ -34,6 +34,7 @@ def get_sr_update_function(method="sr"):
         "sr": sr_update,
         "sr_cg": sr_update_cg,
         "sr_adaptive": sr_update_adaptive,
+        "sr_svd": sr_update_svd,
         "sr_gradient_based": sr_update_gradient_based,
         "sd": sd_update,
         "sr12": sr12_update
@@ -59,6 +60,16 @@ def sr_update_adaptive(pgrad, Sij, step, eps_min=1e-4, eps_max=0.1, cond_thresho
     invSij = np.linalg.inv(Sij + eps * np.eye(Sij.shape[0]))
     v = np.einsum("ij,j->i", invSij, pgrad)
     return -v * step
+
+def sr_update_svd(pgrad, Sij, step, min_eigval=1e-6):
+    # import pdb; pdb.set_trace()
+    eigvals, eigvecs = np.linalg.eigh(Sij)
+    mask = eigvals > min_eigval
+    invSij = (eigvecs[:, mask] / eigvals[mask]) @ eigvecs[:, mask].T
+    v = np.einsum("ij,j->i", invSij, pgrad)
+    svd_step = -v*step
+    print(('max svd_step', np.max(np.abs(svd_step))))
+    return svd_step
 
 def sr_update_gradient_based(pgrad, Sij, step, eps_min=1e-4, eps_max=0.1, grad_threshold=1.0):
     grad_norm = np.linalg.norm(pgrad)
@@ -117,61 +128,104 @@ def polyfit_relative(xfit, yfit, degree):
     relative_error = np.var(resid) / np.var(yfit)
     return p, relative_error
 
+def stable_fit(xfit, yfit, tolerance=1e-2, steprange=0.2, nblocks=1, min_step=0.01, step_factor=2):
+    # """Fit a line and quadratic to xfit and yfit.
+    
+    # The function handles several cases:
+    # 1. If linear fit is better than quadratic fit (relative_errl/relative_errq < 2):
+    #    - If slope is negative (pl[0] < 0), take maximum step
+    #    - If slope is positive (pl[0] > 0), take minimum step
+    # 2. If quadratic fit is better:
+    #    - If quadratic coefficient is positive (convex), find minimum
+    #    - If quadratic coefficient is negative (concave), reduce step range and increase nblocks
+    # 3. If neither fit is good, use the point with minimum y value
+    
+    # Args:
+    #     xfit: scalar step sizes along line
+    #     yfit: estimated energies at xfit points
+    #     tolerance: how good the quadratic fit needs to be
+    #     steprange: current step range
+    #     nblocks: current number of blocks
+        
+    # Returns:
+    #     tuple: (estimated x-value of minimum, new step range, new nblocks)
+    # """
 
-def stable_fit(xfit, yfit, tolerance=1e-2):
-    """Fit a line and quadratic to xfit and yfit.
-    1. If the linear fit is as good as the quadriatic, choose the lower endpoint.
-    2. If the curvature is positive, estimate the minimum x value.
-    3. If the lowest yfit is less than the new guess, use that xfit instead.
-
-    :parameter list xfit: scalar step sizes along line
-    :parameter list yfit: estimated energies at xfit points
-    :parameter float tolerance: how good the quadratic fit needs to be
-    :returns: estimated x-value of minimum
-    :rtype: float
-    """
-    steprange = np.max(xfit)
-    minstep = np.min(xfit)
-    a = np.argmin(yfit)
-    pq, relative_errq = polyfit_relative(xfit, yfit, 2)
-    pl, relative_errl = polyfit_relative(xfit, yfit, 1)
-
-    if relative_errl / relative_errq < 2:  # If a linear fit is about as good..
-        if pl[0] < 0:
-            est_min = steprange
-        else:
-            est_min = minstep
-        out_y = np.polyval(pl, est_min)
-    elif relative_errq < tolerance and pq[0] > 0:  # If quadratic fit is good
-        est_min = -pq[1] / (2 * pq[0])
-        if est_min > steprange:
-            est_min = steprange
-        if est_min < minstep:
-            est_min = minstep
-        out_y = np.polyval(pq, est_min)
+    # minstep = np.min(xfit)
+    # a = np.argmin(yfit)
+    # pq, relative_errq = polyfit_relative(xfit, yfit, 2)
+    # pl, relative_errl = polyfit_relative(xfit, yfit, 1)
+    
+    # # Default values for step range and nblocks
+    # new_steprange = steprange
+    # new_nblocks = nblocks
+    
+    # if relative_errl / relative_errq < 2:  # Linear fit is better
+    #     print('linear fit is better')
+    #     if pl[0] < 0:  # Negative slope - take maximum step
+    #         est_min = steprange
+    #     else:  # Positive slope - take minimum step
+    #         est_min = minstep
+    #     out_y = np.polyval(pl, est_min)
+    # elif relative_errq < tolerance:  # Quadratic fit is good
+    #     print('quadratic fit is good')
+    #     if pq[0] > 0:  # Convex fit - find minimum
+    #         print('convex fit')
+    #         est_min = -pq[1] / (2 * pq[0])
+    #         if est_min > steprange:
+    #             est_min = steprange
+    #         if est_min < minstep:
+    #             est_min = minstep
+    #         out_y = np.polyval(pq, est_min)
+    #     else:  # Concave fit - reduce step range and increase nblocks
+    #         print('concave fit')
+    #         est_min = 0.0 # reject this step and try again
+    #         out_y = -np.inf
+    #         # Reduce step range more aggressively and increase nblocks more
+    #         new_steprange = steprange * 0.95  # More aggressive reduction
+    #         new_nblocks = int(nblocks * 1.2)  # More aggressive increase in blocks
+    # else:  # Neither fit is good
+    #     est_min = 0.0 # reject this step and try again
+    #     out_y = -np.inf
+    #     # If fit is bad, also reduce step range and increase blocks
+    #     new_steprange = steprange * 0.1
+    #     new_nblocks = nblocks 
+        
+    # if out_y > yfit[a]:  # If min(yfit) has lower energy than guess, use it
+    #     est_min = xfit[a]
+    
+    # pq, relative_errq = polyfit_relative(xfit, yfit, 2)
+    from scipy.interpolate import CubicSpline
+    cs = CubicSpline(xfit, yfit)
+    xdense = np.linspace(xfit[0], xfit[-1], 100)
+    ydense = cs(xdense)
+    dense_ind = np.argmin(ydense)
+    est_min = xdense[dense_ind]
+    
+    if est_min < min_step:
+        new_steprange = min_step
     else:
-        est_min = xfit[a]
-        out_y = yfit[a]
-    if (
-        out_y > yfit[a]
-    ):  # If min(yfit) has a lower energy than the guess, use it instead
-        est_min = xfit[a]
-    return est_min
+        new_steprange = np.abs(est_min)*step_factor
+    # new_steprange = np.abs(cs(new_steprange))*2
+    new_nblocks = nblocks
+    return est_min, new_steprange, new_nblocks
 
 
 def line_minimization(
     wf,
     coords,
     pgrad_acc,
-    steprange=0.2,
+    steprange=0.1,
+    stderr_weight=0.95,
+    correlated_reference_wfs=None,
     max_iterations=30,
     warmup_options=None,
     vmcoptions=None,
     lmoptions=None,
-    update="sr_cg",
+    update="sr_svd",
     update_kws=None,
     verbose=False,
-    npts=5,
+    npts=10,
     hdf_file=None,
     client=None,
     npartitions=None,
@@ -208,6 +262,36 @@ def line_minimization(
         warmup_options["tstep"] = vmcoptions["tstep"]
     assert npts >= 3, f"linemin npts={npts}; need npts >= 3 for correlated sampling"
 
+    if correlated_reference_wfs is None:
+        correlated_reference_wfs = [0, 1]
+    # Add diagnostic tracking
+    diagnostic_data = {
+        'iterations': [],
+        'energies': [],
+        'energy_errors': [],
+        'gradient_norms': [],
+        'parameter_changes': [],
+        'weight_stats': [],
+        'step_sizes': [],
+        'line_search': {
+            'xfit': [],
+            'yfit': [],
+            'est_min': []
+        },
+        'sr_params': {
+            'eps': [],
+            'Sij_condition': [],
+            'Sij_diag': [],
+            'gradient_components': [],
+            'est_min': [],
+            'steprange': [],
+            'Sij': [],  # Full S matrix
+            'dp': [],   # Parameter derivatives
+            'dpdp': [], # Parameter derivative products
+            'dpH': []   # Energy derivatives
+        }
+    }
+
     iteration_offset = 0
     if hdf_file is not None and os.path.isfile(hdf_file):  # restarting -- read in data
         with h5py.File(hdf_file, "r") as hdf:
@@ -221,16 +305,10 @@ def line_minimization(
     else:  # not restarting -- VMC warm up period
         if verbose:
             print("starting ABVMC warmup")  
-            # if len(warmup_options.keys()) == 0:
-            #     print('Using default ABVMC parameters for warmup')
-            # else:
-            #     print('Using user-provided parameters for ABVMC warmup')
-            #     for k, v in warmup_options.items():
-            #         print(f'{k}: {v}')
             _, coords = abvmc(
                 wf,
                 coords,
-                accumulators={},
+                accumulators={'energy': pgrad_acc.enacc},
                 client=client,
                 npartitions=npartitions,
                 **warmup_options,
@@ -258,9 +336,7 @@ def line_minimization(
             npartitions=npartitions,
             **vmcoptions,
         )
-        # import pdb; pdb.set_trace()
         en = np.real(np.mean(df["pgradtotal"], axis=0))
-        # en_err = np.std(df["pgradtotal"], axis=0) / np.sqrt(df["pgradtotal"].shape[0])
         var = np.sqrt(1./(df["pgradtotal"].shape[0]-1)*np.sum(df['pgradtotal']**2-np.mean(df['pgradtotal'])**2))
         ratio = abs(var/en)
         sigma = np.std(df["pgradtotal"], axis=0) * np.sqrt(np.mean(df["nconfig"]))
@@ -287,10 +363,27 @@ def line_minimization(
     for it in range(max_iterations):
         # Calculate gradient accurately
         print('it', it, 'starting ' + '='*20)
-        # print('x0', x0)
+        print('steprange', steprange)
+        print('nblocks', vmcoptions['nblocks'])
         coords, pgrad, Sij, en, en_err, sigma, ratio, saved_results = gradient_energy_function(x0, coords)
-        # print('en', en, 'en_err', en_err)
-        # print('pgrad', pgrad)
+        
+        # Track diagnostics
+        diagnostic_data['iterations'].append(it)
+        diagnostic_data['energies'].append(en)
+        diagnostic_data['energy_errors'].append(en_err)
+        diagnostic_data['gradient_norms'].append(np.linalg.norm(pgrad))
+        
+        # Track SR parameters
+        diagnostic_data['sr_params']['eps'].append(update_kws.get('eps', 0.1))
+        diagnostic_data['sr_params']['Sij_condition'].append(np.linalg.cond(Sij))
+        diagnostic_data['sr_params']['Sij_diag'].append(np.diag(Sij))
+        diagnostic_data['sr_params']['gradient_components'].append(pgrad)
+        diagnostic_data['sr_params']['steprange'].append(steprange)
+        diagnostic_data['sr_params']['Sij'].append(Sij)
+        diagnostic_data['sr_params']['dp'].append(saved_results['pgraddppsi'])
+        diagnostic_data['sr_params']['dpdp'].append(saved_results['pgraddpidpj'])
+        diagnostic_data['sr_params']['dpH'].append(saved_results['pgraddpH'])
+
         if verbose:
             print(f'pgrad: {pgrad.shape} {np_pretty_print(pgrad)}')
             print(f'Sij: {Sij.shape} {np_pretty_print(np.diag(Sij))}')
@@ -319,41 +412,81 @@ def line_minimization(
         if verbose:
             print("descent en", en, en_err, " estimated sigma ", sigma)
             print("descent |grad|", np.linalg.norm(pgrad), flush=True)
-            # print(pgrad)
-            # print('a', wf.parameters.data['wf2']['acoeff'])
-            # print('b', wf.parameters.data['wf2']['bcoeff'])
 
         xfit = []
         yfit = []
-        # Calculate samples to fit.
-        # include near zero in the fit, and go backwards as well
-        # We don't use the above computed value because we are
-        # doing correlated sampling.
         steps = np.linspace(-steprange / (npts - 2), steprange, npts)
         params = [x0 + update(pgrad, Sij, step, **update_kws) for step in steps]
-        # print('params', params[-2])
-        # step_data['params'] = params[-2]
         
         if client is None:
-            stepsdata = correlated_compute_boson(wf, coords, params, pgrad_acc)
+            stepsdata = correlated_compute_boson(wf, coords, params, pgrad_acc, correlated_reference_wfs)
         else:
-            stepsdata = correlated_compute_boson_parallel(wf, coords, params, pgrad_acc, client, npartitions)
+            stepsdata = correlated_compute_boson_parallel(wf, coords, params, pgrad_acc, client, npartitions, correlated_reference_wfs)
+        
+
+        # Track weight statistics
+        weights = stepsdata["weight"]
+        weights = weights / np.mean(weights, axis=1, keepdims=True)
+        stepsdata["weight"] = weights
+
+        weight_mean = np.mean(weights, axis=1)
+        weight_std = np.std(weights, axis=1)
+        weight_max = np.max(weights, axis=1)
+        diagnostic_data['weight_stats'].append({
+            'mean': weight_mean,
+            'std': weight_std,
+            'max': weight_max
+        })
 
         stepsdata["weight"] = (
             stepsdata["weight"] / np.mean(stepsdata["weight"], axis=1)[:, np.newaxis]
         )
         en = np.real(np.mean(stepsdata["total"] * stepsdata["weight"], axis=1))
-        yfit.extend(en)
+        en_std = np.std(stepsdata["total"], axis=1)
+
+        # Exclude ka and kb from correlated sampling. 
+        # total_mk = stepsdata["total"] - stepsdata["ka"] - stepsdata["ke"]
+        # en = np.real(np.mean(total_mk * stepsdata["weight"], axis=1))
+
+        # yfit.extend(en)
+        yfit.extend(en + stderr_weight*en_std)
         xfit.extend(steps)
-        est_min = stable_fit(xfit, yfit)
+        
+        # Get current nblocks from vmcoptions
+        current_nblocks = vmcoptions.get('nblocks', 1)
+        est_min, new_steprange, new_nblocks = stable_fit(xfit, yfit,steprange=steprange, nblocks=current_nblocks)
+        
+        # Update step range and nblocks if needed
+        if new_steprange != steprange:
+            steprange = new_steprange
+            if verbose:
+                print(f"Adjusting step range to {steprange}")
+        
+        if new_nblocks != current_nblocks:
+            vmcoptions['nblocks'] = new_nblocks
+            if verbose:
+                print(f"Adjusting nblocks to {new_nblocks}")
+        
+        # est_min = ks_fit(xfit, en_std, steps)
+        
+        # Track line search data
+        diagnostic_data['line_search']['xfit'].append(np.array(xfit))
+        diagnostic_data['line_search']['yfit'].append(np.array(yfit))
+        diagnostic_data['line_search']['est_min'].append(est_min)
+        
         dx = update(pgrad, Sij, est_min, **update_kws)
         
-        # # Change parameters more slowly
-        # abs_x0 = np.abs(x0)
-        # relative_change = np.where(abs_x0 != 0, np.abs(dx/abs_x0), np.abs(dx))
-        # max_relative_change = 0.5
-        # scale_factor = np.minimum(1.0, max_relative_change / (relative_change + 1e-10))
-        # dx = dx * scale_factor
+        # Track parameter changes with more detail
+        param_change = np.linalg.norm(dx)
+        relative_change = np.abs(dx / (np.abs(x0) + 1e-10))
+        max_relative_change = np.max(relative_change)
+        diagnostic_data['parameter_changes'].append({
+            'absolute': param_change,
+            'max_relative': max_relative_change,
+            'relative_changes': relative_change,
+            'dx': dx
+        })
+        diagnostic_data['step_sizes'].append(est_min)
 
         x0 += dx
         step_data["tau"] = xfit
@@ -372,16 +505,188 @@ def line_minimization(
             print('x_fit', np_pretty_print(np.array(xfit)))
             print('y_fit', np_pretty_print(np.array(yfit)))
             print('est_min', est_min)
-            plot_fit = False
-            if plot_fit:
-                import matplotlib.pyplot as plt
-                plt.plot(xfit, yfit, 'o-')
-                plt.show()
+            
+            # Plot diagnostics
+            import matplotlib.pyplot as plt
+            plt.figure(figsize=(20, 15))
+            
+            # Energy plot
+            plt.subplot(3, 3, 1)
+            plt.errorbar(diagnostic_data['iterations'], diagnostic_data['energies'], 
+                        yerr=diagnostic_data['energy_errors'], fmt='o-')
+            plt.xlabel('Iteration')
+            plt.ylabel('Energy')
+            plt.title('Energy vs Iteration')
+            
+            # Gradient norm plot
+            plt.subplot(3, 3, 2)
+            plt.plot(diagnostic_data['iterations'], diagnostic_data['gradient_norms'], 'o-')
+            plt.xlabel('Iteration')
+            plt.ylabel('Gradient Norm')
+            plt.title('Gradient Norm vs Iteration')
+            
+            # Parameter changes plot
+            plt.subplot(3, 3, 3)
+            param_changes = [d['absolute'] for d in diagnostic_data['parameter_changes']]
+            plt.plot(diagnostic_data['iterations'], param_changes, 'o-')
+            plt.xlabel('Iteration')
+            plt.ylabel('Parameter Change Norm')
+            plt.title('Parameter Changes vs Iteration')
+            
+            # Weight statistics plot
+            plt.subplot(3, 3, 4)
+            weight_means = [np.mean(d['mean']) for d in diagnostic_data['weight_stats']]
+            weight_stds = [np.mean(d['std']) for d in diagnostic_data['weight_stats']]
+            plt.errorbar(diagnostic_data['iterations'], weight_means, yerr=weight_stds, fmt='o-')
+            plt.xlabel('Iteration')
+            plt.ylabel('Mean Weight')
+            plt.title('Weight Statistics vs Iteration')
+
+            # SR parameters plots
+            plt.subplot(3, 3, 5)
+            plt.plot(diagnostic_data['iterations'], diagnostic_data['sr_params']['eps'], 'o-')
+            plt.xlabel('Iteration')
+            plt.ylabel('SR eps')
+            plt.title('SR Regularization Parameter')
+
+            plt.subplot(3, 3, 6)
+            plt.plot(diagnostic_data['iterations'], diagnostic_data['sr_params']['Sij_condition'], 'o-')
+            plt.xlabel('Iteration')
+            plt.ylabel('Condition Number')
+            plt.title('S Matrix Condition Number')
+
+            plt.subplot(3, 3, 7)
+            plt.plot(diagnostic_data['iterations'], diagnostic_data['line_search']['est_min'], 'o-')
+            plt.xlabel('Iteration')
+            plt.ylabel('Estimated Minimum')
+            plt.title('Line Search Minimum')
+
+            plt.subplot(3, 3, 8)
+            max_rel_changes = [d['max_relative'] for d in diagnostic_data['parameter_changes']]
+            plt.plot(diagnostic_data['iterations'], max_rel_changes, 'o-')
+            plt.xlabel('Iteration')
+            plt.ylabel('Max Relative Change')
+            plt.title('Maximum Relative Parameter Change')
+
+            plt.subplot(3, 3, 9)
+            plt.plot(diagnostic_data['iterations'], diagnostic_data['sr_params']['steprange'], 'o-')
+            plt.xlabel('Iteration')
+            plt.ylabel('Step Range')
+            plt.title('Line Search Range')
+
+            plt.tight_layout()
+            plt.savefig(f'optimization_diagnostics_iter_{it}.png')
+            plt.close()
+
+            # Plot energy components
+            energy_components = ['ka', 'kb', 'grad2', 'ke', 'ee', 'corr', 'ei', 'ii', 'total', 'vj', 'vxc']
+            n_components = len(energy_components)
+            n_cols = 4
+            n_rows = (n_components + n_cols - 1) // n_cols  # Ceiling division
+            
+            plt.figure(figsize=(20, 5*n_rows))
+            for i, component in enumerate(energy_components):
+                plt.subplot(n_rows, n_cols, i + 1)
+                e_comp_mean = np.mean(stepsdata[component]*stepsdata["weight"], axis=1)
+                e_comp_std = np.std(stepsdata[component]*stepsdata["weight"], axis=1)
+                plt.errorbar(xfit,  e_comp_mean, yerr=e_comp_std, fmt='o-', label=component)
+                plt.xlabel('Iteration')
+                plt.ylabel('Energy')
+                plt.title(f'{component} vs Iteration')
+                plt.grid(True)
+            
+            plt.tight_layout()
+            plt.savefig(f'energy_components_iter_{it}.png')
+            plt.close()
+
+            # Plot line search data for current iteration
+            plt.figure(figsize=(10, 6))
+            plt.plot(xfit, yfit, 'o-', label='Energy points')
+            plt.axvline(x=est_min, color='r', linestyle='--', label='Estimated minimum')
+            plt.xlabel('Step size')
+            plt.ylabel('Energy')
+            plt.title(f'Line Search (Iteration {it})')
+            plt.legend()
+            plt.grid(True)
+            plt.savefig(f'line_search_iter_{it}.png')
+            plt.close()
+
+            # Print detailed step size information
+            print("\nStep Size Calculation Details:")
+            print(f"SR eps: {update_kws.get('eps', 0.1)}")
+            print(f"S matrix condition number: {np.linalg.cond(Sij):.2e}")
+            print(f"Line search range: {steprange}")
+            print(f"Estimated minimum step: {est_min}")
+            print(f"Maximum relative parameter change: {max_relative_change:.2e}")
+            print(f"Parameter change norm: {param_change:.2e}")
+            print(f"Gradient norm: {np.linalg.norm(pgrad):.2e}")
+            print("="*50)
+
         opt_hdf(
             hdf_file, step_data, attr, coords, x0_deserialized
         )
         df.append(step_data)
         print('it', it, ' finished ' + '='*20)
+
+    # Save detailed diagnostic data
+    # if hdf_file is not None:
+    #     with h5py.File(hdf_file, "a") as hdf:
+    #         if "diagnostics" not in hdf:
+    #             diag_grp = hdf.create_group("diagnostics")
+    #         else:
+    #             diag_grp = hdf["diagnostics"]
+            
+    #         # Save basic arrays
+    #         for key in ['iterations', 'energies', 'energy_errors', 'gradient_norms', 'step_sizes']:
+    #             if key in diagnostic_data:
+    #                 if key in diag_grp:
+    #                     del diag_grp[key]
+    #                 diag_grp.create_dataset(key, data=np.array(diagnostic_data[key]))
+            
+    #         # Save parameter changes
+    #         if "parameter_changes" in diag_grp:
+    #             del diag_grp["parameter_changes"]
+    #         param_grp = diag_grp.create_group("parameter_changes")
+    #         for i, change in enumerate(diagnostic_data['parameter_changes']):
+    #             iter_grp = param_grp.create_group(f"iteration_{i}")
+    #             for key, value in change.items():
+    #                 iter_grp.create_dataset(key, data=value)
+            
+    #         # Save weight statistics
+    #         if "weight_stats" in diag_grp:
+    #             del diag_grp["weight_stats"]
+    #         weight_grp = diag_grp.create_group("weight_stats")
+    #         for i, stats in enumerate(diagnostic_data['weight_stats']):
+    #             iter_grp = weight_grp.create_group(f"iteration_{i}")
+    #             for key, value in stats.items():
+    #                 iter_grp.create_dataset(key, data=value)
+            
+    #         # Save SR parameters
+    #         if "sr_params" in diag_grp:
+    #             del diag_grp["sr_params"]
+    #         sr_grp = diag_grp.create_group("sr_params")
+    #         for key in ['eps', 'Sij_condition', 'Sij_diag', 'gradient_components', 'est_min', 'steprange']:
+    #             if key in diagnostic_data['sr_params']:
+    #                 sr_grp.create_dataset(key, data=np.array(diagnostic_data['sr_params'][key]))
+            
+    #         # Save full matrices and vectors
+    #         matrices_grp = sr_grp.create_group("matrices")
+    #         for i in range(len(diagnostic_data['sr_params']['Sij'])):
+    #             iter_grp = matrices_grp.create_group(f"iteration_{i}")
+    #             iter_grp.create_dataset("Sij", data=diagnostic_data['sr_params']['Sij'][i])
+    #             iter_grp.create_dataset("dp", data=diagnostic_data['sr_params']['dp'][i])
+    #             iter_grp.create_dataset("dpdp", data=diagnostic_data['sr_params']['dpdp'][i])
+    #             iter_grp.create_dataset("dpH", data=diagnostic_data['sr_params']['dpH'][i])
+
+    #         # Save line search data
+    #         if "line_search" in diag_grp:
+    #             del diag_grp["line_search"]
+    #         line_search_grp = diag_grp.create_group("line_search")
+    #         for i in range(len(diagnostic_data['line_search']['xfit'])):
+    #             iter_grp = line_search_grp.create_group(f"iteration_{i}")
+    #             iter_grp.create_dataset("xfit", data=diagnostic_data['line_search']['xfit'][i])
+    #             iter_grp.create_dataset("yfit", data=diagnostic_data['line_search']['yfit'][i])
+    #             iter_grp.create_dataset("est_min", data=diagnostic_data['line_search']['est_min'][i])
 
     newparms = pgrad_acc.transform.deserialize(wf, x0)
     for k in newparms:
@@ -390,10 +695,10 @@ def line_minimization(
     return wf, df
 
 
-def correlated_compute_boson_parallel(wf, configs, params, pgrad_acc, client, npartitions):
+def correlated_compute_boson_parallel(wf, configs, params, pgrad_acc, client, npartitions, correlated_reference_wfs):
     config = configs.split(npartitions)
     runs = [
-        client.submit(correlated_compute_boson, wf, conf, params, pgrad_acc)
+        client.submit(correlated_compute_boson, wf, conf, params, pgrad_acc, correlated_reference_wfs)
         for conf in config
     ]
     allresults = [r.result() for r in runs]
@@ -403,7 +708,7 @@ def correlated_compute_boson_parallel(wf, configs, params, pgrad_acc, client, np
     return block_avg
 
 
-def correlated_compute_boson(wf, configs, params, pgrad_acc):
+def correlated_compute_boson(wf, configs, params, pgrad_acc, ref_wfs = [0,1]):
     """
     Evaluates accumulator on the same set of configs for correlated sampling of different wave function parameters
 
@@ -443,21 +748,44 @@ def correlated_compute_boson(wf, configs, params, pgrad_acc):
     # return data_ret
 
 
-    data = []
-    psi0 = wf.recompute(configs)[1]  # recompute gives det
+    # data = []
+    # psi0 = wf.recompute(configs)[1]  # recompute gives det
 
+    # current_state = np.random.get_state()
+    # for p in params:
+    #     np.random.set_state(current_state)
+    #     newparms = pgrad_acc.transform.deserialize(wf, p)
+    #     for k in newparms:
+    #         wf.parameters[k] = newparms[k]
+    #     psi = wf.recompute(configs)[1]  # recompute gives det
+    #     rawweights = np.exp(2 * (psi - psi0))  # convert from log(|psi|) to |psi|**2
+    #     df = pgrad_acc.enacc(configs, wf)
+    #     df["weight"] = rawweights
+    #     data.append(df)
+    # data_ret = {}
+    # for k in data[0].keys():
+    #     data_ret[k] = np.asarray([d[k] for d in data])
+    
+
+    data = []
     current_state = np.random.get_state()
-    for p in params:
+    psi = np.zeros((len(params), len(configs.configs)))
+    for i, p in enumerate(params):
         np.random.set_state(current_state)
         newparms = pgrad_acc.transform.deserialize(wf, p)
         for k in newparms:
             wf.parameters[k] = newparms[k]
-        psi = wf.recompute(configs)[1]  # recompute gives det
-        rawweights = np.exp(2 * (psi - psi0))  # convert from log(|psi|) to |psi|**2
+        psi[i] = wf.recompute(configs)[1]  # recompute gives logdet
         df = pgrad_acc.enacc(configs, wf)
-        df["weight"] = rawweights
         data.append(df)
+
     data_ret = {}
     for k in data[0].keys():
         data_ret[k] = np.asarray([d[k] for d in data])
+
+    ref = np.amax(psi, axis=0)
+    psirel = np.exp(2 * (psi - ref))
+    rho = np.mean([psirel[i] for i in ref_wfs], axis=0)
+    data_ret["weight"] = psirel / rho    
+    
     return data_ret
