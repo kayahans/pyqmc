@@ -68,7 +68,7 @@ def sr_update_svd(pgrad, Sij, step, min_eigval=1e-6):
     invSij = (eigvecs[:, mask] / eigvals[mask]) @ eigvecs[:, mask].T
     v = np.einsum("ij,j->i", invSij, pgrad)
     svd_step = -v*step
-    print(('max svd_step', np.max(np.abs(svd_step))))
+    # print(('max svd_step', np.max(np.abs(svd_step))))
     return svd_step
 
 def sr_update_gradient_based(pgrad, Sij, step, eps_min=1e-4, eps_max=0.1, grad_threshold=1.0):
