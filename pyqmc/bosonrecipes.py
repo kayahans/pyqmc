@@ -182,7 +182,8 @@ def ABVMC(
         # import matplotlib.pyplot as plt
         # plt.plot(res['r'], res['radial_density'])
         # plt.show()
-
+    print('Warmup complete')
+    print('Running VMC')
     bosonmc.abvmc(wf, configs, accumulators=acc, **vmc_kws)
     return wf, configs, acc
 
