@@ -230,6 +230,7 @@ def read_wf(wf, wf_file):
         if "wf" not in hdf.keys():
             raise Exception("Did not find wf in hdf file")
         grp = hdf["wf"]
+        params_in_wf = list(wf.parameters.keys())
         for k in grp.keys():
             try:
                 new_parms = gpu.cp.array(grp[k])
@@ -237,7 +238,10 @@ def read_wf(wf, wf_file):
                     raise Exception(
                         f"For wave function parameter {k}, shape in {wf_file} is {new_parms.shape}, while current shape is {wf.parameters[k].shape}"
                     )
-                wf.parameters[k] = new_parms
+                if k in params_in_wf:
+                    wf.parameters[k] = new_parms
+                else:
+                    print(f"WARNING: Wave function parameter {k}, does not exist in the wave function")
             except:
                 raise Warning(f"For wave function parameter {k}, could not be read from {wf_file}")
     return wf
