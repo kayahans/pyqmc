@@ -246,7 +246,9 @@ class ABVMCMatrixAccumulator:
     JastrowSpin component, which are used to compute various gradients and
     matrix elements needed in the ABVMC calculation.
     """
-
+    def __init__(self, mf_inputs, **kwargs):
+        self.en_acc = ABQMCEnergyAccumulator(mf_inputs, **kwargs)
+        
     @timer_func
     def __call__(self, configs, wf, use_symm = False):
         
@@ -266,22 +268,55 @@ class ABVMCMatrixAccumulator:
         # ovlp_ij = nconf /np.sum(facc) * np.einsum("lc,nc,c->cln", psi_basis.conj(), psi_basis, facc)
         # variant 2 do not use acceptance from VMC 
         ovlp_ij = np.einsum("lc,nc->cln", psi_n.conj(), psi_n)
+        en_acc = self.en_acc(configs, wf)
+        eb0 = en_acc['total'] - en_acc['corr']
+        mean_eb0 = np.mean(eb0, axis=0)*np.ones_like(eb0)
 
         delta = 0
-        grad_j = 0
         for e in range(nelec):
-            epos = configs.electron(e)
-            # grad_b_e = wf.gradient(e, epos) ## Jan 31, 2025
-            log_grad_b_e = boson_wf.gradient(e, epos)
-            log_grad_n = boson_wf.gradient_dets(e, epos)
-            grad_psi_n = np.einsum('nc, nxc->nxc', psi_n, log_grad_n-log_grad_b_e)
-            grad_j = jastrow_wf.gradient(e, epos)
+            # Get position of electron e
+            epos_s = configs.electron(e)
 
-            # variant 1 use acceptance from VMC
-            # delta += nconf /np.sum(acc[e]) * np.einsum("nc,xc,lxc, c ->cnl", psi_basis, grad_j, grad_psi_basis, acc[e])
-            # variant 2 do not use acceptance from VMC
-            delta += np.einsum("lc,xc,nxc->cln", psi_n, grad_j, grad_psi_n)
-            # print('VMC', e, np.sum(grad_j), np.sum(grad_psi_n), np.sum(psi_n), np.sum(delta), delta[0,0,0],)
+            # 1. \Phi_l\Phi_n terms
+            lap_phi_n = boson_wf.laplacian_dets(e, epos_s)  # ∇²(Phi_n)/Phi_n
+            lap_phi_b = boson_wf.laplacian(e, epos_s)      # ∇²(Psi_B)/Psi_B
+            delta1a = np.einsum('lc, n, nc->cln', psi_n, np.diag(boson_wf.hmf), psi_n) 
+            delta1b = np.einsum('lc, c, nc->cln', psi_n, mean_eb0, psi_n) 
+            delta1c = np.einsum('lc, cn, nc->cln', psi_n, lap_phi_n, psi_n) 
+            delta1d = -np.einsum('lc, c, nc->cln', psi_n, lap_phi_b, psi_n) 
+            delta1 = delta1a.copy()
+            delta1 += delta1b
+            delta1 += delta1c
+            delta1 += delta1d
+
+            loggrad_phi_n = boson_wf.gradient_dets(e, epos_s) 
+            loggrad_b = boson_wf.gradient(e, epos_s) # ∇log(Psi_B) eq. 4
+            grad_psi_n = np.einsum('nc, nxc->nxc', psi_n, loggrad_phi_n - loggrad_b)  
+
+            grad_j = jastrow_wf.gradient(e, epos_s)
+            delta2 = np.einsum("lc,xc,nxc->cln", psi_n, grad_j, grad_psi_n)
+            delta += delta1 + delta2
+
+
+
+
+
+        # delta = 0
+        # grad_j = 0
+        # for e in range(nelec):
+        #     epos = configs.electron(e)
+        #     # grad_b_e = wf.gradient(e, epos) ## Jan 31, 2025
+        #     loggrad_phi_n = boson_wf.gradient_dets(e, epos) 
+        #     loggrad_b = boson_wf.gradient(e, epos) # ∇log(Psi_B) eq. 4
+        #     grad_psi_n = np.einsum('nc, nxc->nxc', psi_n, loggrad_phi_n - loggrad_b)  
+
+        #     grad_j = jastrow_wf.gradient(e, epos)
+        #     delta += np.einsum('lc, n, nc->cln', psi_n, np.diag(boson_wf.hmf), psi_n) 
+        #     # variant 1 use acceptance from VMC
+        #     # delta += nconf /np.sum(acc[e]) * np.einsum("nc,xc,lxc, c ->cnl", psi_basis, grad_j, grad_psi_basis, acc[e])
+        #     # variant 2 do not use acceptance from VMC
+        #     delta += np.einsum("lc,xc,nxc->cln", psi_n, grad_j, grad_psi_n)
+        #     # print('VMC', e, np.sum(grad_j), np.sum(grad_psi_n), np.sum(psi_n), np.sum(delta), delta[0,0,0],)
 
         # Disable this for now, but post-process
         # if use_symm:
@@ -324,6 +359,139 @@ class ABVMCMatrixAccumulator:
             matel += np.einsum('lc, nxc, nxc->cln', psi_n, grad_j, grad_psi_n)
 
 class ABCDMCMatrixAccumulator:
+    """Accumulator for computing matrix elements in Auxiliary-field Boson Corrected Diffusion Monte Carlo (ABCDMC).
+    
+    Specifically calculates:
+    1. Overlap matrices between different basis states
+    2. Matrix elements involving kinetic and potential energy terms
+    
+    The calculation includes:
+    - Wavefunctions ratios
+    - Gradients and Laplacians of both bosonic and trial wavefunctions
+    - Integration by parts terms for the kinetic energy
+    
+    
+    Methods
+    -------
+    __call__(configs, wf)
+        Compute matrix elements for given configurations and wavefunction.
+        
+        Parameters
+        ----------
+        configs : object
+            Contains electron configurations with shape (nconf, nelec, ndets)
+        wf : object
+            Wavefunction object containing both BosonWF and JastrowSpin components
+            
+        Returns
+        -------
+        dict
+            'matel': Matrix elements including kinetic and potential terms
+            'ovlp': Overlap matrices between basis states
+            
+    Notes
+    -----
+    The implementation follows quantum Monte Carlo formalism where:
+    - Φ_B is the bosonic wavefunction
+    - Φ_n are the determinant components
+    - Ψ_BT is the Slater Jastrow trial wavefunction (eq. 4)
+    
+    The matrix elements are computed using:
+    1. Gradient terms: ∇Ψ_n = ∇(Φ_n/Φ_B)
+    2. Laplacian terms: ∇²(Φ_n/Φ_B)
+    3. Integration by parts for the kinetic energy terms
+    """    
+    def __init__(self, mf_inputs, **kwargs):
+        self.en_acc = ABQMCEnergyAccumulator(mf_inputs, **kwargs)
+        
+    @timer_func
+    def __call__(self, configs, wf):
+        
+        nconf, nelec, nx = configs.configs.shape
+
+        wave_functions = wf.wf_factors
+        for wave in wave_functions:
+            if isinstance(wave, bosonslater.BosonWF):
+                boson_wf = wave
+            if isinstance(wave, jastrowspin.JastrowSpin):
+                jastrow_wf = wave        
+        
+        psi_n = get_psi_basis(boson_wf) # Phi_l/Phi_B
+        ovlp_ij = np.einsum("lc,nc->cln", psi_n.conj(), psi_n)
+        en_acc = self.en_acc(configs, wf)
+        # import pdb; pdb.set_trace()
+        eb0 = en_acc['total'] - en_acc['corr']
+        mean_eb0 = np.mean(eb0, axis=0)*np.ones_like(eb0)
+        
+        delta1_hmf = np.einsum('lc, n, nc->cln', psi_n, np.diag(boson_wf.hmf), psi_n) 
+        delta = delta1_hmf.copy()
+        delta_nohmf = 0 
+        for e in range(nelec):
+            # Get position of electron e
+            epos_s = configs.electron(e)
+
+            # 1. \Phi_l\Phi_n terms
+            lap_phi_n = boson_wf.laplacian_dets(e, epos_s).copy()  # ∇²(Phi_n)/Phi_n
+            lap_phi_b = boson_wf.laplacian(e, epos_s).copy()      # ∇²(Psi_B)/Psi_B
+            # import pdb; pdb.set_trace()
+            # import pdb; pdb.set_trace()
+            
+            delta1b_e = np.einsum('lc, c, nc->cln', psi_n, mean_eb0, psi_n) 
+            delta1c_e = np.einsum('lc, cn, nc->cln', psi_n, lap_phi_n, psi_n) 
+            delta1d_e = -np.einsum('lc, c, nc->cln', psi_n, lap_phi_b, psi_n) 
+            delta1 = delta1b_e + delta1c_e + delta1d_e
+
+            # Debug prints
+            # assert np.allclose(delta1, delta1a + delta1b + delta1c + delta1d)
+
+            loggrad_phi_n = boson_wf.gradient_dets(e, epos_s) 
+            loggrad_b = boson_wf.gradient(e, epos_s) # ∇log(Psi_B) eq. 4
+            grad_psi_n = np.einsum('nc, nxc->nxc', psi_n, loggrad_phi_n - loggrad_b)  
+            # 2. \Phi_l∇\Phi_B terms
+            
+            loggrad_psi_bt = wf.gradient(e, epos_s) # ∇log(Psi_BT) eq. 4
+            delta2 = np.einsum('lc, xc, nxc->cln', psi_n, -loggrad_b + loggrad_psi_bt, grad_psi_n) # Psi_l * [∇(log(Phi_B)) + ∇(log(Psi_BT))] \dot ∇Psi_n        
+            
+            # 3. ∇\Phi_l∇\Phi_n terms (No terms)
+            delta3 = np.einsum('lxc, nxc->cln', grad_psi_n, grad_psi_n) # Psi_l * [∇(log(Phi_B)) + ∇(log(Psi_BT))] \dot ∇Psi_n        
+            delta_e = delta1 + delta2 + delta3
+            delta += delta_e
+            delta_nohmf += delta_e
+            
+        # import matplotlib.pyplot as plt
+        # plt.plot(np.diag(np.mean(delta1a, axis=0)), '-o', label='1a')
+        # plt.plot(np.diag(np.mean(delta1b, axis=0)), '-o', label='1b')
+        # plt.plot(np.diag(np.mean(delta1c, axis=0)), '-o', label='1c')
+        # plt.plot(np.diag(np.mean(delta1d, axis=0)), '-o', label='1d')
+        # plt.plot(np.diag(np.mean(delta1c+delta1d, axis=0)), '-o', label='1c+1d')
+        # plt.plot(np.diag(np.mean(delta, axis=0)), '-o', label='total')
+        # plt.legend()
+        # plt.show()
+        
+        results = { #'matel':matel, 
+                   'delta': delta,
+                   'delta_nohmf': delta_nohmf,
+                   'delta_hmf': delta1_hmf,
+                   'ovlp': ovlp_ij}
+        return results 
+
+    def avg(self, configs, wf):
+        # results = self(configs, wf)
+        return {k: np.mean(it, axis=0) for k, it in self(configs, wf).items()}
+
+    def var(self, configs, wf):
+        return {k: np.sqrt(np.abs(it**2 - np.mean(it, axis=0)**2)) for k, it in self(configs, wf).items()}
+
+    def has_nonlocal_moves(self):
+        return self.mol._ecp != {}
+    
+    def keys(self):
+        return set(["matrix"])
+
+    def shapes(self):
+        return {"matrix": ()}
+
+class ABCDMCMatrixAccumulator_old:
     """Accumulator for computing matrix elements in Auxiliary-field Boson Corrected Diffusion Monte Carlo (ABCDMC).
     
     Specifically calculates:
@@ -461,91 +629,180 @@ class ABCDMCMatrixAccumulator:
 
     def shapes(self):
         return {"matrix": ()}
-class ABDMCMatrixAccumulator:
-    """Accumulator for computing matrix elements in Auxiliary Boson Diffusion Monte Carlo.
+
+# class ABDMCMatrixAccumulator:
+#     """Accumulator for computing matrix elements in Auxiliary Boson Diffusion Monte Carlo.
     
-    Based on eq. 18. 
+#     Based on eq. 18. 
     
-    Note: Currently missing the EB-VB term in the matrix element calculation.
+#     Note: Currently missing the EB-VB term in the matrix element calculation.
     
     
-    Methods
-    -------
-    __call__(configs, wf)
-        Compute matrix elements for given configurations and wavefunction.
+#     Methods
+#     -------
+#     __call__(configs, wf)
+#         Compute matrix elements for given configurations and wavefunction.
         
-        Parameters
-        ----------
-        configs : object
-            Contains electron configurations with shape (nconf, nelec, ndim)
-        wf : object
-            Wavefunction object containing BosonWF component
+#         Parameters
+#         ----------
+#         configs : object
+#             Contains electron configurations with shape (nconf, nelec, ndim)
+#         wf : object
+#             Wavefunction object containing BosonWF component
             
-        Returns
-        -------
-        dict
-            'matel': Matrix elements including kinetic terms
-                    Shape: (nconf, ndet, ndet)
-            'ovlp': Overlap matrices between basis states
-                   Shape: (nconf, ndet, ndet)
+#         Returns
+#         -------
+#         dict
+#             'matel': Matrix elements including kinetic terms
+#                     Shape: (nconf, ndet, ndet)
+#             'ovlp': Overlap matrices between basis states
+#                    Shape: (nconf, ndet, ndet)
     
-    """
+#     """
 
-    @timer_func
-    def __call__(self, configs, wf):
+#     @timer_func
+#     def __call__(self, configs, wf):
 
-        nconf, nelec, _ = configs.configs.shape
+#         nconf, nelec, _ = configs.configs.shape
 
-        wave_functions = wf.wf_factors
-        for wave in wave_functions:
-            if isinstance(wave, bosonslater.BosonWF):
-                boson_wf = wave
+#         wave_functions = wf.wf_factors
+#         for wave in wave_functions:
+#             if isinstance(wave, bosonslater.BosonWF):
+#                 boson_wf = wave
             
-        psi_n = get_psi_basis(boson_wf) # Phi_l/Phi_B
-        ovlp_ij = np.einsum("lc,nc->cln", psi_n.conj(), psi_n)
+#         psi_n = get_psi_basis(boson_wf) # Phi_l/Phi_B
+#         ovlp_ij = np.einsum("lc,nc->cln", psi_n.conj(), psi_n)
 
-        # Matrix element by integration parts on the ∇f_B term of the eq. 23 
-        # For integration by parts see eq. 17 in the reference paper
-        matel = 0
+#         # Matrix element by integration parts on the ∇f_B term of the eq. 23 
+#         # For integration by parts see eq. 17 in the reference paper
+#         matel = 0
         
-        for e in range(nelec):
-            # Get position of electron e
-            epos_s = configs.electron(e)
+#         for e in range(nelec):
+#             # Get position of electron e
+#             epos_s = configs.electron(e)
 
-            # ∇²Phi_n
-            lap_phi_n = boson_wf.laplacian_dets(e, epos_s) 
-            # ∇log(Phi_n) 
-            loggrad_phi_n = boson_wf.gradient_dets(e, epos_s) 
-            # ∇log(Psi_B) eq. 4
-            loggrad_b = boson_wf.gradient(e, epos_s) 
-            # ∇Psi_n = ∇(Phi_n/Phi_B)
-            grad_psi_n = np.einsum('nc, nxc->nxc', psi_n, loggrad_phi_n-loggrad_b)  
-            # ∇log(Psi_B^T)
-            loggrad_psi_bt = wf.gradient(e, epos_s)
+            
+#             lap_phi_n = boson_wf.laplacian_dets(e, epos_s) # ∇²Phi_n/Phi_n
+#             # ∇log(Phi_n) 
+#             loggrad_phi_n = boson_wf.gradient_dets(e, epos_s) 
+#             # ∇log(Psi_B) eq. 4
+#             loggrad_b = boson_wf.gradient(e, epos_s) 
+#             # ∇Psi_n = ∇(Phi_n/Phi_B)
+#             grad_psi_n = np.einsum('nc, nxc->nxc', psi_n, loggrad_phi_n-loggrad_b)  
+#             # ∇log(Psi_B^T)
+#             loggrad_psi_bt = wf.gradient(e, epos_s)
 
-            matel += 1./2 * np.einsum('lc, cn->cln', psi_n, lap_phi_n) # Psi_l * ∇²Psi_n
-            matel += 0 # Missing EB-VB term 
-            matel -= np.einsum('lc, nxc, nxc->cln', psi_n, grad_psi_n-loggrad_psi_bt, grad_psi_n)  # Check indices
+#             matel += 1./2 * np.einsum('lc, cn->cln', psi_n, lap_phi_n) # Psi_l * ∇²Psi_n
+#             matel += 0 # Missing EB-VB term 
+#             matel -= np.einsum('lc, nxc, nxc->cln', psi_n, grad_psi_n-loggrad_psi_bt, grad_psi_n)  # Check indices
 
-        results = {'matel':matel, 
-                    'ovlp': ovlp_ij}
-        return results 
+#         results = {'matel':matel, 
+#                     'ovlp': ovlp_ij}
+#         return results 
 
-    def avg(self, configs, wf):
-        # results = self(configs, wf)
-        return {k: np.mean(it, axis=0) for k, it in self(configs, wf).items()}
+#     def avg(self, configs, wf):
+#         # results = self(configs, wf)
+#         return {k: np.mean(it, axis=0) for k, it in self(configs, wf).items()}
 
-    def var(self, configs, wf):
-        return {k: np.sqrt(np.abs(it**2 - np.mean(it, axis=0)**2)) for k, it in self(configs, wf).items()}
+#     def var(self, configs, wf):
+#         return {k: np.sqrt(np.abs(it**2 - np.mean(it, axis=0)**2)) for k, it in self(configs, wf).items()}
 
-    def has_nonlocal_moves(self):
-        return self.mol._ecp != {}
+#     def has_nonlocal_moves(self):
+#         return self.mol._ecp != {}
     
-    def keys(self):
-        return set(["matrix"])
+#     def keys(self):
+#         return set(["matrix"])
 
-    def shapes(self):
-        return {"matrix": ()}
+#     def shapes(self):
+#         return {"matrix": ()}
+
+# class ABDMCMatrixAccumulator_old:
+#     """Accumulator for computing matrix elements in Auxiliary Boson Diffusion Monte Carlo.
+    
+#     Based on eq. 18. 
+    
+#     Note: Currently missing the EB-VB term in the matrix element calculation.
+    
+    
+#     Methods
+#     -------
+#     __call__(configs, wf)
+#         Compute matrix elements for given configurations and wavefunction.
+        
+#         Parameters
+#         ----------
+#         configs : object
+#             Contains electron configurations with shape (nconf, nelec, ndim)
+#         wf : object
+#             Wavefunction object containing BosonWF component
+            
+#         Returns
+#         -------
+#         dict
+#             'matel': Matrix elements including kinetic terms
+#                     Shape: (nconf, ndet, ndet)
+#             'ovlp': Overlap matrices between basis states
+#                    Shape: (nconf, ndet, ndet)
+    
+#     """
+
+#     @timer_func
+#     def __call__(self, configs, wf):
+
+#         nconf, nelec, _ = configs.configs.shape
+
+#         wave_functions = wf.wf_factors
+#         for wave in wave_functions:
+#             if isinstance(wave, bosonslater.BosonWF):
+#                 boson_wf = wave
+            
+#         psi_n = get_psi_basis(boson_wf) # Phi_l/Phi_B
+#         ovlp_ij = np.einsum("lc,nc->cln", psi_n.conj(), psi_n)
+
+#         # Matrix element by integration parts on the ∇f_B term of the eq. 23 
+#         # For integration by parts see eq. 17 in the reference paper
+#         matel = 0
+        
+#         for e in range(nelec):
+#             # Get position of electron e
+#             epos_s = configs.electron(e)
+
+#             # ∇²Phi_n
+#             lap_phi_n = boson_wf.laplacian_dets(e, epos_s) 
+#             # ∇log(Phi_n) 
+#             loggrad_phi_n = boson_wf.gradient_dets(e, epos_s) 
+#             # ∇log(Psi_B) eq. 4
+#             loggrad_b = boson_wf.gradient(e, epos_s) 
+#             # ∇Psi_n = ∇(Phi_n/Phi_B)
+#             grad_psi_n = np.einsum('nc, nxc->nxc', psi_n, loggrad_phi_n-loggrad_b)  
+#             # ∇log(Psi_B^T)
+#             loggrad_psi_bt = wf.gradient(e, epos_s)
+
+#             matel += 1./2 * np.einsum('lc, cn->cln', psi_n, lap_phi_n) # Psi_l * ∇²Psi_n
+#             matel += 0 # Missing EB-VB term 
+#             matel -= np.einsum('lc, nxc, nxc->cln', psi_n, grad_psi_n-loggrad_psi_bt, grad_psi_n)  # Check indices
+
+#         results = {'matel':matel, 
+#                     'ovlp': ovlp_ij}
+#         return results 
+
+#     def avg(self, configs, wf):
+#         # results = self(configs, wf)
+#         return {k: np.mean(it, axis=0) for k, it in self(configs, wf).items()}
+
+#     def var(self, configs, wf):
+#         return {k: np.sqrt(np.abs(it**2 - np.mean(it, axis=0)**2)) for k, it in self(configs, wf).items()}
+
+#     def has_nonlocal_moves(self):
+#         return self.mol._ecp != {}
+    
+#     def keys(self):
+#         return set(["matrix"])
+
+#     def shapes(self):
+#         return {"matrix": ()}
+
+
 
 class DensityAccumulator:
     """Accumulates electron density in bins.
@@ -724,6 +981,37 @@ class RadialDensityAccumulator:
             array: Radial points where density is evaluated
         """
         return self.bin_centers
+
+def test_addition_difference():
+    """Test function to demonstrate the difference between in-place and new array addition."""
+    # Create some test arrays
+    a = np.array([[1.0, 2.0], [3.0, 4.0]])
+    b = np.array([[5.0, 6.0], [7.0, 8.0]])
+    c = np.array([[9.0, 10.0], [11.0, 12.0]])
+    
+    # Method 1: In-place addition
+    result1 = a.copy()
+    result1 += b
+    result1 += c
+    
+    # Method 2: New array addition
+    result2 = a + b + c
+    
+    print("Original arrays:")
+    print("a:\n", a)
+    print("b:\n", b)
+    print("c:\n", c)
+    print("\nResult from in-place addition (result1):")
+    print(result1)
+    print("\nResult from new array addition (result2):")
+    print(result2)
+    print("\nAre they equal?", np.array_equal(result1, result2))
+    print("Max difference:", np.max(np.abs(result1 - result2)))
+    print("Mean difference:", np.mean(np.abs(result1 - result2)))
+
+# Add this line to run the test
+if __name__ == "__main__":
+    test_addition_difference()
 
 
 
