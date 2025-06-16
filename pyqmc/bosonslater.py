@@ -566,7 +566,7 @@ class BosonWF:
     
     @timer_func
     def value_dets(self, test = False):
-        r"""Returns logarithmic values of all Slater determinants used to form bosonic wavefunction
+        r"""Returns logarithmic values (∇Phi_l/Phi_l) of all Slater determinants used to form bosonic wavefunction
 
         Args:
             test (bool, optional): Calculates the value of bosonic wavefunction using values in this function.
@@ -691,7 +691,7 @@ class BosonWF:
         grad_phi_l = np.einsum('nxc, cn->nxc', loggrad_n, val_n)
         
         lap_b1 = np.einsum('nxc, nxc->c', grad_phi_l, grad_phi_l)
-        lap_b1 += np.einsum('cn, cn->c', val_n, lap_n)
+        lap_b1 += np.einsum('cn, cn->c', val_n**2, lap_n) # Changed due to new lap_n definition in this commit
         lap_b1 /= val_b**2
         # Second term: Minus the square of (sum of Phi_l times gradient of Phi_l)
         lap_b2 = np.einsum('cn, nxc->cx', val_n, grad_phi_l)
@@ -818,7 +818,7 @@ class BosonWF:
         return grads
     
     def laplacian_dets(self, e, epos, test=False):
-        r"""Returns laplacian ∇²(Phi_l) of each slater determinant forming the bosonic wavefunction
+        r"""Returns laplacian ∇²(Phi_l)/Phi_l of each slater determinant forming the bosonic wavefunction
         Phi_l is defined in eq. 14, psi_l = Phi_l/Phi_B
 
         Args:
@@ -868,7 +868,7 @@ class BosonWF:
         # denom = np.sum(numer[0], axis=1)
         # lap = np.einsum('id, i->id', numer[1], 1./denom)
         
-        lap = numer[1]
+        lap = numer[1]/numer[0]
 
         # np.sum(numer[0], axis=1) should be the same as denom in laplacian @ slater.py
         # If want to return ∇²(Psi_n), return numer[1]
