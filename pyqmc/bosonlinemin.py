@@ -207,9 +207,9 @@ def stable_fit(xfit, yfit, tolerance=1e-2, steprange=0.2, nblocks=1, min_step=0.
         else:
             new_steprange = np.abs(est_min)*step_factor        
     except:
-        est_min = min_step
+        est_min = xfit[np.argmin(yfit)]
     
-    # new_steprange = np.abs(cs(new_steprange))*2
+    new_steprange = steprange
     new_nblocks = nblocks
     # if np.linalg.norm(pgrad_prev) == 0.0:
     #     new_steprange = steprange
@@ -262,6 +262,8 @@ def line_minimization(
     if vmcoptions is None:
         vmcoptions = {}
     vmcoptions.update({"verbose": verbose})
+    if "nblocks" not in vmcoptions:
+        vmcoptions["nblocks"] = 10
     if lmoptions is None:
         lmoptions = {}
     if update_kws is None:
