@@ -87,15 +87,17 @@ def generate_boson_wf(
 
     if slater_kws is None:
         slater_kws = {}
-    if jastrow == None:
+    if jastrow == None or jastrow == [None]:
         wf, to_opt1 = generate_boson(mol, mf, mc=mc, det_emax=det_emax, use_symm=use_symm, **slater_kws)
         to_opt = {"wf1" + k: v for k, v in to_opt1.items()}
     else:        
         if not isinstance(jastrow, list):
             jastrow = [jastrow]
+        if not isinstance(jastrow_kws, list):
+            jastrow_kws = [jastrow_kws]
         if len(jastrow_kws) == 2:
             jastrow.append(generate_jastrow3)
-
+            jastrow_kws.append({})
         wf1, to_opt1 = generate_boson(mol, mf, mc=mc, det_emax=det_emax, use_symm=use_symm, **slater_kws)
         to_opt = {"wf1" + k: v for k, v in to_opt1.items()}
         pack = [jast(mol, **kw) for jast, kw in zip(jastrow, jastrow_kws)]
