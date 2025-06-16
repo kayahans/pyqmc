@@ -20,22 +20,26 @@ def dft_energy(mf_inputs, configs):
     mo_occ = mf_inputs['mo_occ']
     mol = mf_inputs['mol']
     dm = mf_inputs['dm']
-    # grids = mf_inputs['grids']
-    # rho = mf_inputs['rho']
+    grids = mf_inputs['grids']
+    rho = mf_inputs['rho']
 
     def get_vj(configs):
         vj = 0
+        # vj2 = 0
         dm_total = dm[0] + dm[1]
         for e in range(nelec):
             # Fast (x10^3)
             r = configs.configs[:,e,:]
             vj += np.einsum('pij,ij->p', mol.intor('int1e_grids', grids=r), dm_total)
+            # vj2 += np.zeros_like(vj)
             # Slow 
             # for i, r in enumerate(configs.configs[:,e,:]):
-                # distances = np.linalg.norm(grids.coords - r, axis=1)
-                # mask = distances > 1e-2 # Do not include grids that are very close
-                # vj[i] += np.sum(rho[mask] / distances[mask] * grids.weights[mask])    
+            #     distances = np.linalg.norm(grids.coords - r, axis=1)
+            #     mask = distances > 1e-3 # Do not include grids that are very close
+            #     vj2[i] += np.sum(rho[mask] / distances[mask] * grids.weights[mask])    
+        # print(np.max(np.abs(vj - vj2)))
         return vj
+        # return vj2
 
     def get_vxc(configs):
         vxc = 0
@@ -117,8 +121,10 @@ def boson_kinetic(configs, wf):
             grad_je, lap_je = jastrow_wf.gradient_laplacian(e, configs.electron(e))
             # import pdb; pdb.set_trace()
             lap_j += -0.5 * (lap_je.real+np.sum(grad_je.real**2, axis=0))
+            # lap_j += 0.5 * (lap_je.real-np.sum(grad_je.real**2, axis=0))
             grad_b = boson_wf.gradient(e, configs.electron(e))
             drift_b -= np.einsum("di,di->i", grad_je, grad_b)
+            # drift_b += np.einsum("di,di->i", grad_je, grad_b)
             grad = wf.gradient(e, configs.electron(e))
             grad2 += np.sum(np.abs(grad) ** 2, axis=0)
         # ke = lap_j + drift_b
