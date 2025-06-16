@@ -155,9 +155,9 @@ def ABVMC(
             warmup_acc = {} 
             possible_accumulators = {
                              'energy':bosonaccumulators.ABQMCEnergyAccumulator(wf.mf_inputs),
-                             'ab_vmc_excitations':bosonaccumulators.ABVMCMatrixAccumulator(), 
-                             'ab_dmc_excitations':bosonaccumulators.ABDMCMatrixAccumulator(),
-                             'abc_dmc_excitations':bosonaccumulators.ABCDMCMatrixAccumulator(), 
+                             'ab_vmc_excitations':bosonaccumulators.ABVMCMatrixAccumulator(wf.mf_inputs), 
+                            #  'ab_dmc_excitations':bosonaccumulators.ABDMCMatrixAccumulator(),
+                             'abc_dmc_excitations':bosonaccumulators.ABCDMCMatrixAccumulator(wf.mf_inputs), 
                              'density':bosonaccumulators.DensityAccumulator(),
                              'radial_density':bosonaccumulators.RadialDensityAccumulator()}
             print('Warmup accumulators:', warmup_options['accumulators'])
@@ -404,9 +404,9 @@ def initialize_boson_qmc_objects(
     acc = {}
     acc['energy'] = bosonaccumulators.ABQMCEnergyAccumulator(mf_inputs)
 
-    possible_accumulators = {'ab_vmc_excitations':bosonaccumulators.ABVMCMatrixAccumulator(), 
-                             'ab_dmc_excitations':bosonaccumulators.ABDMCMatrixAccumulator(),
-                             'abc_dmc_excitations':bosonaccumulators.ABCDMCMatrixAccumulator(), 
+    possible_accumulators = {'ab_vmc_excitations':bosonaccumulators.ABVMCMatrixAccumulator(mf_inputs), 
+                            #  'ab_dmc_excitations':bosonaccumulators.ABDMCMatrixAccumulator(),
+                             'abc_dmc_excitations':bosonaccumulators.ABCDMCMatrixAccumulator(mf_inputs), 
                              'density':bosonaccumulators.DensityAccumulator(),
                              'radial_density':bosonaccumulators.RadialDensityAccumulator()}
     if accumulators is not None and len(accumulators) > 0:
