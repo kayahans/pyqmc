@@ -234,6 +234,20 @@ def ABDMC(
         use_symm=use_symm,
         initial_guess_r=initial_guess_r,
     )
+    # Extract VMC options from DMC keyword arguments if present, otherwise return None
+    vmc_options = dmc_kws.pop('vmc_options', None)
+    if vmc_options is not None and vmc_options['accumulators'] is not None:
+        vmc_acc = {}
+        possible_accumulators = {
+                            'energy':bosonaccumulators.ABQMCEnergyAccumulator(wf.mf_inputs),
+                            'ab_vmc_excitations':bosonaccumulators.ABVMCMatrixAccumulator(wf.mf_inputs), 
+                            'density':bosonaccumulators.DensityAccumulator(),
+                            'radial_density':bosonaccumulators.RadialDensityAccumulator()}
+        print('DMC accumulators:', vmc_options['accumulators'])
+        for acc_name in vmc_options['accumulators']:
+            vmc_acc[acc_name] = possible_accumulators[acc_name]
+        vmc_options['accumulators'] = vmc_acc
+        dmc_kws['vmc_options'] = vmc_options
     bosondmc.rundmc(wf, configs, accumulators=acc, **dmc_kws)
 
 def initial_guess(mol, nconfig, r=None, seed = None):
