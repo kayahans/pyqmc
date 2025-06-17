@@ -268,38 +268,35 @@ class ABVMCMatrixAccumulator:
         # ovlp_ij = nconf /np.sum(facc) * np.einsum("lc,nc,c->cln", psi_basis.conj(), psi_basis, facc)
         # variant 2 do not use acceptance from VMC 
         ovlp_ij = np.einsum("lc,nc->cln", psi_n.conj(), psi_n)
-        en_acc = self.en_acc(configs, wf)
-        eb0 = en_acc['total'] - en_acc['corr']
-        mean_eb0 = np.mean(eb0, axis=0)*np.ones_like(eb0)
+        # en_acc = self.en_acc(configs, wf)
+        # # eb0 = en_acc['total'] - en_acc['corr']
+        # mean_eb0 = np.mean(eb0, axis=0)*np.ones_like(eb0)
 
+        # delta = np.einsum('lc, n, nc->cln', psi_n, np.diag(boson_wf.hmf), psi_n) 
         delta = 0
+        # delta1 = 0
+        # delta2 = 0
         for e in range(nelec):
             # Get position of electron e
             epos_s = configs.electron(e)
 
-            # 1. \Phi_l\Phi_n terms
-            lap_phi_n = boson_wf.laplacian_dets(e, epos_s)  # ∇²(Phi_n)/Phi_n
-            lap_phi_b = boson_wf.laplacian(e, epos_s)      # ∇²(Psi_B)/Psi_B
-            delta1a = np.einsum('lc, n, nc->cln', psi_n, np.diag(boson_wf.hmf), psi_n) 
-            delta1b = np.einsum('lc, c, nc->cln', psi_n, mean_eb0, psi_n) 
-            delta1c = np.einsum('lc, cn, nc->cln', psi_n, lap_phi_n, psi_n) 
-            delta1d = -np.einsum('lc, c, nc->cln', psi_n, lap_phi_b, psi_n) 
-            delta1 = delta1a.copy()
-            delta1 += delta1b
-            delta1 += delta1c
-            delta1 += delta1d
+            # # 1. \Phi_l\Phi_n terms
+            # lap_phi_n = boson_wf.laplacian_dets(e, epos_s)  # ∇²(Phi_n)/Phi_n
+            # lap_phi_b = boson_wf.laplacian(e, epos_s)      # ∇²(Psi_B)/Psi_B
+            # # delta1b = np.einsum('lc, c, nc->cln', psi_n, mean_eb0, psi_n) 
+            # delta1c = np.einsum('lc, cn, nc->cln', psi_n, lap_phi_n, psi_n) 
+            # delta1d = -np.einsum('lc, c, nc->cln', psi_n, lap_phi_b, psi_n) 
+            # # delta1 = delta1b.copy()
+            # delta1 += delta1c + delta1d
 
             loggrad_phi_n = boson_wf.gradient_dets(e, epos_s) 
             loggrad_b = boson_wf.gradient(e, epos_s) # ∇log(Psi_B) eq. 4
             grad_psi_n = np.einsum('nc, nxc->nxc', psi_n, loggrad_phi_n - loggrad_b)  
 
             grad_j = jastrow_wf.gradient(e, epos_s)
-            delta2 = np.einsum("lc,xc,nxc->cln", psi_n, grad_j, grad_psi_n)
-            delta += delta1 + delta2
-
-
-
-
+            delta += np.einsum("lc,xc,nxc->cln", psi_n, grad_j, grad_psi_n)
+            
+        # delta += delta1 + delta2
 
         # delta = 0
         # grad_j = 0
@@ -325,7 +322,10 @@ class ABVMCMatrixAccumulator:
         #     delta = np.einsum('cln, ln->cln', delta, symm_mask)
         #     ovlp_ij = np.einsum('cln, ln->cln', ovlp_ij, symm_mask)
             
-        results = {'delta':delta, 'ovlp': ovlp_ij}
+        results = {'delta':delta, 
+                #    'delta1': delta1,
+                #    'delta2': delta2,
+                   'ovlp': ovlp_ij}
         return results 
 
     def avg(self, configs, wf):
@@ -420,12 +420,18 @@ class ABCDMCMatrixAccumulator:
         ovlp_ij = np.einsum("lc,nc->cln", psi_n.conj(), psi_n)
         en_acc = self.en_acc(configs, wf)
         # import pdb; pdb.set_trace()
-        eb0 = en_acc['total'] - en_acc['corr']
-        mean_eb0 = np.mean(eb0, axis=0)*np.ones_like(eb0)
+        # eb0 = en_acc['total'] - en_acc['corr']
+        # mean_eb0 = np.mean(eb0)*np.ones_like(eb0)
         
-        delta1_hmf = np.einsum('lc, n, nc->cln', psi_n, np.diag(boson_wf.hmf), psi_n) 
-        delta = delta1_hmf.copy()
-        delta_nohmf = 0 
+        # delta1_hmf = np.einsum('lc, n, nc->cln', psi_n, np.diag(boson_wf.hmf), psi_n) 
+        # delta1_eb0 = np.einsum('lc, c, nc->cln', psi_n, mean_eb0, psi_n) 
+        # delta = delta1_hmf.copy()
+        # delta += delta1_eb0
+        delta = 0 
+        delta1 = 0
+        delta2 = 0
+        delta3 = 0
+
         for e in range(nelec):
             # Get position of electron e
             epos_s = configs.electron(e)
@@ -436,10 +442,11 @@ class ABCDMCMatrixAccumulator:
             # import pdb; pdb.set_trace()
             # import pdb; pdb.set_trace()
             
-            delta1b_e = np.einsum('lc, c, nc->cln', psi_n, mean_eb0, psi_n) 
+            # delta1b_e = np.einsum('lc, c, nc->cln', psi_n, mean_eb0, psi_n) 
             delta1c_e = np.einsum('lc, cn, nc->cln', psi_n, lap_phi_n, psi_n) 
             delta1d_e = -np.einsum('lc, c, nc->cln', psi_n, lap_phi_b, psi_n) 
-            delta1 = delta1b_e + delta1c_e + delta1d_e
+            # delta1 = delta1b_e + delta1c_e + delta1d_e
+            delta1 += delta1c_e + delta1d_e
 
             # Debug prints
             # assert np.allclose(delta1, delta1a + delta1b + delta1c + delta1d)
@@ -450,13 +457,10 @@ class ABCDMCMatrixAccumulator:
             # 2. \Phi_l∇\Phi_B terms
             
             loggrad_psi_bt = wf.gradient(e, epos_s) # ∇log(Psi_BT) eq. 4
-            delta2 = np.einsum('lc, xc, nxc->cln', psi_n, -loggrad_b + loggrad_psi_bt, grad_psi_n) # Psi_l * [∇(log(Phi_B)) + ∇(log(Psi_BT))] \dot ∇Psi_n        
+            delta2 += np.einsum('lc, xc, nxc->cln', psi_n, -loggrad_b + loggrad_psi_bt, grad_psi_n) # Psi_l * [∇(log(Phi_B)) + ∇(log(Psi_BT))] \dot ∇Psi_n        
             
             # 3. ∇\Phi_l∇\Phi_n terms (No terms)
-            delta3 = np.einsum('lxc, nxc->cln', grad_psi_n, grad_psi_n) # Psi_l * [∇(log(Phi_B)) + ∇(log(Psi_BT))] \dot ∇Psi_n        
-            delta_e = delta1 + delta2 + delta3
-            delta += delta_e
-            delta_nohmf += delta_e
+            delta3 += np.einsum('lxc, nxc->cln', grad_psi_n, grad_psi_n) # Psi_l * [∇(log(Phi_B)) + ∇(log(Psi_BT))] \dot ∇Psi_n        
             
         # import matplotlib.pyplot as plt
         # plt.plot(np.diag(np.mean(delta1a, axis=0)), '-o', label='1a')
@@ -467,11 +471,11 @@ class ABCDMCMatrixAccumulator:
         # plt.plot(np.diag(np.mean(delta, axis=0)), '-o', label='total')
         # plt.legend()
         # plt.show()
-        
-        results = { #'matel':matel, 
-                   'delta': delta,
-                   'delta_nohmf': delta_nohmf,
-                   'delta_hmf': delta1_hmf,
+        delta = delta1 + delta2 + delta3
+        results = {'delta': delta,
+                   'delta1': delta1,
+                   'delta2': delta2,
+                   'delta3': delta3,
                    'ovlp': ovlp_ij}
         return results 
 
