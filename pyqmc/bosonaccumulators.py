@@ -456,9 +456,10 @@ class ABCDMCMatrixAccumulator:
             grad_psi_n = np.einsum('nc, nxc->nxc', psi_n, loggrad_phi_n - loggrad_b)  
             # 2. \Phi_l∇\Phi_B terms
             
-            loggrad_psi_bt = wf.gradient(e, epos_s) # ∇log(Psi_BT) eq. 4
-            delta2 += np.einsum('lc, xc, nxc->cln', psi_n, -loggrad_b + loggrad_psi_bt, grad_psi_n) # Psi_l * [∇(log(Phi_B)) + ∇(log(Psi_BT))] \dot ∇Psi_n        
-            
+            # loggrad_psi_bt = wf.gradient(e, epos_s) # ∇log(Psi_BT) eq. 4
+            # delta2 += np.einsum('lc, xc, nxc->cln', psi_n, -loggrad_b + loggrad_psi_bt, grad_psi_n) # Psi_l * [∇(log(Phi_B)) + ∇(log(Psi_BT))] \dot ∇Psi_n        
+            delta2 += np.einsum('lc, xc, nxc->cln', psi_n, jastrow_wf.gradient(e, epos_s), grad_psi_n) 
+
             # 3. ∇\Phi_l∇\Phi_n terms (No terms)
             delta3 += np.einsum('lxc, nxc->cln', grad_psi_n, grad_psi_n) # Psi_l * [∇(log(Phi_B)) + ∇(log(Psi_BT))] \dot ∇Psi_n        
             
