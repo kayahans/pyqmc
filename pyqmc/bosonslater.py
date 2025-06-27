@@ -783,6 +783,8 @@ class BosonWF:
             self._inverse[s][..., e - s * self._nelec[0]],
         )
 
+        upref = gpu.cp.amax(self._dets[0][1]).real
+        dnref = gpu.cp.amax(self._dets[1][1]).real
         # Removed detcoeff and ref values
         det_array = (
             self._dets[0][0, :, self._det_map[0]]
@@ -790,6 +792,8 @@ class BosonWF:
             * np.exp(
                 self._dets[0][1, :, self._det_map[0]]
                 + self._dets[1][1, :, self._det_map[1]]
+                - upref
+                - dnref
             )
         )
 
@@ -798,6 +802,22 @@ class BosonWF:
             ratios[..., self._det_map[s]],
             det_array,
         )
+
+        # det_array = (
+        #     self._dets[0][0, :, self._det_map[0]]
+        #     * self._dets[1][0, :, self._det_map[1]]
+        #     * np.exp(
+        #         self._dets[0][1, :, self._det_map[0]]
+        #         + self._dets[1][1, :, self._det_map[1]]
+        #     )
+        # )
+        # numer = np.einsum(
+        #     "ei...d,di->edi...",
+        #     ratios[..., self._det_map[s]],
+        #     det_array,
+        # )
+
+
         
         # denom has the sum of Multideterminant WF, not needed
         grads = numer[1:] / numer[0]
@@ -847,14 +867,37 @@ class BosonWF:
         upref = gpu.cp.amax(self._dets[0][1]).real
         dnref = gpu.cp.amax(self._dets[1][1]).real
 
+        # det_array = (
+        #     self._dets[0][0, :, self._det_map[0]]
+        #     * self._dets[1][0, :, self._det_map[1]]
+        #     * gpu.cp.exp(
+        #         self._dets[0][1, :, self._det_map[0]]
+        #         + self._dets[1][1, :, self._det_map[1]]
+        #         # - upref
+        #         # - dnref
+        #     )
+        # )
+        
+        # # det_coeff = self.myparameters['det_coeff']
+        # numer = gpu.cp.einsum(
+        #     "ei...d,di->ei...d",
+        #     jacobi[..., self._det_map[s]],
+        #     # det_coeff,
+        #     det_array,
+        # )
+        # # denom = np.sum(numer[0], axis=1)
+        # # lap = np.einsum('id, i->id', numer[1], 1./denom)
+        
+        # lap = numer[1]/numer[0]
+
         det_array = (
             self._dets[0][0, :, self._det_map[0]]
             * self._dets[1][0, :, self._det_map[1]]
             * gpu.cp.exp(
                 self._dets[0][1, :, self._det_map[0]]
                 + self._dets[1][1, :, self._det_map[1]]
-                # - upref
-                # - dnref
+                - upref
+                - dnref
             )
         )
         
