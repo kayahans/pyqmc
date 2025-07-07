@@ -163,6 +163,7 @@ def ABVMC(
             print('Warmup accumulators:', warmup_options['accumulators'])
             for acc_name in warmup_options['accumulators']:
                 warmup_acc[acc_name] = possible_accumulators[acc_name]
+            warmup_options['accumulators'] = warmup_acc
         # from bosonaccumulators import RadialDensityAccumulator
         # import pdb; pdb.set_trace()
         # print('Prior to warmup')
