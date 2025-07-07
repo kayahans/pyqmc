@@ -166,12 +166,12 @@ class BosonWF:
         if mol.symmetry:
             self.symm_data = self.symm_utils(mol, mol.groupname)
             self.mo_coeff = mf.mo_coeff
-            self.filter_determinants(det_emax, mf.mo_energy, ncore, use_symm = use_symm)
+            self.filter_determinants(det_emax, mf.mo_energy, use_symm = use_symm)
         else:
             self.symm_data = None
-        
+        import pdb; pdb.set_trace()
         if self.num_det > 1:
-            self.get_hmf(mf.mo_energy, ncore)
+            self.get_hmf(mf.mo_energy)
         else:
             print('Using only one determinant')
 
@@ -275,9 +275,9 @@ class BosonWF:
         return results
 
     
-    def get_hmf(self, mo_energies, ncore):
-        mask_up = np.array(self._det_occup[0]) + ncore[0]
-        mask_dn = np.array(self._det_occup[1]) + ncore[1]
+    def get_hmf(self, mo_energies):
+        mask_up = np.array(self._det_occup[0])
+        mask_dn = np.array(self._det_occup[1])
         if isinstance(mo_energies, list):
             mo_energies = np.array(mo_energies)
         if len(mo_energies.shape) == 1:
@@ -301,7 +301,7 @@ class BosonWF:
         self.hmf = np.diag(total_energies)
         hf.close()
     
-    def filter_determinants(self, emax, mo_energies, ncore, use_symm = False):
+    def filter_determinants(self, emax, mo_energies, use_symm = False):
         
         determinants_filtered = False
         print("="*20 + "Filtering determinants start" + "="*20)
@@ -309,8 +309,8 @@ class BosonWF:
         if isinstance(emax, float):
             assert emax > 0, "Emax must be positive for energy based determinant filtering"
             determinants_filtered = True
-            up_energies = np.sum(mo_energies[0][self._det_occup[0]+ncore[0]], axis=1)
-            dn_energies = np.sum(mo_energies[1][self._det_occup[1]+ncore[1]], axis=1)
+            up_energies = np.sum(mo_energies[0][self._det_occup[0]], axis=1)
+            dn_energies = np.sum(mo_energies[1][self._det_occup[1]], axis=1)
             total_energies = up_energies[self._det_map[0]] + dn_energies[self._det_map[1]]
             min_energy = np.min(total_energies)
             if self.print_mf_dets:
@@ -334,8 +334,8 @@ class BosonWF:
             determinants_filtered = True
             percentile = emax
             print("Determinants being filtered with percentage ", percentile)
-            up_energies = np.sum(mo_energies[0][self._det_occup[0]+ncore[0]], axis=1)
-            dn_energies = np.sum(mo_energies[1][self._det_occup[1]+ncore[1]], axis=1)
+            up_energies = np.sum(mo_energies[0][self._det_occup[0]], axis=1)
+            dn_energies = np.sum(mo_energies[1][self._det_occup[1]], axis=1)
             total_energies = up_energies[self._det_map[0]] + dn_energies[self._det_map[1]]
             emax = np.percentile(total_energies, percentile)
             if self.print_mf_dets:
