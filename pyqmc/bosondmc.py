@@ -53,7 +53,7 @@ def propose_drift_diffusion(wf, configs, tstep, e):
     nconfig = configs.configs.shape[0]
 
     _, val_old = wf.recompute(configs) # Kayahan added 
-    wf_new = copy.deepcopy(wf)         # Kayahan added 
+    # wf_new = copy.deepcopy(wf)         # Kayahan added (1)
 
     gradt = limdrift(np.real(wf.gradient(e, configs.electron(e)).T), tstep)
     # np.random.seed(1)
@@ -66,7 +66,7 @@ def propose_drift_diffusion(wf, configs, tstep, e):
 
     # Compute reverse move
     # g, wfratio, saved = wf.gradient_value(e, newepos)
-    g, _, saved = wf.gradient_value(e, newepos) # Kayahan modified
+    g, ks_ratio, saved = wf.gradient_value(e, newepos) # Kayahan modified (2)
     new_grad = limdrift(np.real(g.T), tstep)
     forward = np.sum(gauss**2, axis=1)
     backward = np.sum((gauss + gradt + new_grad) ** 2, axis=1)
@@ -77,10 +77,11 @@ def propose_drift_diffusion(wf, configs, tstep, e):
     newcoorde = newcoord.make_irreducible(e, newcoorde) # Kayahan added 
     newcoord.configs[:,e,:] = newcoorde.configs # Kayahan added 
     # print(newcoord.configs[0])
-    _, val_new = wf_new.recompute(newcoord) # Kayahan added 
-    wfratio = np.exp((val_new-val_old)) # Kayahan added 
+    # _, val_new = wf_new.recompute(newcoord) # Kayahan added (3)
+    # wfratio = np.exp((val_new-val_old)) # Kayahan added (4)
     # Acceptance -- fixed-node: reject if wf changes sign
-    ratio = np.abs(wfratio) ** 2 * t_prob
+    # ratio = np.abs(wfratio) ** 2 * t_prob (5) 
+    ratio = np.abs(ks_ratio) * t_prob
     # if wf.dtype == float:             # Kayahan modified, no fixed node error
     #     ratio *= np.sign(wfratio)     # Kayahan modified, no fixed node error
     accept = ratio > np.random.rand(nconfig)

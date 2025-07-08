@@ -736,6 +736,7 @@ class BosonWF:
         )
 
         jacobid = jacobi[..., self._det_map[s]]
+        ratio = np.einsum('d, di, id-> i', det_coeff, det_array**2, jacobid[0]**2)
         jacobid = jacobid[1:]/jacobid[0]
 
         numer =  gpu.cp.einsum(
@@ -750,11 +751,13 @@ class BosonWF:
             det_coeff,
             det_array**2
         )
+        # import pdb; pdb.set_trace()
+        ratio =  ratio/denom
         derivatives = numer / denom
         derivatives[~np.isfinite(derivatives)] = 0.0
-        values = derivatives[0]
-        values[~np.isfinite(values)] = 1.0
-        return derivatives, values, (aograd[:, 0], mograd[0])
+        # values = derivatives[0]
+        # values[~np.isfinite(values)] = 1.0
+        return derivatives, ratio, (aograd[:, 0], mograd[0])
     
     @timer_func
     def gradient_dets(self, e, epos, test=False):

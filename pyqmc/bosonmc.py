@@ -78,6 +78,7 @@ def boson_vmc_worker(wf, configs, tstep, nsteps, accumulators):
         acc = 0.0
         # wf.curr_config = copy.deepcopy(configs)
         # wf.accept_array = np.zeros((nelec, nconf))
+        
         for e in range(nelec):
             # Propose move
             _, val_old = wf.recompute(configs)
@@ -92,7 +93,7 @@ def boson_vmc_worker(wf, configs, tstep, nsteps, accumulators):
             newcoorde = configs.make_irreducible(e, newcoorde)
 
             # Compute reverse move
-            g, new_val, saved = wf.gradient_value(e, newcoorde)
+            g, ks_ratio, saved = wf.gradient_value(e, newcoorde)
             new_grad[:] = limdrift(np.real(g.T))
             
             # Compute acceptance ratio (Lucas Wagner's implementation)
@@ -120,10 +121,13 @@ def boson_vmc_worker(wf, configs, tstep, nsteps, accumulators):
             grad_sum = grad + new_grad
             t_prob = np.exp(-np.sum(grad_sum * (gauss + tstep/2 * grad_sum), axis=1))
 
-            newcoord = copy.deepcopy(configs)
-            newcoord.configs[:,e,:] = newcoorde.configs
-            _, val_new = wf.value_configs(newcoord)
-            ratio = np.exp(2*(val_new-val_old)) * t_prob 
+            # newcoord = copy.deepcopy(configs)
+            # newcoord.configs[:,e,:] = newcoorde.configs
+            # _, val_new = wf.value_configs(newcoord)
+            # import pdb; pdb.set_trace()
+            # ratio = np.exp(2*(val_new-val_old)) * t_prob 
+            # accept = ratio > np.random.rand(nconf)
+            ratio = ks_ratio * t_prob
             accept = ratio > np.random.rand(nconf)
             # Restore wave function (not needed with value_configs)
             # wf.recompute(configs) # TODO: check if this is correct 
