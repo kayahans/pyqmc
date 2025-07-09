@@ -72,16 +72,18 @@ def propose_drift_diffusion(wf, configs, tstep, e):
     backward = np.sum((gauss + gradt + new_grad) ** 2, axis=1)
     t_prob = np.exp(1 / (2 * tstep) * (forward - backward))
 
-    newcoord = copy.deepcopy(configs)           # Kayahan added     
-    newcoorde = newcoord.configs[:, e, :] + gauss + gradt # Kayahan added 
-    newcoorde = newcoord.make_irreducible(e, newcoorde) # Kayahan added 
-    newcoord.configs[:,e,:] = newcoorde.configs # Kayahan added 
-    # print(newcoord.configs[0])
+    # newcoord = copy.deepcopy(configs)           # Kayahan added     
+    # newcoorde = newcoord.configs[:, e, :] + gauss + gradt # Kayahan added 
+    # newcoorde = newcoord.make_irreducible(e, newcoorde) # Kayahan added 
+    # newcoord.configs[:,e,:] = newcoorde.configs # Kayahan added 
+    # # print(newcoord.configs[0])
     # _, val_new = wf_new.recompute(newcoord) # Kayahan added (3)
     # wfratio = np.exp((val_new-val_old)) # Kayahan added (4)
-    # Acceptance -- fixed-node: reject if wf changes sign
-    # ratio = np.abs(wfratio) ** 2 * t_prob (5) 
+    # # Acceptance -- fixed-node: reject if wf changes sign
+    # ratio = np.abs(wfratio) ** 2 * t_prob #(5) 
+    
     ratio = np.abs(ks_ratio) * t_prob
+    
     # if wf.dtype == float:             # Kayahan modified, no fixed node error
     #     ratio *= np.sign(wfratio)     # Kayahan modified, no fixed node error
     accept = ratio > np.random.rand(nconfig)
@@ -174,7 +176,7 @@ def dmc_propagate(
     assert accumulators is not None, "Need an energy accumulator for DMC"
     nconfig, nelec = configs.configs.shape[0:2]
     wf.recompute(configs)
-
+    
     energy_acc = accumulators[ekey[0]](configs, wf)
     eloc = energy_acc[ekey[1]].real
     v2 = get_V2(configs, wf, energy_acc)

@@ -169,7 +169,6 @@ class BosonWF:
             self.filter_determinants(det_emax, mf.mo_energy, use_symm = use_symm)
         else:
             self.symm_data = None
-        import pdb; pdb.set_trace()
         if self.num_det > 1:
             self.get_hmf(mf.mo_energy)
         else:
