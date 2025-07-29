@@ -253,6 +253,8 @@ class ABVMCMatrixAccumulator:
     def __call__(self, configs, wf, use_symm = False):
         
         wave_functions = wf.wf_factors
+        boson_wf = None
+        jastrow_wf = None
         for wave in wave_functions:
             if isinstance(wave, bosonslater.BosonWF):
                 boson_wf = wave
@@ -293,7 +295,7 @@ class ABVMCMatrixAccumulator:
             loggrad_b = boson_wf.gradient(e, epos_s) # ∇log(Psi_B) eq. 4
             grad_psi_n = np.einsum('nc, nxc->nxc', psi_n, loggrad_phi_n - loggrad_b)  
 
-            grad_j = jastrow_wf.gradient(e, epos_s)
+            grad_j = -jastrow_wf.gradient(e, epos_s)
             delta += np.einsum("lc,xc,nxc->cln", psi_n, grad_j, grad_psi_n)
             
         # delta += delta1 + delta2
@@ -410,6 +412,8 @@ class ABCDMCMatrixAccumulator:
         nconf, nelec, nx = configs.configs.shape
 
         wave_functions = wf.wf_factors
+        boson_wf = None
+        jastrow_wf = None
         for wave in wave_functions:
             if isinstance(wave, bosonslater.BosonWF):
                 boson_wf = wave
@@ -439,9 +443,7 @@ class ABCDMCMatrixAccumulator:
             # 1. \Phi_l\Phi_n terms
             lap_phi_n = boson_wf.laplacian_dets(e, epos_s).copy()  # ∇²(Phi_n)/Phi_n
             lap_phi_b = boson_wf.laplacian(e, epos_s).copy()      # ∇²(Psi_B)/Psi_B
-            # import pdb; pdb.set_trace()
-            # import pdb; pdb.set_trace()
-            
+
             # delta1b_e = np.einsum('lc, c, nc->cln', psi_n, mean_eb0, psi_n) 
             delta1c_e = np.einsum('lc, cn, nc->cln', psi_n, lap_phi_n, psi_n) 
             delta1d_e = -np.einsum('lc, c, nc->cln', psi_n, lap_phi_b, psi_n) 
@@ -462,7 +464,7 @@ class ABCDMCMatrixAccumulator:
 
             # 3. ∇\Phi_l∇\Phi_n terms (No terms)
             delta3 += np.einsum('lxc, nxc->cln', grad_psi_n, grad_psi_n) # Psi_l * [∇(log(Phi_B)) + ∇(log(Psi_BT))] \dot ∇Psi_n        
-            
+
         # import matplotlib.pyplot as plt
         # plt.plot(np.diag(np.mean(delta1a, axis=0)), '-o', label='1a')
         # plt.plot(np.diag(np.mean(delta1b, axis=0)), '-o', label='1b')
@@ -546,6 +548,8 @@ class ABCDMCMatrixAccumulator_old:
         nconf, nelec, nx = configs.configs.shape
 
         wave_functions = wf.wf_factors
+        boson_wf = None
+        jastrow_wf = None
         for wave in wave_functions:
             if isinstance(wave, bosonslater.BosonWF):
                 boson_wf = wave
