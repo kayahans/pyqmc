@@ -81,7 +81,7 @@ def boson_vmc_worker(wf, configs, tstep, nsteps, accumulators):
         
         for e in range(nelec):
             # Propose move
-            _, val_old = wf.recompute(configs)
+            # _, val_old = wf.recompute(configs)
             # wf_new = copy.deepcopy(wf) # TODO: check if this is correct 
 
             g, _, _ = wf.gradient_value(e, configs.electron(e))
