@@ -64,7 +64,7 @@ def boson_vmc_worker(wf, configs, tstep, nsteps, accumulators):
     gauss = np.empty((nconf, 3))
     grad = np.empty((nconf, 3))
     new_grad = np.empty((nconf, 3))
-    # wf.recompute(configs) 
+    wf.recompute(configs) 
     # nsteps = 1 # TODO: restore to proper form
     # from bosonaccumulators import RadialDensityAccumulator
     # rda = RadialDensityAccumulator()
