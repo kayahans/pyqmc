@@ -27,30 +27,53 @@ def dft_energy(mf_inputs, configs):
         vj = 0
         # vj2 = 0
         dm_total = dm[0] + dm[1]
-        for e in range(nelec):
-            # Fast (x10^3)
-            r = configs.configs[:,e,:]
-            vj += np.einsum('pij,ij->p', mol.intor('int1e_grids', grids=r), dm_total)
-            # vj2 += np.zeros_like(vj)
-            # Slow 
-            # for i, r in enumerate(configs.configs[:,e,:]):
-            #     distances = np.linalg.norm(grids.coords - r, axis=1)
-            #     mask = distances > 1e-3 # Do not include grids that are very close
-            #     vj2[i] += np.sum(rho[mask] / distances[mask] * grids.weights[mask])    
-        # print(np.max(np.abs(vj - vj2)))
+        
+        # for e in range(nelec):
+        #     # Fast (x10^3)
+        #     r = configs.configs[:,e,:]
+        #     vj += np.einsum('pij,ij->p', mol.intor('int1e_grids', grids=r), dm_total)
+        #     # vj2 += np.zeros_like(vj)
+        #     # Slow 
+        #     # for i, r in enumerate(configs.configs[:,e,:]):
+        #     #     distances = np.linalg.norm(grids.coords - r, axis=1)
+        #     #     mask = distances > 1e-3 # Do not include grids that are very close
+        #     #     vj2[i] += np.sum(rho[mask] / distances[mask] * grids.weights[mask])    
+        # # print(np.max(np.abs(vj - vj2)))
+        # vectorized version
+        r = configs.configs.reshape(-1, 3)  # Shape: (nconf*nelec, 3)
+        vj_all = np.einsum('pij,ij->p', mol.intor('int1e_grids', grids=r), dm_total)
+        vj = vj_all.reshape(configs.configs.shape[0], nelec).sum(axis=1)
         return vj
         # return vj2
 
     def get_vxc(configs):
         vxc = 0
-        for e in range(nelec):
-            s = int(e >= nup_dn[0])
-            r = configs.configs[:,e,:]
-            ao = numint.eval_ao(mol, r, deriv=0)
-            rho_up = np.einsum('pi,ij,pj->p', ao, dm[0], ao)
-            rho_down = np.einsum('pi,ij,pj->p', ao, dm[1], ao)
-            _, vxcs, _, _  = libxc.eval_xc(xc, np.array([rho_up, rho_down]), spin = len(nup_dn)-1)
-            vxc += vxcs[0][:,s]
+        # for e in range(nelec):
+        #     s = int(e >= nup_dn[0])
+        #     r = configs.configs[:,e,:]
+        #     ao = numint.eval_ao(mol, r, deriv=0)
+        #     rho_up = np.einsum('pi,ij,pj->p', ao, dm[0], ao)
+        #     rho_down = np.einsum('pi,ij,pj->p', ao, dm[1], ao)
+        #     _, vxcs, _, _  = libxc.eval_xc(xc, np.array([rho_up, rho_down]), spin = len(nup_dn)-1)
+        #     vxc += vxcs[0][:,s]
+        # vxc2 = vxc.copy()
+        
+        # vectorized version
+        r = configs.configs.reshape(-1, 3)  # Shape: (nconf*nelec, 3)
+        s = np.array([int(e >= nup_dn[0]) for e in range(nelec)])
+        ao = numint.eval_ao(mol, r, deriv=0)
+        ao = ao.reshape(nconf, nelec, -1)  # Shape: (nconf, nelec, nao)
+        
+        rho_up = np.einsum('nei,ij,nej->ne', ao, dm[0], ao).flatten()
+        rho_down = np.einsum('nei,ij,nej->ne', ao, dm[1], ao).flatten()
+        _, vxcs, _, _ = libxc.eval_xc(xc, np.array([rho_up, rho_down]), spin=len(nup_dn)-1)
+        
+        
+        vxcs = vxcs[0].reshape(nconf, nelec, -1)
+        # vxcs shape is (nconf, nelec, 2) where 2 is spin index
+        # s contains spin index (0 or 1) for each electron
+        # Select the correct spin component for each electron and sum
+        vxc = np.sum([vxcs[:,i,s[i]] for i in range(nelec)], axis=0)
         return vxc
     
     if xc == 'LDA,VWN':
