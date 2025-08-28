@@ -385,7 +385,7 @@ def abvmc(
     print(f"blockoffset: {blockoffset}")
     print(f"converged_parameter: {converged_parameter}")
     print(f"convergence_threshold: {convergence_threshold}")
-
+    print(f"Using accumulators: {accumulators}")
     
     def vmc_run(wf, configs, tstep, nsteps_per_block, accumulators, client, npartitions, block, df):
         if verbose:

@@ -118,11 +118,19 @@ class ABQMCEnergyAccumulator:
     def __init__(self, mf_inputs, **kwargs):
         try:
             self.mol = mf_inputs['mol']
+            self.mf_inputs = mf_inputs
         except:
-            import pdb; pdb.set_trace()
-            
-        self.mf_inputs = mf_inputs
-        
+            if 'mol' in kwargs:
+                self.mol = kwargs['mol']
+                del kwargs['mol']
+            else:
+                raise ValueError("mol is not in mf_inputs or kwargs")
+
+            if 'mf_inputs' in kwargs:
+                self.mf_inputs = kwargs['mf_inputs']
+                del kwargs['mf_inputs']
+            else:
+                raise ValueError("mf_inputs is not in mf_inputs or kwargs")
         if hasattr(self.mol, "a"):
             self.coulomb = ewald.Ewald(self.mol, **kwargs)
         else:
@@ -160,6 +168,7 @@ class ABQMCEnergyAccumulator:
             "corr": np.ones(ee.shape)*ecorr,
             "ei": ei, # For debugging, ei is not used in ABQMC
             "ii":np.ones(ee.shape)*ii,
+            'v_mf': v_mf,
             # Eq. 21-22 in doi: 10.1063/5.0155513 is the electronic energy
             # Therefore ii term is added here
             # V_MF = V_H + V_XC (only supports LDA for now)

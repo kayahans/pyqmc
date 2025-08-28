@@ -195,7 +195,7 @@ def generate_wf(
     wf1, to_opt1 = generate_slater(mol, mf, mc=mc, **slater_kws)
     to_opt = {"wf1" + k: v for k, v in to_opt1.items()}
 
-    if None in jastrow:
+    if False in jastrow_kws:
         wf = wf1
     else:
         pack = [jast(mol, **kw) for jast, kw in zip(jastrow, jastrow_kws)]
