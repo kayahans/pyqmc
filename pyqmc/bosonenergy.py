@@ -5,8 +5,6 @@ from pyscf.dft import numint, libxc
 def dft_energy(mf_inputs, configs):
     '''
     Returns the KS related terms in  Eq. 21 in doi: 10.1063/5.0155513. 
-    MF is assumed to be LDA ('LDA, VWN'), therefore, for another input DFT functional, 
-    this may not work as intended.
     Returns: 
         vj: Electrostatic potential
         vxc: XC potential
@@ -46,7 +44,7 @@ def dft_energy(mf_inputs, configs):
         return vj
         # return vj2
 
-    def get_vxc(configs):
+    def get_vxc(configs, xc_func = 'LDA,VWN'):
         vxc = 0
         # for e in range(nelec):
         #     s = int(e >= nup_dn[0])
@@ -58,27 +56,47 @@ def dft_energy(mf_inputs, configs):
         #     vxc += vxcs[0][:,s]
         # vxc2 = vxc.copy()
         
+        # Sept 03, 2025
         # vectorized version
+        # r = configs.configs.reshape(-1, 3)  # Shape: (nconf*nelec, 3)
+        # s = np.array([int(e >= nup_dn[0]) for e in range(nelec)])
+        # ao = numint.eval_ao(mol, r, deriv=0)
+        # ao = ao.reshape(nconf, nelec, -1)  # Shape: (nconf, nelec, nao)
+        
+        # rho_up = np.einsum('nei,ij,nej->ne', ao, dm[0], ao).flatten()
+        # rho_down = np.einsum('nei,ij,nej->ne', ao, dm[1], ao).flatten()
+        # _, vxcs, _, _ = libxc.eval_xc(xc, np.array([rho_up, rho_down]), spin=len(nup_dn)-1)
+        
+        
+        # vxcs = vxcs[0].reshape(nconf, nelec, -1)
+        # # vxcs shape is (nconf, nelec, 2) where 2 is spin index
+        # # s contains spin index (0 or 1) for each electron
+        # # Select the correct spin component for each electron and sum
+        # vxc = np.sum([vxcs[:,i,s[i]] for i in range(nelec)], axis=0)
+        # xc_func = 'PBE'
+        # Include 'GGA' as well
+        if xc_func == 'LDA,VWN':
+            xctype = 'LDA'
+            deriv = 0
+        elif xc_func == 'PBE,PBE':
+            xctype = 'GGA'
+            deriv = 1
+        else:
+            raise ValueError(f"Unsupported XC functional: {xc_func}")
+
         r = configs.configs.reshape(-1, 3)  # Shape: (nconf*nelec, 3)
         s = np.array([int(e >= nup_dn[0]) for e in range(nelec)])
-        ao = numint.eval_ao(mol, r, deriv=0)
-        ao = ao.reshape(nconf, nelec, -1)  # Shape: (nconf, nelec, nao)
-        
-        rho_up = np.einsum('nei,ij,nej->ne', ao, dm[0], ao).flatten()
-        rho_down = np.einsum('nei,ij,nej->ne', ao, dm[1], ao).flatten()
-        _, vxcs, _, _ = libxc.eval_xc(xc, np.array([rho_up, rho_down]), spin=len(nup_dn)-1)
-        
-        
-        vxcs = vxcs[0].reshape(nconf, nelec, -1)
-        # vxcs shape is (nconf, nelec, 2) where 2 is spin index
-        # s contains spin index (0 or 1) for each electron
-        # Select the correct spin component for each electron and sum
+        ao_value = numint.eval_ao(mol, r, deriv=deriv)
+        rho_up = numint.eval_rho(mol, ao_value, dm[0], xctype=xctype)
+        rho_down = numint.eval_rho(mol, ao_value, dm[1], xctype=xctype)
+        vxcs = libxc.eval_xc(xc_func, (rho_up, rho_down), spin=len(nup_dn)-1, verbose=True)[1][0]
+        vxcs = vxcs.reshape(nconf, nelec, -1)
         vxc = np.sum([vxcs[:,i,s[i]] for i in range(nelec)], axis=0)
         return vxc
     
-    if xc == 'LDA,VWN':
+    if xc is not None and xc != 'HF':
         vj = get_vj(configs)
-        vxc = get_vxc(configs)
+        vxc = get_vxc(configs, xc_func = xc)
         ecorr = np.sum(mo_energy*mo_occ) 
         # Older code for reference
         # vj = np.zeros(nconf)

@@ -349,8 +349,9 @@ def initialize_boson_qmc_objects(
             mc.fci = mc.ci
             # print('Selecting target CI root #', target_root)
             mc.ci = mc.ci[target_root]
-
-    available_xc = ['LDA,VWN', 'HF']
+    # Remove any spaces from xc string
+    xc = xc.replace(" ", "")
+    available_xc = ['LDA,VWN','PBE,PBE','HF']
     mf_inputs = {}
     if xc not in available_xc:
         raise ValueError(f"xc={xc} not in available_xc={available_xc}")
@@ -434,6 +435,7 @@ def initialize_boson_qmc_objects(
                 print(f"Using accumulator: {acc_name}")
         
     if opt_wf is True:
+        mf.xc = xc
         acc = bosonaccumulators.boson_gradient_generator(
             mf, wf, to_opt, nodal_cutoff=nodal_cutoff
         )

@@ -97,8 +97,7 @@ def boson_gradient_generator(mf, wf, to_opt=None, nodal_cutoff=1e-3, **ewald_kwa
         print("WARNING: mf.make_rdm1() is not available, cannot use DFT as Mean Field")
 
     rho, grids = calculate_mf_density(mf.mol, mf_inputs['dm'])
-
-    mf_inputs.update({'xc':'LDA,VWN',
+    mf_inputs.update({'xc':mf.xc,
                  'mol':mf.mol,
                  'nelec': mf.nelec,
                  'mo_energy': mf.mo_energy,
