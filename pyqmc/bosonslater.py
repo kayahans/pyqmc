@@ -372,6 +372,43 @@ class BosonWF:
             num_used_dets = int(det_map_shape[1])
             print('Det excitations', tot_used_exc)
             self._tot_used_exc = tot_used_exc
+        elif isinstance(emax, tuple):
+            # Use a format where criteria is energy cutoff + singles/doubles etc. 
+            emax_energy, emax_criteria = emax
+            emax_energy = float(emax_energy)
+            emax_criteria = emax_criteria.lower()
+            if emax_criteria not in ['singles', 'doubles']:
+                raise ValueError("Criteria must be singles or doubles")
+
+            up_ground = self._det_occup[0][0]
+            dn_ground = self._det_occup[1][0]
+            up_num_exc = np.array([np.setdiff1d(x, up_ground).shape[0] for x in self._det_occup[0]])
+            dn_num_exc = np.array([np.setdiff1d(x, dn_ground).shape[0] for x in self._det_occup[1]])
+            tot_exc = up_num_exc[self._det_map[0]] + dn_num_exc[self._det_map[1]]
+
+            up_energies = np.sum(mo_energies[0][self._det_occup[0]], axis=1)
+            dn_energies = np.sum(mo_energies[1][self._det_occup[1]], axis=1)
+            total_energies = up_energies[self._det_map[0]] + dn_energies[self._det_map[1]]
+            min_energy = np.min(total_energies)
+            if self.print_mf_dets:
+                info_string = "Eigenvalues: " + ' '.join([str(np.round(x - min_energy, 3)) for x in np.sort(total_energies)])
+                print(info_string)
+            emax_energy = emax_energy + min_energy
+
+            mask = total_energies < emax_energy
+
+            if emax_criteria == 'singles':
+                mask = mask & (tot_exc < 2)
+            elif emax_criteria == 'doubles':
+                mask = mask & (tot_exc < 3)
+
+            tot_used_exc = tot_exc[mask]
+            # det_map = self._det_map[np.row_stack((mask, mask))].reshape(2, -1)
+            # unused_det_map = self._det_map[np.row_stack((~mask, ~mask))].reshape(2, -1)
+            # num_init_dets = len(self._det_map[0])
+            # det_map_shape = np.array(det_map.shape)
+            # num_used_dets = int(det_map_shape[1])            
+            self._tot_used_exc = tot_used_exc
         else:
             num_used_dets = len(self._det_map[0])
             det_map = self._det_map
