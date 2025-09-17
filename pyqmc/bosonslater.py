@@ -1,3 +1,4 @@
+from determinant_tools import binary_to_occ
 import numpy as np
 import pandas as pd
 import pyqmc.gpu as gpu
@@ -111,6 +112,121 @@ def compute_boson_value(updets, dndets, det_coeffs):
     wf_logval = 1./2 * np.nan_to_num(gpu.cp.log(gpu.cp.abs(wf_val)) + 2*(upref + dnref))
     return gpu.asnumpy(wf_sign), gpu.asnumpy(wf_logval)
 
+
+def filter_determinants_from_ci(mc, mo_energies, det_emax):
+    """
+    Filter determinants from a CI object based on energy criteria before processing.
+    
+    Args:
+        mc: pyscf multiconfigurational object (HCI, CAS, etc.)
+        mo_energies: MO energies from mean field calculation
+        det_emax: Energy threshold for filtering (float, int, 'singles', 'doubles', or 'energy,criteria')
+        print_mf_dets: Whether to print determinant information
+        
+    Returns:
+        list: Filtered determinants in format suitable for choose_evaluator_from_pyscf
+    """
+    from pyscf import fci
+    
+    print("="*20 + "Filtering determinants start" + "="*20)
+    print("Filtering determinants, energy units are in Hartree")
+    
+    # Extract all determinants using the same logic as interpret_ci
+    ncore = mc.ncore if hasattr(mc, "ncore") else 0
+    deters_orig = fci.addons.large_ci(mc.ci, mc.ncas, mc.nelecas, tol=-1)
+    alpha_occ = np.array([binary_to_occ(x[1], ncore)[0] for x in deters_orig])
+    beta_occ = np.array([binary_to_occ(x[2], ncore)[0] for x in deters_orig])
+
+    alpha_occ_ground = alpha_occ[0]
+    beta_occ_ground = beta_occ[0]
+    up_energies = np.sum(mo_energies[0][alpha_occ], axis=1)
+    dn_energies = np.sum(mo_energies[1][beta_occ], axis=1)
+    total_energies = up_energies + dn_energies
+    ground_state_energy = total_energies[0]
+
+    # Convert to packed objects to get the data structures we need for filtering
+    # detwt, occup, det_map = pyqmc.determinant_tools.create_packed_objects(deters, ncore, -1)
+    
+    # Apply filtering based on det_emax criteria
+    if isinstance(det_emax, float):
+        assert det_emax > 0, "Emax must be positive for energy based determinant filtering"
+        emax = det_emax + ground_state_energy
+        print("Determinants being filtered with emax + min eigenvalue", emax)
+        mask = total_energies < emax
+        filtered_energies = total_energies[mask]
+        
+    elif isinstance(det_emax, int):
+        assert det_emax > 0 and det_emax <= 100, "Emax must be between 0 and 100 for percentage based determinant filtering"
+        percentile = det_emax
+        print("Determinants being filtered with percentage ", percentile)
+        emax = np.percentile(total_energies, percentile)
+        mask = total_energies < emax
+        filtered_energies = total_energies[mask]
+        
+    elif det_emax == 'singles' or det_emax == 'doubles':
+        up_num_exc = np.array([np.setdiff1d(x, alpha_occ_ground).shape[0] for x in alpha_occ])
+        dn_num_exc = np.array([np.setdiff1d(x, beta_occ_ground).shape[0] for x in beta_occ])
+        tot_exc = up_num_exc + dn_num_exc
+        if det_emax == 'singles':
+            mask = tot_exc < 2
+        elif det_emax == 'doubles':
+            mask = tot_exc < 3
+        print('Det excitations', tot_exc[mask])
+        filtered_energies = total_energies[mask]
+        
+    elif isinstance(det_emax, str) and ',' in det_emax:
+        # Parse string of format "energy,criteria" e.g. "1.5,singles"
+        try:
+            emax_energy, emax_criteria = det_emax.split(',')
+            emax_energy = float(emax_energy)
+            emax_criteria = emax_criteria.lower()
+            if emax_criteria not in ['singles', 'doubles']:
+                raise ValueError("Criteria must be singles or doubles")
+        except Exception as exc:
+            raise ValueError("String format must be 'energy,criteria' where energy is a float and criteria is 'singles' or 'doubles'") from exc
+        
+        up_num_exc = alpha_occ_ground.shape[0] - np.sum(np.isin(alpha_occ, alpha_occ_ground), axis=1)
+        dn_num_exc = beta_occ_ground.shape[0] - np.sum(np.isin(beta_occ, beta_occ_ground), axis=1)
+        tot_exc = up_num_exc + dn_num_exc
+        emax = emax_energy + ground_state_energy
+
+        mask = total_energies < emax
+
+        if emax_criteria == 'singles':
+            mask = mask & (tot_exc < 2)
+        elif emax_criteria == 'doubles':
+            mask = mask & (tot_exc < 3)
+        
+        filtered_energies = total_energies[mask]
+            
+    else:
+        # No filtering - return all determinants
+        mask = np.ones(len(deters_orig), dtype=bool)
+        filtered_energies = total_energies
+        
+    # Print report on filtered determinants
+    print("\nDeterminant Filtering Report:")
+    print("-" * 50)
+    print(f"Total determinants before filtering: {len(deters_orig)}")
+    print(f"Determinants removed: {len(deters_orig) - np.sum(mask)}")
+    print(f"Determinants remaining: {np.sum(mask)}")
+    print('Min eigenvalue', np.round(np.min(filtered_energies), 3))
+    print('Max eigenvalue', np.round(np.max(filtered_energies), 3))
+    
+    # Apply the mask to get filtered determinants
+    mask_indices = np.where(mask)[0].tolist()
+    # Convert back to the format expected by choose_evaluator_from_pyscf
+    # We need to create a list of (weight, occupation) tuples
+    filtered_determinants = []
+    for ind in mask_indices: 
+        weight = deters_orig[ind][0]
+        occ_up = alpha_occ[ind]
+        occ_dn = beta_occ[ind]
+        occupation = [occ_up.tolist(), occ_dn.tolist()]
+        filtered_determinants.append((weight, occupation))
+    
+    return filtered_determinants
+
 class BosonWF:
 
     def __init__(self, mol, mf, 
@@ -120,7 +236,6 @@ class BosonWF:
                  determinants=None, 
                  eval_gto_precision=None, 
                  det_emax = None, 
-                 print_mf_dets = False, 
                  use_symm = True):
         """
         Create Bosonic wavefunction
@@ -136,7 +251,6 @@ class BosonWF:
         """
         self.tol = -1 if tol is None else tol
         self._mol = mol
-        self.print_mf_dets = print_mf_dets
         if hasattr(mc, "nelecas"):
             # In case nelecas overrode the information from the molecule object.
             ncore = mc.ncore
@@ -147,19 +261,28 @@ class BosonWF:
             ncore = (0,0)
             self._nelec = mol.nelec
         self.eval_gto_precision = eval_gto_precision
+        
         try:
             self.num_det = mc.ci.shape[0] * mc.ci.shape[1]
         except:
             self.num_det = 1
-
+        
         self.myparameters = {}
-        (
-            self.myparameters["det_coeff"],
+        
+        # Check if we need to filter determinants before processing
+        if mol.symmetry and det_emax is not None and mc is not None:
+            # Filter determinants first, then pass them to choose_evaluator_from_pyscf
+            filtered_determinants = filter_determinants_from_ci(
+                mc, mf.mo_energy, det_emax
+            )
+            self.num_det = len(filtered_determinants)
+
+        (   _,
             self._det_occup,
             self._det_map,
             self.orbitals,
         ) = pyqmc.orbitals.choose_evaluator_from_pyscf(
-            mol, mf, mc, twist=twist, determinants=determinants, tol=self.tol
+            mol, mf, mc, twist=twist, determinants=filtered_determinants, tol=self.tol
         )
 
         self.det_info_file = 'det_info.hdf5'
@@ -168,15 +291,15 @@ class BosonWF:
         if mol.symmetry:
             self.symm_data = self.symm_utils(mol, mol.groupname)
             self.mo_coeff = mf.mo_coeff
-            self.filter_determinants(det_emax, mf.mo_energy, use_symm = use_symm)
         else:
             self.symm_data = None
+
         if self.num_det > 1:
             self.get_hmf(mf.mo_energy)
         else:
             print('Using only one determinant')
+
         # Use constant weight 
-        # self.myparameters["det_coeff"] = np.ones(self.num_det)/self.num_det
         self.myparameters["det_coeff"] = np.ones(self.num_det)
         self.parameters = JoinParameters([self.myparameters, self.orbitals.parameters])
 
@@ -301,185 +424,185 @@ class BosonWF:
         self.hmf = np.diag(total_energies)
         hf.close()
     
-    def filter_determinants(self, emax, mo_energies, use_symm = False):
-        determinants_filtered = False
-        print("="*20 + "Filtering determinants start" + "="*20)
-        print("Filtering determinants, energy units are in Hartree")
-        if isinstance(emax, float):
-            assert emax > 0, "Emax must be positive for energy based determinant filtering"
-            determinants_filtered = True
-            up_energies = np.sum(mo_energies[0][self._det_occup[0]], axis=1)
-            dn_energies = np.sum(mo_energies[1][self._det_occup[1]], axis=1)
-            total_energies = up_energies[self._det_map[0]] + dn_energies[self._det_map[1]]
-            min_energy = np.min(total_energies)
-            if self.print_mf_dets:
-                info_string = "Eigenvalues: " + ' '.join([str(np.round(x - min_energy, 3)) for x in np.sort(total_energies)])
-                print(info_string)
-            emax = emax + min_energy
-            print("Determinants being filtered with emax + min eigenvalue", emax)
-            mask = total_energies < emax
-            temp_det_map = self._det_map[np.row_stack((mask, mask))]
-            num_init_dets = len(self._det_map[0])
-            unused_temp_det_map = self._det_map[np.row_stack((~mask, ~mask))]
-            det_map_shape = np.array(temp_det_map.shape)
-            num_used_dets = int(det_map_shape[0]/2)
+    # def filter_determinants(self, emax, mo_energies, use_symm = False):
+    #     determinants_filtered = False
+    #     print("="*20 + "Filtering determinants start" + "="*20)
+    #     print("Filtering determinants, energy units are in Hartree")
+    #     if isinstance(emax, float):
+    #         assert emax > 0, "Emax must be positive for energy based determinant filtering"
+    #         determinants_filtered = True
+    #         up_energies = np.sum(mo_energies[0][self._det_occup[0]], axis=1)
+    #         dn_energies = np.sum(mo_energies[1][self._det_occup[1]], axis=1)
+    #         total_energies = up_energies[self._det_map[0]] + dn_energies[self._det_map[1]]
+    #         min_energy = np.min(total_energies)
+    #         if self.print_mf_dets:
+    #             info_string = "Eigenvalues: " + ' '.join([str(np.round(x - min_energy, 3)) for x in np.sort(total_energies)])
+    #             print(info_string)
+    #         emax = emax + min_energy
+    #         print("Determinants being filtered with emax + min eigenvalue", emax)
+    #         mask = total_energies < emax
+    #         temp_det_map = self._det_map[np.row_stack((mask, mask))]
+    #         num_init_dets = len(self._det_map[0])
+    #         unused_temp_det_map = self._det_map[np.row_stack((~mask, ~mask))]
+    #         det_map_shape = np.array(temp_det_map.shape)
+    #         num_used_dets = int(det_map_shape[0]/2)
 
-            det_map = temp_det_map.reshape(2, num_used_dets)
-            unused_det_map = unused_temp_det_map.reshape(2, num_init_dets-num_used_dets)
-            print('Min eigenvalue', np.round(np.min(total_energies), 3))
-            print('Max eigenvalue', np.round(np.max(total_energies), 3))
-        elif isinstance(emax, int):
-            assert emax > 0 and emax <= 100, "Emax must be between 0 and 100 for percentage based determinant filtering"
-            determinants_filtered = True
-            percentile = emax
-            print("Determinants being filtered with percentage ", percentile)
-            up_energies = np.sum(mo_energies[0][self._det_occup[0]], axis=1)
-            dn_energies = np.sum(mo_energies[1][self._det_occup[1]], axis=1)
-            total_energies = up_energies[self._det_map[0]] + dn_energies[self._det_map[1]]
-            emax = np.percentile(total_energies, percentile)
-            if self.print_mf_dets:
-                energy_range = np.max(total_energies) - np.min(total_energies)
-                info_string = "Eigenvalues percentiles: " + ' '.join([str(np.round((x - np.min(total_energies))/energy_range, 3)) for x in np.sort(total_energies)])
-                print(info_string)
+    #         det_map = temp_det_map.reshape(2, num_used_dets)
+    #         unused_det_map = unused_temp_det_map.reshape(2, num_init_dets-num_used_dets)
+    #         print('Min eigenvalue', np.round(np.min(total_energies), 3))
+    #         print('Max eigenvalue', np.round(np.max(total_energies), 3))
+    #     elif isinstance(emax, int):
+    #         assert emax > 0 and emax <= 100, "Emax must be between 0 and 100 for percentage based determinant filtering"
+    #         determinants_filtered = True
+    #         percentile = emax
+    #         print("Determinants being filtered with percentage ", percentile)
+    #         up_energies = np.sum(mo_energies[0][self._det_occup[0]], axis=1)
+    #         dn_energies = np.sum(mo_energies[1][self._det_occup[1]], axis=1)
+    #         total_energies = up_energies[self._det_map[0]] + dn_energies[self._det_map[1]]
+    #         emax = np.percentile(total_energies, percentile)
+    #         if self.print_mf_dets:
+    #             energy_range = np.max(total_energies) - np.min(total_energies)
+    #             info_string = "Eigenvalues percentiles: " + ' '.join([str(np.round((x - np.min(total_energies))/energy_range, 3)) for x in np.sort(total_energies)])
+    #             print(info_string)
 
-            mask = total_energies < emax
-            temp_det_map = self._det_map[np.row_stack((mask, mask))]
-            num_init_dets = len(self._det_map[0])
-            unused_temp_det_map = self._det_map[np.row_stack((~mask, ~mask))]
-            det_map_shape = np.array(temp_det_map.shape)
-            num_used_dets = int(det_map_shape[0]/2)
+    #         mask = total_energies < emax
+    #         temp_det_map = self._det_map[np.row_stack((mask, mask))]
+    #         num_init_dets = len(self._det_map[0])
+    #         unused_temp_det_map = self._det_map[np.row_stack((~mask, ~mask))]
+    #         det_map_shape = np.array(temp_det_map.shape)
+    #         num_used_dets = int(det_map_shape[0]/2)
 
-            det_map = temp_det_map.reshape(2, num_used_dets)
-            unused_det_map = unused_temp_det_map.reshape(2, num_init_dets-num_used_dets)
-            print('Min eigenvalue', np.round(np.min(total_energies), 3))
-            print('Max eigenvalue', np.round(np.max(total_energies), 3))
-        elif emax == 'singles' or emax == 'doubles':
-            determinants_filtered = True
-            up_ground = self._det_occup[0][0]
-            dn_ground = self._det_occup[1][0]
-            up_num_exc = np.array([np.setdiff1d(x, up_ground).shape[0] for x in self._det_occup[0]])
-            dn_num_exc = np.array([np.setdiff1d(x, dn_ground).shape[0] for x in self._det_occup[1]])
-            tot_exc = up_num_exc[self._det_map[0]] + dn_num_exc[self._det_map[1]]
-            if emax == 'singles':
-                mask = tot_exc < 2
-            elif emax == 'doubles':
-                mask = tot_exc < 3
-            tot_used_exc = tot_exc[mask]
-            det_map = self._det_map[np.row_stack((mask, mask))].reshape(2, -1)
-            unused_det_map = self._det_map[np.row_stack((~mask, ~mask))].reshape(2, -1)
-            num_init_dets = len(self._det_map[0])
-            det_map_shape = np.array(det_map.shape)
-            num_used_dets = int(det_map_shape[1])
-            print('Det excitations', tot_used_exc)
-            self._tot_used_exc = tot_used_exc
-        elif isinstance(emax, str) and ',' in emax:
-            # Parse string of format "energy,criteria" e.g. "1.5,singles"
-            try:
-                emax_energy, emax_criteria = emax.split(',')
-                emax_energy = float(emax_energy)
-                emax_criteria = emax_criteria.lower()
-                if emax_criteria not in ['singles', 'doubles']:
-                    raise ValueError("Criteria must be singles or doubles")
-            except:
-                raise ValueError("String format must be 'energy,criteria' where energy is a float and criteria is 'singles' or 'doubles'")
-            up_ground = self._det_occup[0][0]
-            dn_ground = self._det_occup[1][0]
-            up_num_exc = np.array([np.setdiff1d(x, up_ground).shape[0] for x in self._det_occup[0]])
-            dn_num_exc = np.array([np.setdiff1d(x, dn_ground).shape[0] for x in self._det_occup[1]])
-            tot_exc = up_num_exc[self._det_map[0]] + dn_num_exc[self._det_map[1]]
+    #         det_map = temp_det_map.reshape(2, num_used_dets)
+    #         unused_det_map = unused_temp_det_map.reshape(2, num_init_dets-num_used_dets)
+    #         print('Min eigenvalue', np.round(np.min(total_energies), 3))
+    #         print('Max eigenvalue', np.round(np.max(total_energies), 3))
+    #     elif emax == 'singles' or emax == 'doubles':
+    #         determinants_filtered = True
+    #         up_ground = self._det_occup[0][0]
+    #         dn_ground = self._det_occup[1][0]
+    #         up_num_exc = np.array([np.setdiff1d(x, up_ground).shape[0] for x in self._det_occup[0]])
+    #         dn_num_exc = np.array([np.setdiff1d(x, dn_ground).shape[0] for x in self._det_occup[1]])
+    #         tot_exc = up_num_exc[self._det_map[0]] + dn_num_exc[self._det_map[1]]
+    #         if emax == 'singles':
+    #             mask = tot_exc < 2
+    #         elif emax == 'doubles':
+    #             mask = tot_exc < 3
+    #         tot_used_exc = tot_exc[mask]
+    #         det_map = self._det_map[np.row_stack((mask, mask))].reshape(2, -1)
+    #         unused_det_map = self._det_map[np.row_stack((~mask, ~mask))].reshape(2, -1)
+    #         num_init_dets = len(self._det_map[0])
+    #         det_map_shape = np.array(det_map.shape)
+    #         num_used_dets = int(det_map_shape[1])
+    #         print('Det excitations', tot_used_exc)
+    #         self._tot_used_exc = tot_used_exc
+    #     elif isinstance(emax, str) and ',' in emax:
+    #         # Parse string of format "energy,criteria" e.g. "1.5,singles"
+    #         try:
+    #             emax_energy, emax_criteria = emax.split(',')
+    #             emax_energy = float(emax_energy)
+    #             emax_criteria = emax_criteria.lower()
+    #             if emax_criteria not in ['singles', 'doubles']:
+    #                 raise ValueError("Criteria must be singles or doubles")
+    #         except:
+    #             raise ValueError("String format must be 'energy,criteria' where energy is a float and criteria is 'singles' or 'doubles'")
+    #         up_ground = self._det_occup[0][0]
+    #         dn_ground = self._det_occup[1][0]
+    #         up_num_exc = np.array([np.setdiff1d(x, up_ground).shape[0] for x in self._det_occup[0]])
+    #         dn_num_exc = np.array([np.setdiff1d(x, dn_ground).shape[0] for x in self._det_occup[1]])
+    #         tot_exc = up_num_exc[self._det_map[0]] + dn_num_exc[self._det_map[1]]
 
-            up_energies = np.sum(mo_energies[0][self._det_occup[0]], axis=1)
-            dn_energies = np.sum(mo_energies[1][self._det_occup[1]], axis=1)
-            total_energies = up_energies[self._det_map[0]] + dn_energies[self._det_map[1]]
-            min_energy = np.min(total_energies)
-            if self.print_mf_dets:
-                info_string = "Eigenvalues: " + ' '.join([str(np.round(x - min_energy, 3)) for x in np.sort(total_energies)])
-                print(info_string)
-            emax_energy = emax_energy + min_energy
+    #         up_energies = np.sum(mo_energies[0][self._det_occup[0]], axis=1)
+    #         dn_energies = np.sum(mo_energies[1][self._det_occup[1]], axis=1)
+    #         total_energies = up_energies[self._det_map[0]] + dn_energies[self._det_map[1]]
+    #         min_energy = np.min(total_energies)
+    #         if self.print_mf_dets:
+    #             info_string = "Eigenvalues: " + ' '.join([str(np.round(x - min_energy, 3)) for x in np.sort(total_energies)])
+    #             print(info_string)
+    #         emax_energy = emax_energy + min_energy
 
-            mask = total_energies < emax_energy
+    #         mask = total_energies < emax_energy
 
-            if emax_criteria == 'singles':
-                mask = mask & (tot_exc < 2)
-            elif emax_criteria == 'doubles':
-                mask = mask & (tot_exc < 3)
+    #         if emax_criteria == 'singles':
+    #             mask = mask & (tot_exc < 2)
+    #         elif emax_criteria == 'doubles':
+    #             mask = mask & (tot_exc < 3)
 
-            tot_used_exc = tot_exc[mask]
-            # det_map = self._det_map[np.row_stack((mask, mask))].reshape(2, -1)
-            # unused_det_map = self._det_map[np.row_stack((~mask, ~mask))].reshape(2, -1)
-            # num_init_dets = len(self._det_map[0])
-            # det_map_shape = np.array(det_map.shape)
-            # num_used_dets = int(det_map_shape[1])            
-            self._tot_used_exc = tot_used_exc
-        else:
-            num_used_dets = len(self._det_map[0])
-            det_map = self._det_map
-            print('Used # of determinants', num_used_dets)
+    #         tot_used_exc = tot_exc[mask]
+    #         # det_map = self._det_map[np.row_stack((mask, mask))].reshape(2, -1)
+    #         # unused_det_map = self._det_map[np.row_stack((~mask, ~mask))].reshape(2, -1)
+    #         # num_init_dets = len(self._det_map[0])
+    #         # det_map_shape = np.array(det_map.shape)
+    #         # num_used_dets = int(det_map_shape[1])            
+    #         self._tot_used_exc = tot_used_exc
+    #     else:
+    #         num_used_dets = len(self._det_map[0])
+    #         det_map = self._det_map
+    #         print('Used # of determinants', num_used_dets)
 
-        if use_symm:
-            symm_data = self.symm_data
-            prod_matrix = symm_data["matrix"]
-            det_map_up = det_map[0]
-            det_map_dn = det_map[1]
-            det_mo_occ_up = np.array(self._det_occup[0])[det_map_up]
-            det_mo_occ_dn = np.array(self._det_occup[1])[det_map_dn]
-            det_prod_matrix_up = lil_matrix((num_used_dets, num_used_dets), dtype=bool)
-            det_prod_matrix_dn = lil_matrix((num_used_dets, num_used_dets), dtype=bool)
-            up_orbsym = pyscf.symm.label_orb_symm(self._mol, self._mol.irrep_id, self._mol.symm_orb, self.mo_coeff[0])
-            down_orbsym = pyscf.symm.label_orb_symm(self._mol, self._mol.irrep_id, self._mol.symm_orb, self.mo_coeff[1])
-            for i in range(num_used_dets):
-                for j in range(num_used_dets):
-                    # Using det_mo_occ_up[i], calculate the product of the irreps of the orbitals recursively
-                    # using the direct product table    
-                    # Get the irrep indices for the occupied orbitals in determinant i
-                    up_irreps_i = [up_orbsym[orb] for orb in det_mo_occ_up[i]]
-                    dn_irreps_i = [down_orbsym[orb] for orb in det_mo_occ_dn[i]]
+    #     if use_symm:
+    #         symm_data = self.symm_data
+    #         prod_matrix = symm_data["matrix"]
+    #         det_map_up = det_map[0]
+    #         det_map_dn = det_map[1]
+    #         det_mo_occ_up = np.array(self._det_occup[0])[det_map_up]
+    #         det_mo_occ_dn = np.array(self._det_occup[1])[det_map_dn]
+    #         det_prod_matrix_up = lil_matrix((num_used_dets, num_used_dets), dtype=bool)
+    #         det_prod_matrix_dn = lil_matrix((num_used_dets, num_used_dets), dtype=bool)
+    #         up_orbsym = pyscf.symm.label_orb_symm(self._mol, self._mol.irrep_id, self._mol.symm_orb, self.mo_coeff[0])
+    #         down_orbsym = pyscf.symm.label_orb_symm(self._mol, self._mol.irrep_id, self._mol.symm_orb, self.mo_coeff[1])
+    #         for i in range(num_used_dets):
+    #             for j in range(num_used_dets):
+    #                 # Using det_mo_occ_up[i], calculate the product of the irreps of the orbitals recursively
+    #                 # using the direct product table    
+    #                 # Get the irrep indices for the occupied orbitals in determinant i
+    #                 up_irreps_i = [up_orbsym[orb] for orb in det_mo_occ_up[i]]
+    #                 dn_irreps_i = [down_orbsym[orb] for orb in det_mo_occ_dn[i]]
                     
-                    # Get the irrep indices for the occupied orbitals in determinant j
-                    up_irreps_j = [up_orbsym[orb] for orb in det_mo_occ_up[j]]
-                    dn_irreps_j = [down_orbsym[orb] for orb in det_mo_occ_dn[j]]
+    #                 # Get the irrep indices for the occupied orbitals in determinant j
+    #                 up_irreps_j = [up_orbsym[orb] for orb in det_mo_occ_up[j]]
+    #                 dn_irreps_j = [down_orbsym[orb] for orb in det_mo_occ_dn[j]]
                     
-                    # Calculate the product of irreps for up determinants
-                    up_prod_i = 0  # Start with identity irrep
-                    for irrep in up_irreps_i:
-                        up_prod_i = prod_matrix[up_prod_i, irrep]
+    #                 # Calculate the product of irreps for up determinants
+    #                 up_prod_i = 0  # Start with identity irrep
+    #                 for irrep in up_irreps_i:
+    #                     up_prod_i = prod_matrix[up_prod_i, irrep]
                     
-                    up_prod_j = 0  # Start with identity irrep
-                    for irrep in up_irreps_j:
-                        up_prod_j = prod_matrix[up_prod_j, irrep]
+    #                 up_prod_j = 0  # Start with identity irrep
+    #                 for irrep in up_irreps_j:
+    #                     up_prod_j = prod_matrix[up_prod_j, irrep]
                     
-                    det_prod_matrix_up[i, j] = up_prod_i == up_prod_j
+    #                 det_prod_matrix_up[i, j] = up_prod_i == up_prod_j
                     
 
-                    # Calculate the product of irreps for down determinants
-                    dn_prod_i = 0  # Start with identity irrep
-                    for irrep in dn_irreps_i:
-                        dn_prod_i = prod_matrix[dn_prod_i, irrep]
-                    dn_prod_j = 0  # Start with identity irrep
-                    for irrep in dn_irreps_j:
-                        dn_prod_j = prod_matrix[dn_prod_j, irrep]
-                    det_prod_matrix_dn[i, j] = dn_prod_i == dn_prod_j
+    #                 # Calculate the product of irreps for down determinants
+    #                 dn_prod_i = 0  # Start with identity irrep
+    #                 for irrep in dn_irreps_i:
+    #                     dn_prod_i = prod_matrix[dn_prod_i, irrep]
+    #                 dn_prod_j = 0  # Start with identity irrep
+    #                 for irrep in dn_irreps_j:
+    #                     dn_prod_j = prod_matrix[dn_prod_j, irrep]
+    #                 det_prod_matrix_dn[i, j] = dn_prod_i == dn_prod_j
             
-            self._det_prod_filter = det_prod_matrix_up & det_prod_matrix_dn
+    #         self._det_prod_filter = det_prod_matrix_up & det_prod_matrix_dn
 
-        if determinants_filtered:
-            self._det_map_orig = copy.deepcopy(self._det_map)
-            self._det_map_mask = mask
-            self._det_map = det_map
-            self.num_det = num_used_dets
-            print('Initial # of determinants', num_init_dets)
-            print('Filtered # of determinants', num_init_dets-num_used_dets)
-            print('Used # of determinants', num_used_dets)
-            if num_used_dets == 0:
-                raise ValueError("No determinants left after filtering")
-            hf = h5py.File(self.det_info_file, 'w')
-            hf.create_dataset('det_map_orig', data=self._det_map_orig)
-            hf.create_dataset('det_map_mask', data=self._det_map_mask)
-            hf.create_dataset('det_map',      data=self._det_map)
-            if use_symm:
-                hf.create_dataset('det_symm', data=self._det_prod_filter)
-            hf.close()
-        print("="*20 + "Filtering determinants end" + "="*20)
+    #     if determinants_filtered:
+    #         self._det_map_orig = copy.deepcopy(self._det_map)
+    #         self._det_map_mask = mask
+    #         self._det_map = det_map
+    #         self.num_det = num_used_dets
+    #         print('Initial # of determinants', num_init_dets)
+    #         print('Filtered # of determinants', num_init_dets-num_used_dets)
+    #         print('Used # of determinants', num_used_dets)
+    #         if num_used_dets == 0:
+    #             raise ValueError("No determinants left after filtering")
+    #         hf = h5py.File(self.det_info_file, 'w')
+    #         hf.create_dataset('det_map_orig', data=self._det_map_orig)
+    #         hf.create_dataset('det_map_mask', data=self._det_map_mask)
+    #         hf.create_dataset('det_map',      data=self._det_map)
+    #         if use_symm:
+    #             hf.create_dataset('det_symm', data=self._det_prod_filter)
+    #         hf.close()
+    #     print("="*20 + "Filtering determinants end" + "="*20)
 
     @timer_func
     def recompute(self, configs):

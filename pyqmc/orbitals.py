@@ -83,7 +83,7 @@ class MoleculeOrbitalEvaluator:
 
         """
         obj = mc if hasattr(mc, "mo_coeff") else mf
-        if mc is not None:
+        if mc is not None and determinants is None:
             detcoeff, occup, det_map = pyqmc.determinant_tools.interpret_ci(mc, tol)
         elif determinants is not None:
             detcoeff, occup, det_map = pyqmc.determinant_tools.create_packed_objects(
