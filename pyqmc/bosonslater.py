@@ -8,6 +8,8 @@ import copy
 from pyqmc.wftools import generate_slater
 import h5py
 import time
+from scipy.sparse import lil_matrix
+
 report_timer = False
 def timer_func(func):
     def wrapper(*args, **kwargs):
@@ -173,7 +175,6 @@ class BosonWF:
             self.get_hmf(mf.mo_energy)
         else:
             print('Using only one determinant')
-
         # Use constant weight 
         # self.myparameters["det_coeff"] = np.ones(self.num_det)/self.num_det
         self.myparameters["det_coeff"] = np.ones(self.num_det)
@@ -301,7 +302,6 @@ class BosonWF:
         hf.close()
     
     def filter_determinants(self, emax, mo_energies, use_symm = False):
-        
         determinants_filtered = False
         print("="*20 + "Filtering determinants start" + "="*20)
         print("Filtering determinants, energy units are in Hartree")
@@ -372,14 +372,16 @@ class BosonWF:
             num_used_dets = int(det_map_shape[1])
             print('Det excitations', tot_used_exc)
             self._tot_used_exc = tot_used_exc
-        elif isinstance(emax, tuple):
-            # Use a format where criteria is energy cutoff + singles/doubles etc. 
-            emax_energy, emax_criteria = emax
-            emax_energy = float(emax_energy)
-            emax_criteria = emax_criteria.lower()
-            if emax_criteria not in ['singles', 'doubles']:
-                raise ValueError("Criteria must be singles or doubles")
-
+        elif isinstance(emax, str) and ',' in emax:
+            # Parse string of format "energy,criteria" e.g. "1.5,singles"
+            try:
+                emax_energy, emax_criteria = emax.split(',')
+                emax_energy = float(emax_energy)
+                emax_criteria = emax_criteria.lower()
+                if emax_criteria not in ['singles', 'doubles']:
+                    raise ValueError("Criteria must be singles or doubles")
+            except:
+                raise ValueError("String format must be 'energy,criteria' where energy is a float and criteria is 'singles' or 'doubles'")
             up_ground = self._det_occup[0][0]
             dn_ground = self._det_occup[1][0]
             up_num_exc = np.array([np.setdiff1d(x, up_ground).shape[0] for x in self._det_occup[0]])
@@ -421,8 +423,8 @@ class BosonWF:
             det_map_dn = det_map[1]
             det_mo_occ_up = np.array(self._det_occup[0])[det_map_up]
             det_mo_occ_dn = np.array(self._det_occup[1])[det_map_dn]
-            det_prod_matrix_up = np.zeros((num_used_dets, num_used_dets), dtype=bool)
-            det_prod_matrix_dn = np.zeros((num_used_dets, num_used_dets), dtype=bool)
+            det_prod_matrix_up = lil_matrix((num_used_dets, num_used_dets), dtype=bool)
+            det_prod_matrix_dn = lil_matrix((num_used_dets, num_used_dets), dtype=bool)
             up_orbsym = pyscf.symm.label_orb_symm(self._mol, self._mol.irrep_id, self._mol.symm_orb, self.mo_coeff[0])
             down_orbsym = pyscf.symm.label_orb_symm(self._mol, self._mol.irrep_id, self._mol.symm_orb, self.mo_coeff[1])
             for i in range(num_used_dets):
