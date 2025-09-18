@@ -209,6 +209,9 @@ def stable_fit(xfit, yfit, tolerance=1e-2, steprange=0.2, nblocks=1, min_step=0.
     except:
         est_min = xfit[np.argmin(yfit)]
     
+    if est_min < 0.0:
+        est_min = 0.0
+        
     new_steprange = steprange
     new_nblocks = nblocks
     # if np.linalg.norm(pgrad_prev) == 0.0:
