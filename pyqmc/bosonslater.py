@@ -1,4 +1,4 @@
-from determinant_tools import binary_to_occ
+from pyqmc.determinant_tools import binary_to_occ
 import numpy as np
 import pandas as pd
 import pyqmc.gpu as gpu
