@@ -82,6 +82,8 @@ def propose_drift_diffusion(wf, configs, tstep, e):
     # # Acceptance -- fixed-node: reject if wf changes sign
     # ratio = np.abs(wfratio) ** 2 * t_prob #(5) 
     
+    if np.any(ks_ratio < 0):
+        print("WARNING: Negative wf_ratio detected")
     ratio = np.abs(ks_ratio) * t_prob
     
     # if wf.dtype == float:             # Kayahan modified, no fixed node error
