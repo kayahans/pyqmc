@@ -276,13 +276,15 @@ class BosonWF:
                 mc, mf.mo_energy, det_emax
             )
             self.num_det = len(filtered_determinants)
+        else:
+            filtered_determinants = None
 
         (   _,
             self._det_occup,
             self._det_map,
             self.orbitals,
         ) = pyqmc.orbitals.choose_evaluator_from_pyscf(
-            mol, mf, mc, twist=twist, determinants=filtered_determinants, tol=self.tol
+            mol, mf, mc, twist=twist, determinants=filtered_determinants, tol=self.tol, ncore=ncore
         )
 
         self.det_info_file = 'det_info.hdf5'
@@ -298,7 +300,8 @@ class BosonWF:
             self.get_hmf(mf.mo_energy)
         else:
             print('Using only one determinant')
-
+        
+        
         # Use constant weight 
         self.myparameters["det_coeff"] = np.ones(self.num_det)
         self.parameters = JoinParameters([self.myparameters, self.orbitals.parameters])

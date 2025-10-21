@@ -251,7 +251,218 @@ def ABDMC(
         dmc_kws['vmc_options'] = vmc_options
     bosondmc.rundmc(wf, configs, accumulators=acc, **dmc_kws)
 
-def initial_guess(mol, nconfig, r=None, seed = None):
+def create_pyscf_grid(mol, level=4):
+    """
+    Create PySCF DFT grid for molecular system.
+    
+    PySCF grids are atomic-centered and optimized for molecular calculations:
+    - Higher density near nuclei where orbitals vary rapidly
+    - Sparser in regions far from atoms
+    - Comes with integration weights for proper normalization
+    
+    Args:
+        mol: PySCF molecule object
+        level: Grid level (1-9), higher = more accurate but slower
+               3 = good default, 5 = high accuracy, 1 = coarse
+        
+    Returns:
+        coords: Grid coordinates (n_points, 3)
+        weights: Integration weights (n_points,)
+    """
+    print(f"\nCreating PySCF DFT grid...")
+    print(f"  Grid level: {level}")
+    from pyscf import dft
+    grids = dft.gen_grid.Grids(mol)
+    grids.level = level
+    grids.build()
+    
+    coords = grids.coords
+    weights = grids.weights
+    
+    print(f"  Total grid points: {len(coords)}")
+    print(f"  Grid point range (Bohr):")
+    print(f"    X: [{np.min(coords[:,0]):.2f}, {np.max(coords[:,0]):.2f}]")
+    print(f"    Y: [{np.min(coords[:,1]):.2f}, {np.max(coords[:,1]):.2f}]")
+    print(f"    Z: [{np.min(coords[:,2]):.2f}, {np.max(coords[:,2]):.2f}]")
+    print(f"  Total weight (should ≈ volume): {np.sum(weights):.2f}")
+    
+    return coords, weights
+
+def calculate_density_on_grid(mf, coords, weights, frozen=1, ncas=6, nelecas=(4,1), 
+                              ecut=None):
+    """
+    Calculate multi-determinant probability density on PySCF grid points.
+    
+    Args:
+        mf: Mean field object from PySCF
+        coords: Grid coordinates (n_points, 3)
+        weights: Integration weights (n_points,)
+        frozen: Number of frozen (core) orbitals
+        ncas: Number of active space orbitals
+        nelecas: Number of active electrons (n_alpha, n_beta)
+        ecut: Energy cutoff for determinant selection (if None, use all)
+        
+    Returns:
+        density: 1D array of probability density |Ψ|² at grid points
+    """
+    from itertools import combinations
+    print(f"\nCalculating density on grid...")
+    print(f"  Frozen orbitals: {frozen}")
+    print(f"  Active space: NCAS={ncas}, NELECAS={nelecas}")
+    if ecut is not None:
+        print(f"  Energy cutoff: {ecut} Hartree")
+    
+    # Evaluate atomic orbitals at all grid points
+    ao_value = mf.mol.eval_gto('GTOval_sph', coords)  # Shape: (n_points, n_ao)
+    
+    # Get molecular orbital coefficients
+    mo_coeff = mf.mo_coeff  # Shape: (2, n_ao, n_mo) for UHF/UKS
+    
+    # Calculate molecular orbital values at grid points
+    mo_values = []
+    for spin in range(2):
+        mo_val = np.dot(ao_value, mo_coeff[spin])  # Shape: (n_points, n_mo)
+        mo_values.append(mo_val)
+    mo_values = np.array(mo_values)  # Shape: (2, n_points, n_mo)
+    
+    # Generate determinants
+    up_orbs = dn_orbs = np.arange(ncas) + frozen
+    up_det = list(combinations(up_orbs, nelecas[0]))
+    dn_det = list(combinations(dn_orbs, nelecas[1]))
+    
+    # Include frozen orbitals in determinants
+    frozen_array = list(range(frozen))
+    up_det = [np.array(frozen_array + list(x)) for x in up_det]
+    dn_det = [np.array(frozen_array + list(x)) for x in dn_det]
+    
+    # Apply energy cutoff if specified
+    if ecut is not None:
+        mo_energy = mf.mo_energy
+        det_mf_energies = np.zeros((len(up_det), len(dn_det)))
+        for i in range(len(up_det)):
+            for j in range(len(dn_det)):
+                det_mf_energies[i, j] = (np.sum(mo_energy[0][up_det[i]]) + 
+                                        np.sum(mo_energy[1][dn_det[j]]))
+        
+        det_mf_energies -= np.min(det_mf_energies)
+        mask = np.argwhere(det_mf_energies < ecut)
+        
+        # Filter determinants
+        up_det_filtered = [up_det[ij[0]] for ij in mask]
+        dn_det_filtered = [dn_det[ij[1]] for ij in mask]
+    else:
+        # Use all determinants
+        up_det_filtered = []
+        dn_det_filtered = []
+        for up in up_det:
+            for dn in dn_det:
+                up_det_filtered.append(up)
+                dn_det_filtered.append(dn)
+    
+    n_det = len(up_det_filtered)
+    print(f"  Number of determinants: {n_det}")
+    
+    # Calculate density as sum over determinants
+    density = np.zeros(len(coords))
+    
+    for i, (up_orbs, dn_orbs) in enumerate(zip(up_det_filtered, dn_det_filtered)):
+        # Ensure orbitals are numpy arrays
+        up_orbs = np.asarray(up_orbs)
+        dn_orbs = np.asarray(dn_orbs)
+        
+        # Spin-up contribution
+        psi_up = mo_values[0][:, up_orbs]  # Shape: (n_points, n_elec_up)
+        density_up = np.sum(psi_up**2, axis=1)  # Sum over orbitals -> (n_points,)
+        
+        # Spin-down contribution
+        psi_dn = mo_values[1][:, dn_orbs]  # Shape: (n_points, n_elec_dn)
+        density_dn = np.sum(psi_dn**2, axis=1)  # Sum over orbitals -> (n_points,)
+        
+        # Total density for this determinant
+        density += (density_up + density_dn)
+    
+    # Average over determinants
+    density /= n_det 
+    
+    print(f"  Density range: [{np.min(density):.6e}, {np.max(density):.6e}]")
+    
+    # Calculate integrated density using weights
+    integrated_density = np.sum(density * weights)
+    print(f"  Integrated density (∫ρ dV): {integrated_density:.6f}")
+    print(f"    (Should be close to total # electrons for proper normalization)")
+    
+    return density
+
+def generate_walker_configs(density, coords, weights, n_walkers, n_electrons, seed=None):
+    """
+    Generate walker configurations by sampling from the density on PySCF grid.
+    
+    Each walker contains n_electrons, and the distribution of electrons 
+    across all walkers matches the probability density.
+    
+    Args:
+        density: 1D array of probability density at grid points
+        coords: Grid coordinates (n_points, 3)
+        weights: Integration weights (n_points,)
+        n_walkers: Number of walkers to generate
+        n_electrons: Number of electrons per walker
+        seed: Random seed for reproducibility
+        
+    Returns:
+        walker_configs: Array of shape (n_walkers, n_electrons, 3)
+    """
+    if seed is not None:
+        np.random.seed(seed)
+    
+    print(f"\nGenerating walker configurations...")
+    print(f"  Number of walkers: {n_walkers}")
+    print(f"  Electrons per walker: {n_electrons}")
+    
+    # Normalize density to get probability distribution
+    # Weight the density by the integration weights
+    weighted_density = density * weights
+    weighted_density = np.maximum(weighted_density, 0)  # Ensure non-negative
+    total_density = np.sum(weighted_density)
+    
+    if total_density <= 0:
+        raise ValueError("Total weighted density is zero or negative!")
+    
+    prob_dist = weighted_density / total_density
+    
+    # Build CDF for sampling
+    cdf = np.cumsum(prob_dist)
+    
+    # Total number of electron positions to sample
+    total_samples = n_walkers * n_electrons
+    
+    # Sample indices from CDF
+    u = np.random.rand(total_samples)
+    indices = np.searchsorted(cdf, u)
+    
+    # Get coordinates for sampled indices
+    sampled_coords = coords[indices]
+    
+    # Add small random jitter based on local grid spacing
+    # Estimate local grid spacing from nearest neighbors
+    # For simplicity, use a small fixed jitter (0.1 Bohr)
+    jitter_scale = 0.1  # Bohr
+    jitter = jitter_scale * (2 * np.random.rand(total_samples, 3) - 1)
+    sampled_coords += jitter
+    
+    # Reshape into walker configurations
+    walker_configs = sampled_coords.reshape(n_walkers, n_electrons, 3)
+    
+    print(f"  Walker configs shape: {walker_configs.shape}")
+    print(f"  Position range (Bohr):")
+    print(f"    X: [{np.min(walker_configs[:,:,0]):.2f}, {np.max(walker_configs[:,:,0]):.2f}]")
+    print(f"    Y: [{np.min(walker_configs[:,:,1]):.2f}, {np.max(walker_configs[:,:,1]):.2f}]")
+    print(f"    Z: [{np.min(walker_configs[:,:,2]):.2f}, {np.max(walker_configs[:,:,2]):.2f}]")
+    
+    return walker_configs
+
+
+
+def initial_guess(mol, nconfig, r=None, seed = None, use_dft_density=False, mf = None):
     """Generate an initial guess by distributing electrons near atoms
     proportional to their charge.
 
@@ -266,40 +477,46 @@ def initial_guess(mol, nconfig, r=None, seed = None):
     :rtype: ndarray
 
     """
-    if r == None:
-        r = 15.0
-    print("Initializing guess with r = ", r)
     from pyqmc.coord import OpenConfigs, PeriodicConfigs
-    if seed is not None:
-        rng = np.random.RandomState(seed)
+    if use_dft_density:
+        coords, weights = create_pyscf_grid(mol, level=9)
+        density = calculate_density_on_grid(mf, coords, weights, frozen=1, ncas=6, nelecas=(4,1), ecut=None)
+        epos = generate_walker_configs(density, coords, weights, nconfig, np.sum(mol.nelec), seed=seed)
     else:
-        rng = np.random
-    epos = np.zeros((nconfig, np.sum(mol.nelec), 3))
-    wts = mol.atom_charges()
-    wts = wts / np.sum(wts)
+        if r == None:
+            r = 15.0
+        print("Initializing guess with r = ", r)
+        
+        if seed is not None:
+            rng = np.random.RandomState(seed)
+        else:
+            rng = np.random
+        epos = np.zeros((nconfig, np.sum(mol.nelec), 3))
+        wts = mol.atom_charges()
+        wts = wts / np.sum(wts)
 
-    for s in [0, 1]:
-        neach = np.array(
-            np.floor(mol.nelec[s] * wts), dtype=int
-        )  # integer number of elec on each atom
-        nleft = (
-            mol.nelec[s] * wts - neach
-        )  # fraction of electron unassigned on each atom
-        nassigned = np.sum(neach)  # number of electrons assigned
-        totleft = int(mol.nelec[s] - nassigned)  # number of electrons not yet assigned
-        ind0 = s * mol.nelec[0]
-        epos[:, ind0 : ind0 + nassigned, :] = np.repeat(
-            mol.atom_coords(), neach, axis=0
-        )  # assign core electrons
-        if totleft > 0:
-            bins = np.cumsum(nleft) / totleft
-            inds = np.argpartition(
-                rng.random((nconfig, len(wts))), totleft, axis=1
-            )[:, :totleft]
-            epos[:, ind0 + nassigned : ind0 + mol.nelec[s], :] = mol.atom_coords()[
-                inds
-            ]  # assign remaining electrons
-    epos += r * rng.randn(*epos.shape)  # random shifts from atom positions
+        for s in [0, 1]:
+            neach = np.array(
+                np.floor(mol.nelec[s] * wts), dtype=int
+            )  # integer number of elec on each atom
+            nleft = (
+                mol.nelec[s] * wts - neach
+            )  # fraction of electron unassigned on each atom
+            nassigned = np.sum(neach)  # number of electrons assigned
+            totleft = int(mol.nelec[s] - nassigned)  # number of electrons not yet assigned
+            ind0 = s * mol.nelec[0]
+            epos[:, ind0 : ind0 + nassigned, :] = np.repeat(
+                mol.atom_coords(), neach, axis=0
+            )  # assign core electrons
+            if totleft > 0:
+                bins = np.cumsum(nleft) / totleft
+                inds = np.argpartition(
+                    rng.random((nconfig, len(wts))), totleft, axis=1
+                )[:, :totleft]
+                epos[:, ind0 + nassigned : ind0 + mol.nelec[s], :] = mol.atom_coords()[
+                    inds
+                ]  # assign remaining electrons
+        epos += r * rng.randn(*epos.shape)  # random shifts from atom positions
     if hasattr(mol, "a"):
         epos = PeriodicConfigs(epos, mol.lattice_vectors())
     else:
@@ -414,8 +631,14 @@ def initialize_boson_qmc_objects(
             else:
                 raise ValueError(f"Unknown opt_option: {opt_option}")
     
-    print('Using spherical guess')
-    configs = initial_guess(mol, nconfig, r=initial_guess_r, seed=seed)
+    
+    use_dft_density = False
+    if use_dft_density:
+        print('Using DFT density guess')
+    else:
+        print('Using spherical guess')
+    configs = initial_guess(mol, nconfig, r=initial_guess_r, seed=seed, use_dft_density=use_dft_density, mf=mf)
+
 
     acc = {}
     acc['energy'] = bosonaccumulators.ABQMCEnergyAccumulator(mf_inputs)

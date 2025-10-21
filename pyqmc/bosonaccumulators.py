@@ -61,7 +61,7 @@ def calculate_mf_density(mol, dm):
         raise ImportError("pyscf is not installed")
     
     grids = dft.gen_grid.Grids(mol)
-    grids.level = 3  # Can be adjusted for accuracy vs. speed (1-9)
+    grids.level = 5  # Can be adjusted for accuracy vs. speed (1-9)
     grids.build()
     
     # Get grid coordinates and weights

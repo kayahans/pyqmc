@@ -32,7 +32,7 @@ def get_complex_phase(x):
 
 
 def choose_evaluator_from_pyscf(
-    mol, mf, mc=None, twist=None, determinants=None, tol=None
+    mol, mf, mc=None, twist=None, determinants=None, tol=None, ncore = None
 ):
     """
     mol: A Mole object
@@ -54,10 +54,10 @@ def choose_evaluator_from_pyscf(
         )
     if mc is None:
         return MoleculeOrbitalEvaluator.from_pyscf(
-            mol, mf, determinants=determinants, tol=tol
+            mol, mf, determinants=determinants, tol=tol, ncore=ncore
         )
     return MoleculeOrbitalEvaluator.from_pyscf(
-        mol, mf, mc, determinants=determinants, tol=tol
+        mol, mf, mc, determinants=determinants, tol=tol, ncore=ncore
     )
 
 
@@ -75,7 +75,7 @@ class MoleculeOrbitalEvaluator:
         self._mol = mol
 
     @classmethod
-    def from_pyscf(self, mol, mf, mc=None, tol=-1, determinants=None):
+    def from_pyscf(self, mol, mf, mc=None, tol=-1, determinants=None, ncore = None):
         """
         mol: A Mole object
         mf: An object with mo_coeff and mo_occ.
@@ -87,7 +87,7 @@ class MoleculeOrbitalEvaluator:
             detcoeff, occup, det_map = pyqmc.determinant_tools.interpret_ci(mc, tol)
         elif determinants is not None:
             detcoeff, occup, det_map = pyqmc.determinant_tools.create_packed_objects(
-                determinants, tol, format="list"
+                determinants, ncore, tol, format="list"
             )
         else:
             detcoeff = gpu.cp.array([1.0])
