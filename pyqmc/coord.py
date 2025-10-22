@@ -97,7 +97,33 @@ class OpenConfigs:
         """Note that the number of configurations will change to reflect the number in the hdf file."""
         # The ... seems to be necessary to avoid changing the dtype and screwing up
         # pyscf's calls.
-        self.configs[...] = np.array(hdf["configs"])
+        try:
+            self.configs[...] = np.array(hdf["configs"])
+            print(f"Loaded {self.configs.shape[0]} walkers from HDF5 (exact match)")
+        except:
+            # If they have exactly the same number of walkers, then use as is (above)
+            # But if 
+            # 1. the previous number of walkers is greater than the initial number of walkers, then truncate the previous configs to the initial number of walkers
+            # 2. the previous number of walkers is less than the initial number of walkers, use previous walkers as is and also spawn new walkers with small random noise
+            
+            init_configs = self.configs
+            prev_configs = np.array(hdf["configs"])
+            print(f"Loading from HDF5: Found {prev_configs.shape[0]} previous walkers, need {init_configs.shape[0]} walkers")
+            
+            if prev_configs.shape[0] > init_configs.shape[0]:
+                self.configs = prev_configs[:init_configs.shape[0]]
+                print(f"  → Truncated {prev_configs.shape[0]} walkers down to {init_configs.shape[0]}")
+            elif prev_configs.shape[0] < init_configs.shape[0]:
+                n_old = prev_configs.shape[0]
+                n_new = init_configs.shape[0] - n_old
+                num_tile = np.ceil(n_new / n_old).astype(int)
+                print(f"  → Keeping {n_old} previous walkers as-is")
+                print(f"  → Spawning {n_new} new walkers by tiling previous walkers {num_tile} times with noise (σ=1e-3)")
+                spawned_walkers = np.tile(prev_configs, (num_tile, 1, 1))[:n_new]
+                spawned_walkers += np.random.randn(*spawned_walkers.shape) * 1e-3 # Add noise
+                self.configs = np.concatenate([prev_configs, spawned_walkers], axis=0)
+                print(f"  → Total walkers after spawning: {self.configs.shape[0]}")
+
 
 
 class PeriodicElectron:
