@@ -198,12 +198,12 @@ def filter_determinants_from_ci(mc, mo_energies, det_emax):
             mask = mask & (tot_exc < 3)
         
         filtered_energies = total_energies[mask]
-            
+        saved = {'up_num_exc': up_num_exc, 'dn_num_exc': dn_num_exc, 'tot_exc': tot_exc}    
     else:
         # No filtering - return all determinants
         mask = np.ones(len(deters_orig), dtype=bool)
         filtered_energies = total_energies
-        saved = {'up_num_exc': up_num_exc, 'dn_num_exc': dn_num_exc, 'tot_exc': tot_exc}
+        
     # Print report on filtered determinants
     print("\nDeterminant Filtering Report:")
     print("-" * 50)
