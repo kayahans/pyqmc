@@ -146,7 +146,7 @@ def filter_determinants_from_ci(mc, mo_energies, det_emax):
 
     # Convert to packed objects to get the data structures we need for filtering
     # detwt, occup, det_map = pyqmc.determinant_tools.create_packed_objects(deters, ncore, -1)
-    
+    saved = None
     # Apply filtering based on det_emax criteria
     if isinstance(det_emax, float):
         assert det_emax > 0, "Emax must be positive for energy based determinant filtering"
@@ -203,7 +203,7 @@ def filter_determinants_from_ci(mc, mo_energies, det_emax):
         # No filtering - return all determinants
         mask = np.ones(len(deters_orig), dtype=bool)
         filtered_energies = total_energies
-        
+        saved = {'up_num_exc': up_num_exc, 'dn_num_exc': dn_num_exc, 'tot_exc': tot_exc}
     # Print report on filtered determinants
     print("\nDeterminant Filtering Report:")
     print("-" * 50)
@@ -225,7 +225,7 @@ def filter_determinants_from_ci(mc, mo_energies, det_emax):
         occupation = [occ_up.tolist(), occ_dn.tolist()]
         filtered_determinants.append((weight, occupation))
     
-    return filtered_determinants
+    return filtered_determinants, saved
 
 class BosonWF:
 
@@ -272,10 +272,13 @@ class BosonWF:
         # Check if we need to filter determinants before processing
         if mol.symmetry and det_emax is not None and mc is not None:
             # Filter determinants first, then pass them to choose_evaluator_from_pyscf
-            filtered_determinants = filter_determinants_from_ci(
+            filtered_determinants, saved_filter = filter_determinants_from_ci(
                 mc, mf.mo_energy, det_emax
             )
             self.num_det = len(filtered_determinants)
+
+            if saved_filter is not None:
+                self.saved_filter = saved_filter
         else:
             filtered_determinants = None
 
