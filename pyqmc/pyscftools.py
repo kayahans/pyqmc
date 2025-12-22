@@ -78,11 +78,136 @@ def recover_pyscf(chkfile, ci_checkfile=None, cancel_outputs=True):
         if hci:
             mc = pyscf.hci.SCI(mol)
         else:
-            if len(casdict["mo_coeff"].shape) == 3:
-                mc = pyscf.mcscf.UCASCI(mol, casdict["ncas"], casdict["nelecas"])
-            else:
-                mc = pyscf.mcscf.CASCI(mol, casdict["ncas"], casdict["nelecas"])
+            # if len(casdict["mo_coeff"].shape) == 3:
+            #     mc = pyscf.mcscf.UCASCI(mol, casdict["ncas"], casdict["nelecas"])
+            # else:
+            mc = pyscf.mcscf.CASCI(mol, casdict["ncas"], casdict["nelecas"])
+        
         mc.__dict__.update(casdict)
 
         return mol, mf, mc
     return mol, mf
+
+def load_mf_inputs_from_hdf5(chkfile, mol=None):
+    """
+    Load mf_inputs dictionary from HDF5 checkfile if available.
+    
+    This function checks if the checkfile contains a pre-computed 'mf_inputs' group.
+    If found, it loads all the stored data. The 'grids' object is reconstructed
+    from the molecule if needed, since it cannot be directly serialized.
+    
+    Parameters
+    ----------
+    chkfile : str
+        Path to the HDF5 checkfile
+    mol : pyscf Mole object, optional
+        Molecule object needed to reconstruct grids if not stored properly.
+        If None, will try to load from checkfile.
+        
+    Returns
+    -------
+    mf_inputs : dict or None
+        Dictionary containing mf_inputs if found in checkfile, None otherwise.
+        Keys include: 'xc', 'deriv', 'nelec', 'mo_energy', 'mo_occ', 'mo_coeff', 
+        'dm', 'rho', 'grids'
+    """
+    import h5py
+    from pyscf import dft
+    
+    try:
+        with h5py.File(chkfile, "r") as f:
+            if "mf_inputs" not in f.keys():
+                return None
+            
+            mf_inputs_grp = f["mf_inputs"]
+            mf_inputs = {}
+            
+            # Load datasets (numpy arrays)
+            for key in mf_inputs_grp.keys():
+                if isinstance(mf_inputs_grp[key], h5py.Dataset):
+                    mf_inputs[key] = mf_inputs_grp[key][:]
+            
+            # Load attributes (scalars)
+            for key in mf_inputs_grp.attrs.keys():
+                value = mf_inputs_grp.attrs[key]
+                # Handle None stored as string
+                if value == "None":
+                    mf_inputs[key] = None
+                elif isinstance(value, (str, bytes)):
+                    # Try to convert string representations back to Python objects
+                    if isinstance(value, bytes):
+                        value = value.decode('utf-8')
+                    # Check if it's a tuple representation like "(2, 1)" or "(2,1)"
+                    if value.startswith('(') and value.endswith(')'):
+                        try:
+                            import ast
+                            mf_inputs[key] = ast.literal_eval(value)
+                        except (ValueError, SyntaxError):
+                            # If parsing fails, keep as string
+                            mf_inputs[key] = value
+                    else:
+                        mf_inputs[key] = value
+                else:
+                    mf_inputs[key] = value
+            
+            # Reconstruct grids object if needed
+            # The grids object cannot be directly serialized, so it's stored as a string/repr
+            # or we need to reconstruct it from the molecule
+            grids_reconstructed = False
+            
+            # Check if grids_coords and grids_weights are stored separately (preferred method)
+            if 'grids_coords' in mf_inputs and 'grids_weights' in mf_inputs:
+                if mol is None:
+                    mol = pyscf.lib.chkfile.load_mol(chkfile)
+                grids = dft.gen_grid.Grids(mol)
+                grids.coords = mf_inputs['grids_coords']
+                grids.weights = mf_inputs['grids_weights']
+                mf_inputs['grids'] = grids
+                # Remove temporary keys
+                del mf_inputs['grids_coords']
+                del mf_inputs['grids_weights']
+                grids_reconstructed = True
+            elif 'grids' in mf_inputs:
+                # If grids was stored as a string/repr (from run_atom.py), we need to reconstruct it
+                if isinstance(mf_inputs['grids'], (str, bytes)):
+                    # Need mol to reconstruct grids
+                    if mol is None:
+                        mol = pyscf.lib.chkfile.load_mol(chkfile)
+                    
+                    # Reconstruct grids from molecule
+                    grids = dft.gen_grid.Grids(mol)
+                    grids.level = 5  # Default level, matching calculate_mf_density
+                    grids.build()
+                    mf_inputs['grids'] = grids
+                    grids_reconstructed = True
+            
+            # If grids is still missing, reconstruct it from mol and dm
+            if not grids_reconstructed and 'grids' not in mf_inputs:
+                if mol is None:
+                    mol = pyscf.lib.chkfile.load_mol(chkfile)
+                if 'dm' in mf_inputs:
+                    # Reconstruct grids using the same method as calculate_mf_density
+                    grids = dft.gen_grid.Grids(mol)
+                    grids.level = 5  # Default level, matching calculate_mf_density
+                    grids.build()
+                    mf_inputs['grids'] = grids
+                    print("Warning: Reconstructed grids object from molecule (not found in checkfile)")
+            
+            # Ensure mol is in mf_inputs (needed for compatibility)
+            if 'mol' not in mf_inputs:
+                if mol is None:
+                    mol = pyscf.lib.chkfile.load_mol(chkfile)
+                mf_inputs['mol'] = mol
+            
+            # Convert string xc to proper format if needed
+            if 'xc' in mf_inputs and isinstance(mf_inputs['xc'], bytes):
+                mf_inputs['xc'] = mf_inputs['xc'].decode('utf-8')
+            elif 'xc' in mf_inputs and isinstance(mf_inputs['xc'], str):
+                # Already a string, ensure it's uppercase for consistency
+                mf_inputs['xc'] = mf_inputs['xc'].upper()
+            return mf_inputs
+            
+    except Exception as e:
+        # If anything goes wrong, return None to fall back to old method
+        print(f"Warning: Could not load mf_inputs from {chkfile}: {e}")
+        return None

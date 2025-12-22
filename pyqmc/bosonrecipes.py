@@ -462,7 +462,7 @@ def generate_walker_configs(density, coords, weights, n_walkers, n_electrons, se
 
 
 
-def initial_guess(mol, nconfig, r=None, seed = None, use_dft_density=False, mf = None):
+def initial_guess(mol, nconfig, r=None, seed = None, use_dft_density=False, mf = None, ncas = None, nelecas = None, frozen = 0):
     """Generate an initial guess by distributing electrons near atoms
     proportional to their charge.
 
@@ -480,7 +480,7 @@ def initial_guess(mol, nconfig, r=None, seed = None, use_dft_density=False, mf =
     from pyqmc.coord import OpenConfigs, PeriodicConfigs
     if use_dft_density:
         coords, weights = create_pyscf_grid(mol, level=9)
-        density = calculate_density_on_grid(mf, coords, weights, frozen=1, ncas=6, nelecas=(4,1), ecut=None)
+        density = calculate_density_on_grid(mf, coords, weights, frozen=frozen, ncas=ncas, nelecas=nelecas, ecut=None)
         epos = generate_walker_configs(density, coords, weights, nconfig, np.sum(mol.nelec), seed=seed)
     else:
         if r == None:
@@ -557,6 +557,7 @@ def initialize_boson_qmc_objects(
     
     target_root=0
     nodal_cutoff=1e-3    
+
     if ci_checkfile is None:
         mol, mf = pyscftools.recover_pyscf(dft_checkfile)
         mc = None
@@ -566,28 +567,52 @@ def initialize_boson_qmc_objects(
             mc.fci = mc.ci
             # print('Selecting target CI root #', target_root)
             mc.ci = mc.ci[target_root]
-    # Remove any spaces from xc string
-    xc = xc.replace(" ", "")
-    available_xc = ['LDA,VWN','PBE,PBE','HF']
-    mf_inputs = {}
-    if xc not in available_xc:
-        raise ValueError(f"xc={xc} not in available_xc={available_xc}")
+    
+    # Try to load mf_inputs from checkfile first (new format)
+    mf_inputs = pyscftools.load_mf_inputs_from_hdf5(dft_checkfile, mol=mol)
+    
+    if mf_inputs is None:
+        # Fall back to old method: construct mf_inputs from PySCF objects
+        # Remove any spaces from xc string
+        xc = xc.replace(" ", "")
+        available_xc = ['LDA,VWN','PBE,PBE','HF']
+        mf_inputs = {}
+        if xc not in available_xc:
+            raise ValueError(f"xc={xc} not in available_xc={available_xc}")
 
-    try:
-        mf_inputs['dm'] = mf.make_rdm1()
-    except:
-        print("WARNING: mf.make_rdm1() is not available, cannot use DFT as Mean Field")
+        try:
+            mf_inputs['dm'] = mf.make_rdm1()
+        except:
+            print("WARNING: mf.make_rdm1() is not available, cannot use DFT as Mean Field")
 
-    rho, grids = bosonaccumulators.calculate_mf_density(mol, mf_inputs['dm'])
+        rho, grids = bosonaccumulators.calculate_mf_density(mol, mf_inputs['dm'])
 
-    mf_inputs.update({'xc':xc,
-                 'mol':mf.mol,
-                 'nelec': mf.nelec,
-                 'mo_energy': mf.mo_energy,
-                 'mo_occ': mf.mo_occ, 
-                 'grids': grids, 
-                 'rho' : rho })
-
+        mf_inputs.update({'xc':xc,
+                     'mol':mf.mol,
+                     'nelec': mf.nelec,
+                     'mo_energy': mf.mo_energy,
+                     'mo_occ': mf.mo_occ, 
+                     'grids': grids, 
+                     'rho' : rho })
+    else:
+        # mf_inputs loaded from checkfile
+        # Ensure xc parameter takes precedence if provided and different
+        xc = xc.replace(" ", "")
+        if xc != mf_inputs.get('xc', '').replace(" ", ""):
+            print(f"Warning: xc parameter ({xc}) differs from checkfile ({mf_inputs.get('xc', 'N/A')}). Using parameter value.")
+            mf_inputs['xc'] = xc
+        
+        # Validate xc
+        available_xc = ['LDA,VWN','PBE,PBE','HF']
+        if mf_inputs['xc'] not in available_xc:
+            raise ValueError(f"xc={mf_inputs['xc']} from checkfile not in available_xc={available_xc}")
+        
+        # Ensure mol is set correctly (should already be set by load_mf_inputs_from_hdf5)
+        if 'mol' not in mf_inputs:
+            mf_inputs['mol'] = mol
+        
+        print("Loaded mf_inputs from checkfile")
+    
     if jastrow_kws == None:
         jastrow_kws = dict()
     
@@ -632,12 +657,12 @@ def initialize_boson_qmc_objects(
                 raise ValueError(f"Unknown opt_option: {opt_option}")
     
     
-    use_dft_density = False
+    use_dft_density = True
     if use_dft_density:
         print('Using DFT density guess')
     else:
         print('Using spherical guess')
-    configs = initial_guess(mol, nconfig, r=initial_guess_r, seed=seed, use_dft_density=use_dft_density, mf=mf)
+    configs = initial_guess(mol, nconfig, r=initial_guess_r, seed=seed, use_dft_density=use_dft_density, mf=mf, ncas = mc.ncas, nelecas = mc.nelecas, frozen = mc.ncore)
 
 
     acc = {}
