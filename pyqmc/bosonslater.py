@@ -11,7 +11,16 @@ import h5py
 import time
 from scipy.sparse import lil_matrix
 
-report_timer = False
+report_timer = False  # Set to True to enable periodic timer output
+timer_report_interval = 10  # Report every N calls (set to 1 for every call)
+_timer_registry = {}  # Registry to track all timed functions
+
+# Usage:
+#   1. Enable timers: from pyqmc.bosonslater import report_timer; report_timer = True
+#   2. Set report interval: from pyqmc.bosonslater import timer_report_interval; timer_report_interval = 1  # for every call
+#   3. Print summary: from pyqmc.bosonslater import print_timer_summary; print_timer_summary(sort_by='total_time')
+#   4. Reset timers: from pyqmc.bosonslater import reset_timers; reset_timers()
+
 def timer_func(func):
     def wrapper(*args, **kwargs):
         start = time.time()
@@ -19,12 +28,156 @@ def timer_func(func):
         duration = time.time() - start
         wrapper.total_time += duration
         wrapper.total_calls += 1
-        if wrapper.total_calls % 1 == 0 and report_timer:
-            print(f'Spent {(wrapper.total_time):.4f}s in function {(wrapper.total_calls)} calls to {func.__name__!r}') 
+        
+        # Track min/max times
+        if wrapper.total_calls == 1:
+            wrapper.min_time = duration
+            wrapper.max_time = duration
+        else:
+            wrapper.min_time = min(wrapper.min_time, duration)
+            wrapper.max_time = max(wrapper.max_time, duration)
+        
+        # Get detailed function information
+        # Use __qualname__ which includes class name (e.g., "BosonWF.gradient")
+        qualname = getattr(func, '__qualname__', func.__name__)
+        module_name = getattr(func, '__module__', 'unknown')
+        
+        # Create a unique key for the registry (module.class.method or module.function)
+        registry_key = f"{module_name}.{qualname}"
+        _timer_registry[registry_key] = wrapper
+        
+        # Store detailed info
+        wrapper.qualname = qualname
+        wrapper.module_name = module_name
+        wrapper.func_name = func.__name__
+        
+        # Report periodically
+        if report_timer and (wrapper.total_calls % timer_report_interval == 0 or wrapper.total_calls == 1):
+            avg_time = wrapper.total_time / wrapper.total_calls
+            
+            # Format output with detailed information
+            # Show: module.Class.method or module.function
+            display_name = f"{module_name}.{qualname}"
+            # Truncate if too long, but try to keep the method name visible
+            max_name_len = 60
+            if len(display_name) > max_name_len:
+                # Keep the last part (method name) and truncate the beginning
+                parts = display_name.rsplit('.', 1)
+                if len(parts) == 2:
+                    method_part = parts[1]
+                    module_part = parts[0]
+                    # Truncate module part but keep method
+                    available_len = max_name_len - len(method_part) - 1
+                    if available_len > 0:
+                        display_name = f"...{module_part[-available_len:]}.{method_part}"
+                    else:
+                        display_name = f"...{method_part}"
+                else:
+                    display_name = f"...{display_name[-max_name_len:]}"
+            
+            # Format output with alignment
+            print(f"[TIMER] {display_name:<{max_name_len}s} | "
+                  f"Calls: {wrapper.total_calls:6d} | "
+                  f"Total: {wrapper.total_time:10.4f}s | "
+                  f"Avg: {avg_time:8.4f}s | "
+                  f"Last: {duration:8.4f}s | "
+                  f"Min: {wrapper.min_time:8.4f}s | "
+                  f"Max: {wrapper.max_time:8.4f}s")
+        
         return result
     wrapper.total_calls = 0
     wrapper.total_time = 0
+    wrapper.min_time = 0
+    wrapper.max_time = 0
+    wrapper.func_name = getattr(func, '__name__', 'unknown')
+    wrapper.qualname = getattr(func, '__qualname__', wrapper.func_name)
+    wrapper.module_name = getattr(func, '__module__', 'unknown')
     return wrapper
+
+def print_timer_summary(sort_by='total_time'):
+    """Print a summary of all timer statistics.
+    
+    Args:
+        sort_by: How to sort the results. Options: 'total_time', 'avg_time', 'calls', 'name'
+    """
+    if not _timer_registry:
+        print("[TIMER] No timer data available.")
+        return
+    
+    # Collect and sort timer data
+    timer_data = []
+    total_all_time = sum(w.total_time for w in _timer_registry.values())
+    
+    for registry_key, wrapper in _timer_registry.items():
+        if wrapper.total_calls > 0:
+            avg_time = wrapper.total_time / wrapper.total_calls
+            percentage = (wrapper.total_time / total_all_time * 100) if total_all_time > 0 else 0
+            # Use the detailed name from wrapper
+            display_name = f"{wrapper.module_name}.{wrapper.qualname}"
+            timer_data.append({
+                'name': display_name,
+                'registry_key': registry_key,
+                'calls': wrapper.total_calls,
+                'total_time': wrapper.total_time,
+                'avg_time': avg_time,
+                'min_time': wrapper.min_time,
+                'max_time': wrapper.max_time,
+                'percentage': percentage
+            })
+    
+    # Sort by specified key
+    sort_keys = {
+        'total_time': lambda x: -x['total_time'],
+        'avg_time': lambda x: -x['avg_time'],
+        'calls': lambda x: -x['calls'],
+        'name': lambda x: x['name']
+    }
+    timer_data.sort(key=sort_keys.get(sort_by, sort_keys['total_time']))
+    
+    # Print header
+    max_name_len = 70
+    print("\n" + "="*140)
+    print("TIMER SUMMARY".center(140))
+    print("="*140)
+    print(f"{'Function (Module.Class.Method)':<{max_name_len}s} | {'Calls':>8s} | {'Total Time':>12s} | {'Avg Time':>10s} | "
+          f"{'Min Time':>10s} | {'Max Time':>10s} | {'% of Total':>10s}")
+    print("-"*140)
+    
+    # Print data
+    for data in timer_data:
+        # Truncate name if too long
+        display_name = data['name']
+        if len(display_name) > max_name_len:
+            # Keep the last part (method name) and truncate the beginning
+            parts = display_name.rsplit('.', 1)
+            if len(parts) == 2:
+                method_part = parts[1]
+                module_part = parts[0]
+                available_len = max_name_len - len(method_part) - 1
+                if available_len > 0:
+                    display_name = f"...{module_part[-available_len:]}.{method_part}"
+                else:
+                    display_name = f"...{method_part}"
+            else:
+                display_name = f"...{display_name[-max_name_len:]}"
+        
+        print(f"{display_name:<{max_name_len}s} | {data['calls']:8d} | {data['total_time']:12.4f}s | "
+              f"{data['avg_time']:10.4f}s | {data['min_time']:10.4f}s | {data['max_time']:10.4f}s | "
+              f"{data['percentage']:9.2f}%")
+    
+    print("-"*140)
+    print(f"{'TOTAL':<{max_name_len}s} | {'':>8s} | {total_all_time:12.4f}s | {'':>10s} | "
+          f"{'':>10s} | {'':>10s} | {'100.00':>10s}")
+    print("="*140 + "\n")
+
+def reset_timers():
+    """Reset all timer statistics."""
+    for wrapper in _timer_registry.values():
+        wrapper.total_calls = 0
+        wrapper.total_time = 0
+        wrapper.min_time = 0
+        wrapper.max_time = 0
+    _timer_registry.clear()
 
 def sherman_morrison_row(e, inv, vec):
     tmp = np.einsum("ek,ekj->ej", vec, inv)
