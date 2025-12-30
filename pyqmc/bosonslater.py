@@ -11,16 +11,7 @@ import h5py
 import time
 from scipy.sparse import lil_matrix
 
-report_timer = False  # Set to True to enable periodic timer output
-timer_report_interval = 10  # Report every N calls (set to 1 for every call)
-_timer_registry = {}  # Registry to track all timed functions
-
-# Usage:
-#   1. Enable timers: from pyqmc.bosonslater import report_timer; report_timer = True
-#   2. Set report interval: from pyqmc.bosonslater import timer_report_interval; timer_report_interval = 1  # for every call
-#   3. Print summary: from pyqmc.bosonslater import print_timer_summary; print_timer_summary(sort_by='total_time')
-#   4. Reset timers: from pyqmc.bosonslater import reset_timers; reset_timers()
-
+report_timer = False
 def timer_func(func):
     def wrapper(*args, **kwargs):
         start = time.time()
@@ -28,156 +19,12 @@ def timer_func(func):
         duration = time.time() - start
         wrapper.total_time += duration
         wrapper.total_calls += 1
-        
-        # Track min/max times
-        if wrapper.total_calls == 1:
-            wrapper.min_time = duration
-            wrapper.max_time = duration
-        else:
-            wrapper.min_time = min(wrapper.min_time, duration)
-            wrapper.max_time = max(wrapper.max_time, duration)
-        
-        # Get detailed function information
-        # Use __qualname__ which includes class name (e.g., "BosonWF.gradient")
-        qualname = getattr(func, '__qualname__', func.__name__)
-        module_name = getattr(func, '__module__', 'unknown')
-        
-        # Create a unique key for the registry (module.class.method or module.function)
-        registry_key = f"{module_name}.{qualname}"
-        _timer_registry[registry_key] = wrapper
-        
-        # Store detailed info
-        wrapper.qualname = qualname
-        wrapper.module_name = module_name
-        wrapper.func_name = func.__name__
-        
-        # Report periodically
-        if report_timer and (wrapper.total_calls % timer_report_interval == 0 or wrapper.total_calls == 1):
-            avg_time = wrapper.total_time / wrapper.total_calls
-            
-            # Format output with detailed information
-            # Show: module.Class.method or module.function
-            display_name = f"{module_name}.{qualname}"
-            # Truncate if too long, but try to keep the method name visible
-            max_name_len = 60
-            if len(display_name) > max_name_len:
-                # Keep the last part (method name) and truncate the beginning
-                parts = display_name.rsplit('.', 1)
-                if len(parts) == 2:
-                    method_part = parts[1]
-                    module_part = parts[0]
-                    # Truncate module part but keep method
-                    available_len = max_name_len - len(method_part) - 1
-                    if available_len > 0:
-                        display_name = f"...{module_part[-available_len:]}.{method_part}"
-                    else:
-                        display_name = f"...{method_part}"
-                else:
-                    display_name = f"...{display_name[-max_name_len:]}"
-            
-            # Format output with alignment
-            print(f"[TIMER] {display_name:<{max_name_len}s} | "
-                  f"Calls: {wrapper.total_calls:6d} | "
-                  f"Total: {wrapper.total_time:10.4f}s | "
-                  f"Avg: {avg_time:8.4f}s | "
-                  f"Last: {duration:8.4f}s | "
-                  f"Min: {wrapper.min_time:8.4f}s | "
-                  f"Max: {wrapper.max_time:8.4f}s")
-        
+        if wrapper.total_calls % 1 == 0 and report_timer:
+            print(f'Spent {(wrapper.total_time):.4f}s in function {(wrapper.total_calls)} calls to {func.__name__!r}') 
         return result
     wrapper.total_calls = 0
     wrapper.total_time = 0
-    wrapper.min_time = 0
-    wrapper.max_time = 0
-    wrapper.func_name = getattr(func, '__name__', 'unknown')
-    wrapper.qualname = getattr(func, '__qualname__', wrapper.func_name)
-    wrapper.module_name = getattr(func, '__module__', 'unknown')
     return wrapper
-
-def print_timer_summary(sort_by='total_time'):
-    """Print a summary of all timer statistics.
-    
-    Args:
-        sort_by: How to sort the results. Options: 'total_time', 'avg_time', 'calls', 'name'
-    """
-    if not _timer_registry:
-        print("[TIMER] No timer data available.")
-        return
-    
-    # Collect and sort timer data
-    timer_data = []
-    total_all_time = sum(w.total_time for w in _timer_registry.values())
-    
-    for registry_key, wrapper in _timer_registry.items():
-        if wrapper.total_calls > 0:
-            avg_time = wrapper.total_time / wrapper.total_calls
-            percentage = (wrapper.total_time / total_all_time * 100) if total_all_time > 0 else 0
-            # Use the detailed name from wrapper
-            display_name = f"{wrapper.module_name}.{wrapper.qualname}"
-            timer_data.append({
-                'name': display_name,
-                'registry_key': registry_key,
-                'calls': wrapper.total_calls,
-                'total_time': wrapper.total_time,
-                'avg_time': avg_time,
-                'min_time': wrapper.min_time,
-                'max_time': wrapper.max_time,
-                'percentage': percentage
-            })
-    
-    # Sort by specified key
-    sort_keys = {
-        'total_time': lambda x: -x['total_time'],
-        'avg_time': lambda x: -x['avg_time'],
-        'calls': lambda x: -x['calls'],
-        'name': lambda x: x['name']
-    }
-    timer_data.sort(key=sort_keys.get(sort_by, sort_keys['total_time']))
-    
-    # Print header
-    max_name_len = 70
-    print("\n" + "="*140)
-    print("TIMER SUMMARY".center(140))
-    print("="*140)
-    print(f"{'Function (Module.Class.Method)':<{max_name_len}s} | {'Calls':>8s} | {'Total Time':>12s} | {'Avg Time':>10s} | "
-          f"{'Min Time':>10s} | {'Max Time':>10s} | {'% of Total':>10s}")
-    print("-"*140)
-    
-    # Print data
-    for data in timer_data:
-        # Truncate name if too long
-        display_name = data['name']
-        if len(display_name) > max_name_len:
-            # Keep the last part (method name) and truncate the beginning
-            parts = display_name.rsplit('.', 1)
-            if len(parts) == 2:
-                method_part = parts[1]
-                module_part = parts[0]
-                available_len = max_name_len - len(method_part) - 1
-                if available_len > 0:
-                    display_name = f"...{module_part[-available_len:]}.{method_part}"
-                else:
-                    display_name = f"...{method_part}"
-            else:
-                display_name = f"...{display_name[-max_name_len:]}"
-        
-        print(f"{display_name:<{max_name_len}s} | {data['calls']:8d} | {data['total_time']:12.4f}s | "
-              f"{data['avg_time']:10.4f}s | {data['min_time']:10.4f}s | {data['max_time']:10.4f}s | "
-              f"{data['percentage']:9.2f}%")
-    
-    print("-"*140)
-    print(f"{'TOTAL':<{max_name_len}s} | {'':>8s} | {total_all_time:12.4f}s | {'':>10s} | "
-          f"{'':>10s} | {'':>10s} | {'100.00':>10s}")
-    print("="*140 + "\n")
-
-def reset_timers():
-    """Reset all timer statistics."""
-    for wrapper in _timer_registry.values():
-        wrapper.total_calls = 0
-        wrapper.total_time = 0
-        wrapper.min_time = 0
-        wrapper.max_time = 0
-    _timer_registry.clear()
 
 def sherman_morrison_row(e, inv, vec):
     tmp = np.einsum("ek,ekj->ej", vec, inv)
@@ -297,6 +144,80 @@ def filter_determinants_from_ci(mc, mo_energies, det_emax):
     total_energies = up_energies + dn_energies
     ground_state_energy = total_energies[0]
 
+    def count_excitations_with_degeneracy(occ_excited, occ_ground, mo_energies_spin, deg_tol=1e-6):
+        """
+        Count excitations accounting for orbital degeneracy.
+        
+        Swaps between degenerate orbitals do not count as excitations since they
+        don't change the total energy.
+        
+        Args:
+            occ_excited: Array of occupied orbital indices in the excited determinant
+            occ_ground: Array of occupied orbital indices in the ground state
+            mo_energies_spin: MO energies for the spin channel (1D array)
+            deg_tol: Tolerance for considering orbitals degenerate (default: 1e-6)
+            
+        Returns:
+            int: Number of true excitations (excluding degenerate swaps)
+        """
+        # Convert to sets for easier comparison
+        occ_excited_set = set(occ_excited)
+        occ_ground_set = set(occ_ground)
+        
+        # Find orbitals that differ between excited and ground states
+        exc_new = occ_excited_set - occ_ground_set  # Orbitals in excited but not in ground
+        exc_removed = occ_ground_set - occ_excited_set  # Orbitals in ground but not in excited
+        
+        # If no difference, no excitations
+        if len(exc_new) == 0 and len(exc_removed) == 0:
+            return 0
+        
+        # Group orbitals by degenerate energy levels
+        # Create a mapping from orbital index to its energy group
+        all_orbs = list(exc_new | exc_removed)
+        if len(all_orbs) == 0:
+            return 0
+            
+        orb_energies = mo_energies_spin[all_orbs]
+        
+        # Group orbitals by degenerate energy (within tolerance)
+        deg_groups = {}
+        for i, orb_idx in enumerate(all_orbs):
+            energy = orb_energies[i]
+            # Find if this energy matches any existing group
+            matched = False
+            for group_key, group_orbs in deg_groups.items():
+                if abs(energy - group_key) < deg_tol:
+                    deg_groups[group_key].append(orb_idx)
+                    matched = True
+                    break
+            if not matched:
+                deg_groups[energy] = [orb_idx]
+        
+        # Match orbitals from exc_new and exc_removed that are in the same degenerate group
+        # This represents swaps within degenerate orbitals, which don't count as excitations
+        matched_pairs = 0
+        
+        # For each degenerate group, try to match orbitals
+        for group_key, group_orbs in deg_groups.items():
+            group_new = [orb for orb in group_orbs if orb in exc_new]
+            group_removed = [orb for orb in group_orbs if orb in exc_removed]
+            # Match as many pairs as possible within this degenerate group
+            # Each pair represents a degenerate swap (orbital replacement within same energy)
+            matched_pairs += min(len(group_new), len(group_removed))
+        
+        # Count true excitations:
+        # - For valid determinants, electron number is conserved, so len(exc_new) == len(exc_removed)
+        # - Each excitation is one orbital replacement (1 addition + 1 removal)
+        # - Number of replacements = len(exc_new) (or len(exc_removed), they're equal)
+        # - Each matched pair represents a degenerate swap (0 excitation)
+        # - So: true_excitations = len(exc_new) - matched_pairs
+        # Note: We use len(exc_new) since it represents the number of orbital replacements
+        num_replacements = len(exc_new)
+        true_excitations = num_replacements - matched_pairs
+        
+        return true_excitations
+
     # Convert to packed objects to get the data structures we need for filtering
     # detwt, occup, det_map = pyqmc.determinant_tools.create_packed_objects(deters, ncore, -1)
     saved = None
@@ -317,8 +238,9 @@ def filter_determinants_from_ci(mc, mo_energies, det_emax):
         filtered_energies = total_energies[mask]
         
     elif det_emax == 'singles' or det_emax == 'doubles':
-        up_num_exc = np.array([np.setdiff1d(x, alpha_occ_ground).shape[0] for x in alpha_occ])
-        dn_num_exc = np.array([np.setdiff1d(x, beta_occ_ground).shape[0] for x in beta_occ])
+        
+        up_num_exc = np.array([count_excitations_with_degeneracy(x, alpha_occ_ground, mo_energies[0]) for x in alpha_occ])
+        dn_num_exc = np.array([count_excitations_with_degeneracy(x, beta_occ_ground, mo_energies[1]) for x in beta_occ])
         tot_exc = up_num_exc + dn_num_exc
         if det_emax == 'singles':
             mask = tot_exc < 2
@@ -338,8 +260,8 @@ def filter_determinants_from_ci(mc, mo_energies, det_emax):
         except Exception as exc:
             raise ValueError("String format must be 'energy,criteria' where energy is a float and criteria is 'singles' or 'doubles'") from exc
         
-        up_num_exc = alpha_occ_ground.shape[0] - np.sum(np.isin(alpha_occ, alpha_occ_ground), axis=1)
-        dn_num_exc = beta_occ_ground.shape[0] - np.sum(np.isin(beta_occ, beta_occ_ground), axis=1)
+        up_num_exc = np.array([count_excitations_with_degeneracy(x, alpha_occ_ground, mo_energies[0]) for x in alpha_occ])
+        dn_num_exc = np.array([count_excitations_with_degeneracy(x, beta_occ_ground, mo_energies[1]) for x in beta_occ])
         tot_exc = up_num_exc + dn_num_exc
         emax = emax_energy + ground_state_energy
 
@@ -377,7 +299,6 @@ def filter_determinants_from_ci(mc, mo_energies, det_emax):
         occ_dn = beta_occ[ind]
         occupation = [occ_up.tolist(), occ_dn.tolist()]
         filtered_determinants.append((weight, occupation))
-    
     return filtered_determinants, saved
 
 class BosonWF:
