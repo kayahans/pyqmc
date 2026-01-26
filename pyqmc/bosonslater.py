@@ -113,16 +113,17 @@ def compute_boson_value(updets, dndets, det_coeffs):
     return gpu.asnumpy(wf_sign), gpu.asnumpy(wf_logval)
 
 
-def filter_determinants_from_ci(mc, mo_energies, det_emax):
+def filter_determinants_from_ci(mc, mo_energies, det_emax, include_zeros=True):
     """
     Filter determinants from a CI object based on energy criteria before processing.
+    include_zeros: Whether to include zeros in the filtering
     
     Args:
         mc: pyscf multiconfigurational object (HCI, CAS, etc.)
         mo_energies: MO energies from mean field calculation
         det_emax: Energy threshold for filtering (float, int, 'singles', 'doubles', or 'energy,criteria')
-        print_mf_dets: Whether to print determinant information
-        
+        include_zeros: Whether to include zeros in the filtering
+            
     Returns:
         list: Filtered determinants in format suitable for choose_evaluator_from_pyscf
     """
@@ -250,10 +251,20 @@ def filter_determinants_from_ci(mc, mo_energies, det_emax):
         filtered_energies = total_energies[mask]
         
     elif isinstance(det_emax, str) and ',' in det_emax:
+        import pdb; pdb.set_trace()
         # Parse string of format "energy,criteria" e.g. "1.5,singles"
+        # If the float portion has two energies " e.g. "1.0 1.5,singles", than we work inside the range of the two energies
+
         try:
             emax_energy, emax_criteria = det_emax.split(',')
-            emax_energy = float(emax_energy)
+            try: 
+                emin_energy, emax_energy = emax_energy.split(' ')
+                emin_energy = float(emin_energy)
+                emax_energy = float(emax_energy)
+            except:
+                emin_energy = 0
+                emax_energy = float(emax_energy)
+
             emax_criteria = emax_criteria.lower()
             if emax_criteria not in ['singles', 'doubles']:
                 raise ValueError("Criteria must be singles or doubles")
@@ -264,8 +275,13 @@ def filter_determinants_from_ci(mc, mo_energies, det_emax):
         dn_num_exc = np.array([count_excitations_with_degeneracy(x, beta_occ_ground, mo_energies[1]) for x in beta_occ])
         tot_exc = up_num_exc + dn_num_exc
         emax = emax_energy + ground_state_energy
+        emin = emin_energy + ground_state_energy - 1E-6 # -1E-6 to avoid floating point issues
 
         mask = total_energies < emax
+        mask = mask & (total_energies > emin)
+
+        if include_zeros:
+            mask = mask | (total_energies-ground_state_energy < 1E-6)
 
         if emax_criteria == 'singles':
             mask = mask & (tot_exc < 2)
@@ -282,12 +298,15 @@ def filter_determinants_from_ci(mc, mo_energies, det_emax):
     # Print report on filtered determinants
     print("\nDeterminant Filtering Report:")
     print("-" * 50)
+    print('Emax', np.round(emax, 3), np.round(emax-ground_state_energy, 3))
+    print('Emin', np.round(emin, 3), np.round(emin-ground_state_energy, 3))
     print(f"Total determinants before filtering: {len(deters_orig)}")
     print(f"Determinants removed: {len(deters_orig) - np.sum(mask)}")
     print(f"Determinants remaining: {np.sum(mask)}")
-    print('Min eigenvalue', np.round(np.min(filtered_energies), 3))
-    print('Max eigenvalue', np.round(np.max(filtered_energies), 3))
-    
+    print('Min filtered eigenvalue', np.round(np.min(filtered_energies), 3), np.round(np.min(filtered_energies)-ground_state_energy, 3))
+    print('Max filtered eigenvalue', np.round(np.max(filtered_energies), 3), np.round(np.max(filtered_energies)-ground_state_energy, 3))
+    print('Removed determinants', ' '.join([str(x) for x in np.round(np.sort(total_energies[~mask])-ground_state_energy, 3)]))
+    print('Used determinants', ' '.join([str(x) for x in np.round(np.sort(total_energies[mask])-ground_state_energy, 3)]))
     # Apply the mask to get filtered determinants
     mask_indices = np.where(mask)[0].tolist()
     # Convert back to the format expected by choose_evaluator_from_pyscf
