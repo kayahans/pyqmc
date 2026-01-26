@@ -123,7 +123,7 @@ def filter_determinants_from_ci(mc, mo_energies, det_emax, include_zeros=True):
         mo_energies: MO energies from mean field calculation
         det_emax: Energy threshold for filtering (float, int, 'singles', 'doubles', or 'energy,criteria')
         include_zeros: Whether to include zeros in the filtering
-            
+
     Returns:
         list: Filtered determinants in format suitable for choose_evaluator_from_pyscf
     """
@@ -251,7 +251,6 @@ def filter_determinants_from_ci(mc, mo_energies, det_emax, include_zeros=True):
         filtered_energies = total_energies[mask]
         
     elif isinstance(det_emax, str) and ',' in det_emax:
-        import pdb; pdb.set_trace()
         # Parse string of format "energy,criteria" e.g. "1.5,singles"
         # If the float portion has two energies " e.g. "1.0 1.5,singles", than we work inside the range of the two energies
 
