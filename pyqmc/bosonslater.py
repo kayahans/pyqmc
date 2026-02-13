@@ -1232,8 +1232,7 @@ class BosonWF:
         ao = self.orbitals.aos("GTOval_sph_deriv2", epos)
 
         ao_val = ao[:, 0, :, :]
-        
-        ao_grad = ao[:, 1:4, :, :]
+        ao_grad = ao[:, 0:4, :, :]
         mo_grad = self.orbitals.mos(ao_grad, s)
         mo_grad_vals = mo_grad[:, :, self._det_occup[s]]
 
