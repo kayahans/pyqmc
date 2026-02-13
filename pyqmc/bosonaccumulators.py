@@ -586,12 +586,13 @@ class ABCDMCMatrixAccumulator:
         """
         self.en_acc = ABQMCEnergyAccumulator(mf_inputs, **kwargs)
         self.dtype = system_params['dtype']
-        self.nconf = system_params['nconf']
-        self.ndets = system_params['ndets']
-        self.nelec = system_params['nelec']
-        self._ovlp_ij = np.zeros((self.nconf, self.ndets, self.ndets), dtype=self.dtype)
-        self._delta = np.zeros((self.nconf, self.ndets, self.ndets), dtype=self.dtype)
-        self._grad_psi_n = np.zeros((self.ndets, 3, self.nconf), dtype=self.dtype)        
+        self.memallocated = False
+        self.nconf = None #system_params['nconf']
+        self.ndets = None #system_params['ndets']
+        self.nelec = None #system_params['nelec']
+        self._ovlp_ij = None #np.zeros((self.nconf, self.ndets, self.ndets), dtype=self.dtype)
+        self._delta = None #np.zeros((self.nconf, self.ndets, self.ndets), dtype=self.dtype)
+        self._grad_psi_n = None #np.zeros((self.ndets, 3, self.nconf), dtype=self.dtype)        
         # self._phi_n = np.zeros((self.ndets, self.nconf), dtype=self.dtype)
         # self._phi_b = np.zeros((self.nconf,), dtype=self.dtype)
         # self._psi_n = np.zeros((self.ndets, self.nconf), dtype=self.dtype)
@@ -602,7 +603,6 @@ class ABCDMCMatrixAccumulator:
     @timer_func
     def __call__(self, configs, wf):
         
-        nconf, nelec, nx = configs.configs.shape
         for wave in wf.wf_factors:
             if isinstance(wave, self._boson_wf_type):
                 boson_wf = wave
@@ -617,12 +617,20 @@ class ABCDMCMatrixAccumulator:
         
         psi_n = get_psi_basis(boson_wf, phi_n=phi_n, phi_b=phi_b) # Phi_n/Phi_B
         psi_n_conj = psi_n.conj()
-                
+        
+        if not self.memallocated:
+            self.nconf, self.nelec, _ = configs.configs.shape
+            self.ndets = boson_wf.num_det
+            self._ovlp_ij = np.zeros((self.nconf, self.ndets, self.ndets), dtype=self.dtype)
+            self._delta = np.zeros((self.nconf, self.ndets, self.ndets), dtype=self.dtype)
+            self._grad_psi_n = np.zeros((self.ndets, 3, self.nconf), dtype=self.dtype)
+            self.memallocated = True
+        
         ovlp_ij = self._ovlp_ij
         np.einsum("lc,nc->cln", psi_n_conj, psi_n, out=ovlp_ij, optimize='optimal')
         
         delta = self._delta
-        for e in range(nelec):
+        for e in range(self.nelec):
             # Get position of electron e
             epos_s = configs.electron(e)
 
