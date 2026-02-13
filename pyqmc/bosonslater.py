@@ -1212,6 +1212,105 @@ class BosonWF:
         return lap
         
 
+
+    @timer_func
+    def gradient_laplacian_dets(self, e, epos):
+        r"""Returns the ∇²(Phi_l), ∇log(Phi_l) and ∇log(Phi_B) of each slater determinant forming the bosonic wavefunction
+        Phi_l is defined in eq. 14, psi_l = Phi_l/Phi_B
+
+        Args:
+            e (_type_): electron index
+            epos (_type_): electron coordinates
+
+        Returns:
+            laplacian: [# of determinants, nconfigs]
+            gradient: [# of determinants, cartesian(3), nconfigs]
+            gradient_b: [cartesian(3), nconfigs]
+        """
+
+        s = int(e >= self._nelec[0])
+        ao = self.orbitals.aos("GTOval_sph_deriv2", epos)
+
+        ao_val = ao[:, 0, :, :]
+        
+        ao_grad = ao[:, 1:4, :, :]
+        mo_grad = self.orbitals.mos(ao_grad, s)
+        mo_grad_vals = mo_grad[:, :, self._det_occup[s]]
+
+        ao_lap = gpu.cp.sum(ao[:, [4, 7, 9], :, :], axis=1)
+        mo_lap_vals = gpu.cp.stack(
+            [self.orbitals.mos(x, s)[..., self._det_occup[s]] for x in [ao_val, ao_lap]]
+        )
+        
+        
+        jacobi_grad = np.einsum(
+            "ei...dj,idj...->ei...d",
+            mo_grad_vals,
+            self._inverse[s][..., e - s * self._nelec[0]],
+        )
+        
+        jacobi_lap = gpu.cp.einsum(
+            "ei...dj,idj...->ei...d",
+            mo_lap_vals,
+            self._inverse[s][..., e - s * self._nelec[0]],
+        )
+
+        upref = gpu.cp.amax(self._dets[0][1]).real
+        dnref = gpu.cp.amax(self._dets[1][1]).real
+
+        det_array = (
+            self._dets[0][0, :, self._det_map[0]]
+            * self._dets[1][0, :, self._det_map[1]]
+            * gpu.cp.exp(
+                self._dets[0][1, :, self._det_map[0]]
+                + self._dets[1][1, :, self._det_map[1]]
+                - upref
+                - dnref
+            )
+        )
+        
+        # Calculate grad_n
+        numer = np.einsum(
+            "ei...d,di->edi...",
+            jacobi_grad[..., self._det_map[s]],
+            det_array,
+        )
+        grad_n = numer[1:] / numer[0]
+        grad_n = np.einsum('edi->dei', grad_n)
+
+        # Calculate lap_n
+        numer = gpu.cp.einsum(
+            "ei...d,di->ei...d",
+            jacobi_lap[..., self._det_map[s]],
+            # det_coeff,
+            det_array,
+        )
+        # denom = np.sum(numer[0], axis=1)
+        # lap = np.einsum('id, i->id', numer[1], 1./denom)
+        
+        lap_n = numer[1]/numer[0]
+
+        # Calculate grad_b as well 
+        det_coeff = self.myparameters['det_coeff']
+        jacobid = jacobi_grad[..., self._det_map[s]]
+        jacobid = jacobid[1:]/jacobid[0]
+        numer =  gpu.cp.einsum(
+            "ei...d,d,di->ei...",
+            jacobid,
+            det_coeff,
+            det_array**2
+        )
+
+        denom = gpu.cp.einsum(
+            "d,di->i...",
+            det_coeff,
+            det_array**2
+        )
+        grad_b = numer / denom
+        grad_b[~np.isfinite(grad_b)] = 0.0
+
+        return lap_n, grad_n, grad_b
+
     def pgradient(self):
         # Not implemented
         d = {}
