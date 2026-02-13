@@ -527,8 +527,8 @@ def test_boson_dets_grad_singlet(H2_ccecp_casci_s0):
     wfb.recompute(configs)  
     e = 0
     epos = configs.electron(e)
-    wfb_grad_dets = wfb.gradient_dets(e, epos)
-    wfb_grad = wfb.gradient(e, epos)
+    wfb_grad_dets, wfb_grad = wfb.gradient_dets(e, epos)
+    # wfb_grad = wfb.gradient(e, epos)
 
     dv = wfb.value_dets()[1]
     v = wfb.value()[1]
@@ -554,8 +554,8 @@ def test_boson_dets_grad_triplet(H2_ccecp_casci_s2):
     wfb.recompute(configs)  
     e = 0
     epos = configs.electron(e)
-    wfb_grad_dets = wfb.gradient_dets(e, epos)
-    wfb_grad = wfb.gradient(e, epos)
+    wfb_grad_dets, wfb_grad = wfb.gradient_dets(e, epos)
+    # wfb_grad = wfb.gradient(e, epos)
 
     dv = wfb.value_dets()[1]
     v = wfb.value()[1]

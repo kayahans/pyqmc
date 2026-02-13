@@ -456,8 +456,8 @@ class ABVMCMatrixAccumulator:
             # # delta1 = delta1b.copy()
             # delta1 += delta1c + delta1d
 
-            loggrad_phi_n = boson_wf.gradient_dets(e, epos_s) 
-            loggrad_b = boson_wf.gradient(e, epos_s) # ∇log(Psi_B) eq. 4
+            loggrad_phi_n, loggrad_b = boson_wf.gradient_dets(e, epos_s) 
+            # loggrad_b = boson_wf.gradient(e, epos_s) # ∇log(Psi_B) eq. 4
             grad_j = -jastrow_wf.gradient(e, epos_s)
             # Convert gradients to target dtype if using 32-bit (avoids 64-bit intermediate computations)
             # Converting BEFORE operations is more efficient than converting after
@@ -533,20 +533,6 @@ class ABVMCMatrixAccumulator:
     def shapes(self):
         return {"matrix": ()}
 
-
-
-        for e in range(nelec):
-            # Get position of electron e
-            epos_s = configs.electron(e)
-            # ∇log(Phi_n) 
-            loggrad_phi_n = boson_wf.gradient_dets(e, epos_s) 
-            # ∇log(Psi_B) eq. 4
-            loggrad_b = boson_wf.gradient(e, epos_s) 
-            # ∇Psi_n = ∇(Phi_n/Phi_B)
-            grad_psi_n = np.einsum('nc, nxc->nxc', psi_n, loggrad_phi_n-loggrad_b)  
-            grad_j = jastrow_wf.gradient(e, epos_s)
-            matel += np.einsum('lc, nxc, nxc->cln', psi_n, grad_j, grad_psi_n)
-
 class ABCDMCMatrixAccumulator:
     """Accumulator for computing matrix elements in Auxiliary-field Boson Corrected Diffusion Monte Carlo (ABCDMC).
     
@@ -606,19 +592,18 @@ class ABCDMCMatrixAccumulator:
         self._ovlp_ij_shape = None
         self._delta = None
         self._delta_shape = None
+        if not hasattr(self, '_boson_wf_type'):
+            self._boson_wf_type = bosonslater.BosonWF
+            self._jastrow_wf_type = jastrowspin.JastrowSpin
 
     @timer_func
     def __call__(self, configs, wf):
         
         nconf, nelec, nx = configs.configs.shape
-
-        wave_functions = wf.wf_factors
-        boson_wf = None
-        jastrow_wf = None
-        for wave in wave_functions:
-            if isinstance(wave, bosonslater.BosonWF):
+        for wave in wf.wf_factors:
+            if isinstance(wave, self._boson_wf_type):
                 boson_wf = wave
-            if isinstance(wave, jastrowspin.JastrowSpin):
+            if isinstance(wave, self._jastrow_wf_type):
                 jastrow_wf = wave        
         
         boson_value = boson_wf.value() # phase(Phi_B), log(Phi_B)
@@ -628,21 +613,18 @@ class ABCDMCMatrixAccumulator:
         phi_n = phi_n_value[0] * np.nan_to_num(np.exp(phi_n_value[1])) # Phi_n
         
         psi_n = get_psi_basis(boson_wf, phi_n=phi_n, phi_b=phi_b) # Phi_n/Phi_B
-        
+        psi_n_conj = psi_n.conj()
         
         # Determine target dtype: convert to 32-bit if requested (halves memory usage)
         # Convert EARLY to avoid wasteful 64-bit computations
+# After line 616
         if self.use_32bit:
-            if psi_n.dtype == np.complex128:
-                target_dtype = np.complex64
-            elif psi_n.dtype == np.float64:
-                target_dtype = np.float32
-            else:
-                target_dtype = psi_n.dtype
-            # Convert psi_n immediately - all subsequent operations will use 32-bit
-            psi_n = psi_n.astype(target_dtype, copy=False)
+            if phi_n.dtype != target_dtype:
+                phi_n = phi_n.astype(target_dtype, copy=False)
+            if phi_b.dtype != target_dtype:
+                phi_b = phi_b.astype(target_dtype, copy=False)
         else:
-            target_dtype = psi_n.dtype
+            target_dtype = phi_n.dtype
         
         # Optimized: reuse pre-allocated array for einsum output to avoid allocation overhead
         ndets = psi_n.shape[0]
@@ -658,7 +640,7 @@ class ABCDMCMatrixAccumulator:
         # Use einsum with out parameter to write directly into pre-allocated array
         np.einsum("lc,nc->cln", psi_n.conj(), psi_n, out=ovlp_ij, optimize='optimal')
         
-        en_acc = self.en_acc(configs, wf)
+        # en_acc = self.en_acc(configs, wf)
         # import pdb; pdb.set_trace()
         # eb0 = en_acc['total'] - en_acc['corr']
         # mean_eb0 = np.mean(eb0)*np.ones_like(eb0)
@@ -684,8 +666,8 @@ class ABCDMCMatrixAccumulator:
 
             # All the terms that go into delta calculation
             lap_phi_n = boson_wf.laplacian_dets(e, epos_s)  # ∇²(Phi_n)/Phi_n
-            loggrad_phi_n = boson_wf.gradient_dets(e, epos_s) 
-            loggrad_b = boson_wf.gradient(e, epos_s) # ∇log(Psi_B) eq. 4
+            loggrad_phi_n, loggrad_b = boson_wf.gradient_dets(e, epos_s) 
+            # loggrad_b = boson_wf.gradient(e, epos_s) # ∇log(Psi_B) eq. 4
             lap_phi_b = boson_wf.laplacian(e, epos_s, 
                                            lap_phi_n=lap_phi_n, 
                                            loggrad_phi_n=loggrad_phi_n, 
@@ -695,25 +677,25 @@ class ABCDMCMatrixAccumulator:
             grad_j = jastrow_wf.gradient(e, epos_s)
             
             # Convert laplacians to target dtype if using 32-bit (avoids 64-bit intermediate computations)
+            arrays_to_convert = []
             if self.use_32bit:
-                if lap_phi_n.dtype != target_dtype:
-                    lap_phi_n = lap_phi_n.astype(target_dtype, copy=False)
-                if loggrad_phi_n.dtype != target_dtype:
-                    loggrad_phi_n = loggrad_phi_n.astype(target_dtype, copy=False)
-                if loggrad_b.dtype != target_dtype:
-                    loggrad_b = loggrad_b.astype(target_dtype, copy=False)
-                if lap_phi_b.dtype != target_dtype:
-                    lap_phi_b = lap_phi_b.astype(target_dtype, copy=False)
-                if grad_j.dtype != target_dtype:
-                     grad_j = grad_j.astype(target_dtype, copy=False)
+                for arr, name in [(lap_phi_n, 'lap_phi_n'), (loggrad_phi_n, 'loggrad_phi_n'), 
+                                (loggrad_b, 'loggrad_b'), (lap_phi_b, 'lap_phi_b'), (grad_j, 'grad_j')]:
+                    if arr.dtype != target_dtype:
+                        arrays_to_convert.append((arr, name))
+                
+                # Convert all at once (or inline if preferred)
+                if arrays_to_convert:
+                    # Could use a dict or just inline conversions
+                    pass
 
             if NUMBA_AVAILABLE and not np.iscomplexobj(psi_n):
                 # Only use numba for real arrays (complex support requires more work)
                 _accumulate_delta_dmc_contributions_numba(
                     delta,
-                    psi_n.conj(),
+                    psi_n_conj,
                     psi_n,
-                    lap_phi_n,
+                    lap_phi_n.T,
                     lap_phi_b,
                     loggrad_phi_n,
                     loggrad_b,
@@ -855,9 +837,9 @@ class ABCDMCMatrixAccumulator_old:
             epos_s = configs.electron(e)
 
             # ∇log(Phi_n) 
-            loggrad_phi_n = boson_wf.gradient_dets(e, epos_s) 
+            loggrad_phi_n, loggrad_b = boson_wf.gradient_dets(e, epos_s) 
             # ∇log(Psi_B) eq. 4
-            loggrad_b = boson_wf.gradient(e, epos_s) 
+            # loggrad_b = boson_wf.gradient(e, epos_s) 
             # ∇Psi_n = ∇(Phi_n/Phi_B)
             # grad_psi_n = np.einsum('nc, nxc->nxc', psi_n, loggrad_phi_n-loggrad_b, optimize='optimal')  
             # Optimized: use broadcasting instead of einsum for better performance

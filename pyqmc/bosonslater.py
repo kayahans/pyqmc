@@ -937,7 +937,7 @@ class BosonWF:
             lap_phi_n = self.laplacian_dets(e, epos) # ∇²(Phi_n)
         
         if loggrad_phi_n is None:
-            loggrad_phi_n = self.gradient_dets(e, epos) # ∇log(Phi_n) # large
+            loggrad_phi_n, _ = self.gradient_dets(e, epos) # ∇log(Phi_n) # large
 
         if phi_n is None:
             phase_n, logval_n = self.value_dets()   # phase(Phi_n), log(Phi_n)
@@ -1042,22 +1042,21 @@ class BosonWF:
         s = int(e >= self._nelec[0])
         aograd = self.orbitals.aos("GTOval_sph_deriv1", epos)
         mograd = self.orbitals.mos(aograd, s)
-
         mograd_vals = mograd[:, :, self._det_occup[s]]
 
-        ratios = np.einsum(
+        jacobi = np.einsum(
             "ei...dj,idj...->ei...d",
             mograd_vals,
             self._inverse[s][..., e - s * self._nelec[0]],
         )
-
+        
         upref = gpu.cp.amax(self._dets[0][1]).real
         dnref = gpu.cp.amax(self._dets[1][1]).real
         # Removed detcoeff and ref values
         det_array = (
-            self._dets[0][0, :, self._det_map[0]]
-            * self._dets[1][0, :, self._det_map[1]]
-            * np.exp(
+            self._dets[0][0, :, self._det_map[0]] 
+            * self._dets[1][0, :, self._det_map[1]] 
+            * gpu.cp.exp(
                 self._dets[0][1, :, self._det_map[0]]
                 + self._dets[1][1, :, self._det_map[1]]
                 - upref
@@ -1067,10 +1066,32 @@ class BosonWF:
 
         numer = np.einsum(
             "ei...d,di->edi...",
-            ratios[..., self._det_map[s]],
+            jacobi[..., self._det_map[s]],
             det_array,
         )
+        grads_n = numer[1:] / numer[0]
+        grads_n = np.einsum('edi->dei', grads_n)
 
+        # Calculate grad as well 
+        det_coeff = self.myparameters['det_coeff']
+        jacobid = jacobi[..., self._det_map[s]]
+        jacobid = jacobid[1:]/jacobid[0]
+        numer =  gpu.cp.einsum(
+            "ei...d,d,di->ei...",
+            jacobid,
+            det_coeff,
+            det_array**2
+        )
+
+        denom = gpu.cp.einsum(
+            "d,di->i...",
+            det_coeff,
+            det_array**2
+        )
+        grad = numer / denom
+        grad[~np.isfinite(grad)] = 0.0
+
+        
         # det_array = (
         #     self._dets[0][0, :, self._det_map[0]]
         #     * self._dets[1][0, :, self._det_map[1]]
@@ -1088,22 +1109,20 @@ class BosonWF:
 
         
         # denom has the sum of Multideterminant WF, not needed
-        grads = numer[1:] / numer[0]
-        grads = np.einsum('edi->dei', grads)
 
         if test:
             tol = 1E-6
             dv = self.value_dets()[1]
             v = self.value()[1]
             det_coeff = self.myparameters['det_coeff']
-            gc = np.einsum('d, id,dei->ei', det_coeff, np.exp(2*(dv-v[:, None])), grads)
+            gc = np.einsum('d, id,dei->ei', det_coeff, np.exp(2*(dv-v[:, None])), grads_n)
             try:
                 assert ((np.abs(gc - self.gradient(e, epos)) < tol).all())
                 print('gradient_dets test passed')
             except:
                 print('gradient_dets error', np.max(np.abs(gc - self.gradient(e, epos))))
             exit()
-        return grads
+        return grads_n, grad
     
     def laplacian_dets(self, e, epos, test=False):
         r"""Returns laplacian ∇²(Phi_l)/Phi_l of each slater determinant forming the bosonic wavefunction
