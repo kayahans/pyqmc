@@ -911,7 +911,7 @@ class BosonWF:
         return grad, lap
     
     @ timer_func
-    def laplacian(self, e, epos):
+    def laplacian(self, e, epos, lap_phi_n = None, loggrad_phi_n = None, phi_n = None, phi_b = None):
         r"""Returns ∇²(Phi_B)/Phi_B of bosonic wave function for electron e at position epos
         Returns array of shape (nconfigs,)
         \[
@@ -933,29 +933,35 @@ class BosonWF:
         """
 
         # import pdb; pdb.set_trace()
-        lap_n = self.laplacian_dets(e, epos) # ∇²(Phi_n)
-        # Get value of determinants
-        phase_n, logval_n = self.value_dets()   # phase(Phi_n), log(Phi_n)
-        val_n = phase_n * np.nan_to_num(np.exp(logval_n)) # Phi_n
-        # Get gradient of determinants
-        loggrad_n = self.gradient_dets(e, epos) # ∇log(Phi_n) # large
+        if lap_phi_n is None:
+            lap_phi_n = self.laplacian_dets(e, epos) # ∇²(Phi_n)
+        
+        if loggrad_phi_n is None:
+            loggrad_phi_n = self.gradient_dets(e, epos) # ∇log(Phi_n) # large
 
-        # Get value of bosonic wavefunction
-        phase_b, logval_b = self.value() # phase(Phi_B), log(Phi_B)
-        val_b = phase_b * np.nan_to_num(np.exp(logval_b)) # Phi_B
+        if phi_n is None:
+            phase_n, logval_n = self.value_dets()   # phase(Phi_n), log(Phi_n)
+            phi_n = phase_n * np.nan_to_num(np.exp(logval_n)) # Phi_n
+        
+        if phi_b is None:
+            phase_b, logval_b = self.value() # phase(Phi_B), log(Phi_B)
+            phi_b = phase_b * np.nan_to_num(np.exp(logval_b)) # Phi_B
+
+        
 
         # Calculate ∇²(Phi_B)/Phi_B
         # First term: Sum over determinants l of: (gradient of Phi_l)·(gradient of Phi_l)  [dot product of gradients]
         
-        grad_phi_l = np.einsum('nxc, cn->nxc', loggrad_n, val_n)
+        grad_phi_l = np.einsum('nxc, cn->nxc', loggrad_phi_n, phi_n)
         
         lap_b1 = np.einsum('nxc, nxc->c', grad_phi_l, grad_phi_l)
-        lap_b1 += np.einsum('cn, cn->c', val_n**2, lap_n) # Changed due to new lap_n definition in this commit
-        lap_b1 /= val_b**2
+        # term below can be executed only once. 
+        lap_b1 += np.einsum('cn, cn->c', phi_n**2, lap_phi_n) # Changed due to new lap_n definition in this commit
+        lap_b1 /= phi_b**2
         # Second term: Minus the square of (sum of Phi_l times gradient of Phi_l)
-        lap_b2 = np.einsum('cn, nxc->cx', val_n, grad_phi_l)
+        lap_b2 = np.einsum('cn, nxc->cx', phi_n, grad_phi_l)
         lap_b2 = np.einsum('cx, cx->c', lap_b2, lap_b2)
-        lap_b2 /= val_b**4
+        lap_b2 /= phi_b**4
         lap_b = lap_b1 - lap_b2
         # import matplotlib.pyplot as plt
         # plt.figure()

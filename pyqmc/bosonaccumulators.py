@@ -13,6 +13,99 @@ from pyqmc.bosonslater import timer_func
 
 from pyqmc.accumulators import PGradTransform
 
+try:
+    from numba import jit
+    NUMBA_AVAILABLE = True
+except ImportError:
+    NUMBA_AVAILABLE = False
+    # Create a no-op decorator if numba is not available
+    def jit(*args, **kwargs):
+        def decorator(func):
+            return func
+        return decorator
+
+if NUMBA_AVAILABLE:
+    @jit(nopython=True, cache=True, fastmath=True)
+    def _accumulate_delta_vmc_contributions_numba(
+        delta_out,  # Output array to accumulate into (nconf, ndets, ndets)
+        grad_psi_n,  # (ndets, 3, nconf) - already computed grad_psi_n
+        psi_n,  # (ndets, nconf)
+        grad_j,  # (3, nconf)
+    ):
+        """
+        Accumulate delta contributions for VMC (ABVMC) for one electron.
+        Implements: einsum("lc,xc,nxc->cln", psi_n, grad_j, grad_psi_n)
+        
+        Computes:
+        delta += sum over x: psi_n[l, c] * grad_j[x, c] * grad_psi_n[n, x, c]
+        """
+        nconf, ndets = psi_n.shape[1], psi_n.shape[0]
+        
+        for c in range(nconf):  # Loop over configurations
+            for l in range(ndets):  # Loop over determinant l
+                for n in range(ndets):  # Loop over determinant n
+                    # Sum over spatial dimensions x
+                    for x in range(3):
+                        delta_out[c, l, n] += psi_n[l, c] * grad_j[x, c] * grad_psi_n[n, x, c]
+
+    @jit(nopython=True, cache=True, fastmath=True)
+    def _accumulate_delta_dmc_contributions_numba(
+        delta_out,  # Output array to accumulate into (nconf, ndets, ndets)
+        psi_n_conj,  # (ndets, nconf) - conjugated psi_n
+        psi_n,  # (ndets, nconf)
+        lap_phi_n,  # (ndets, nconf)
+        lap_phi_b,  # (nconf,)
+        loggrad_phi_n,  # (ndets, 3, nconf)
+        loggrad_b,  # (3, nconf)
+        grad_j,  # (3, nconf)
+    ):
+        """
+        Accumulate all delta contributions for one electron.
+        Combines three einsum operations into a single numba-compiled loop.
+        
+        Computes:
+        1. delta1c_e = einsum('lc, cn, nc->cln', psi_n_conj, lap_phi_n, psi_n)
+        2. delta1d_e = -einsum('lc, c, nc->cln', psi_n_conj, lap_phi_b, psi_n)
+        3. grad_psi_n = psi_n[:, np.newaxis, :] * (loggrad_phi_n - loggrad_b)
+        4. delta2 = einsum('lc, xc, nxc->cln', psi_n_conj, grad_j, grad_psi_n)
+        5. delta3 = einsum('lxc, nxc->cln', grad_psi_n, grad_psi_n)
+        """
+        nconf, ndets = psi_n.shape[1], psi_n.shape[0]
+        
+        # Temporary array for grad_psi_n (ndets, 3, nconf)
+        # We'll compute it on the fly to avoid allocation
+        
+        for c in range(nconf):  # Loop over configurations
+            for l in range(ndets):  # Loop over determinant l
+                for n in range(ndets):  # Loop over determinant n
+                    # 1. delta1c_e contribution: psi_n_conj[l,c] * lap_phi_n[c,n] * psi_n[n,c]
+                    # Note: lap_phi_n is (nconf, ndets) = (c, n) to match einsum 'lc, cn, nc->cln'
+                    delta_out[c, l, n] += psi_n_conj[l, c] * lap_phi_n[c, n] * psi_n[n, c]
+                    
+                    # 2. delta1d_e contribution: -psi_n_conj[l,c] * lap_phi_b[c] * psi_n[n,c]
+                    delta_out[c, l, n] -= psi_n_conj[l, c] * lap_phi_b[c] * psi_n[n, c]
+                    
+                    # 3. Compute grad_psi_n contributions
+                    # grad_psi_n[n, x, c] = psi_n[n, c] * (loggrad_phi_n[n, x, c] - loggrad_b[x, c])
+                    for x in range(3):  # Loop over spatial dimensions
+                        grad_psi_n_val = psi_n[n, c] * (loggrad_phi_n[n, x, c] - loggrad_b[x, c])
+                        
+                        # 4. delta2 contribution: psi_n_conj[l,c] * grad_j[x,c] * grad_psi_n[n,x,c]
+                        delta_out[c, l, n] += psi_n_conj[l, c] * grad_j[x, c] * grad_psi_n_val
+                        
+                        # 5. delta3 contribution: grad_psi_n[l,x,c] * grad_psi_n[n,x,c]
+                        grad_psi_n_l = psi_n[l, c] * (loggrad_phi_n[l, x, c] - loggrad_b[x, c])
+                        delta_out[c, l, n] += grad_psi_n_l * grad_psi_n_val
+
+else:
+    # Fallback to numpy einsum if numba is not available
+    def _accumulate_delta_vmc_contributions_numba(*args, **kwargs):
+        raise RuntimeError("Numba is not available. Install numba to use this optimization.")
+    
+    def _accumulate_delta_dmc_contributions_numba(*args, **kwargs):
+        raise RuntimeError("Numba is not available. Install numba to use this optimization.")
+
+
 def calculate_radial_orbital_densities(mol, dm, mo_coeff):
     """
     Calculate radial orbital densities for each orbital in the mean field object
@@ -194,7 +287,7 @@ class ABQMCEnergyAccumulator:
     def shapes(self):
         return {"ke": (), "ee": (), "vxc": (), "ei": (), "ecp": (), "total": (), "grad2": ()}
 
-def get_psi_basis(boson_wf):
+def get_psi_basis(boson_wf, phi_b = None, phi_n = None):
     """Calculate the basis functions for the bosonic wave function.
 
     This function computes the basis functions Phi_l/Phi_B used in the bosonic wave function
@@ -203,6 +296,8 @@ def get_psi_basis(boson_wf):
 
     Args:
         boson_wf: A BosonWF object representing the bosonic wave function
+        phi_b: Optional pre-computed Phi_B array (nconf,). If None, will be computed.
+        phi_n: Optional pre-computed Phi_n array (nconf, ndets). If None, will be computed.
 
     Returns:
         ndarray: Array of shape (ndet, nconfig) containing the basis functions ψᵢ/ψ_BT,
@@ -215,15 +310,18 @@ def get_psi_basis(boson_wf):
         - Handles numerical stability by using log values and nan_to_num
         - The basis functions sum to 1 for each configuration np.mean(psi_basis**2)=1.0
     """
-    phase, log_val = boson_wf.value() # log(Phi_B) Eq. 4
-    val = phase * np.nan_to_num(np.exp(log_val)) #Phi_B
+    if phi_b is None:
+        phase, log_val = boson_wf.value() # log(Phi_B) Eq. 4
+        phi_b = phase * np.nan_to_num(np.exp(log_val)) #Phi_B
     
-    phases, log_vals = boson_wf.value_dets() #log(Phi_l)
-    psis = phases * np.nan_to_num(np.exp(log_vals)) # Phi_l
+    if phi_n is None:
+        phases, log_vals = boson_wf.value_dets() #log(Phi_l)
+        phi_n = phases * np.nan_to_num(np.exp(log_vals)) # Phi_l
+    
     # psi_basis = np.einsum('cn, c->nc', psis, 1./val) # Phi_l/Phi_B, eq. 14
     # # Optimized: use broadcasting instead of einsum for better performance
-    psi_basis = (psis / val[:, np.newaxis]).T  # Phi_l/Phi_B, eq. 14
-    return psi_basis
+    psi_n = (phi_n / phi_b[:, np.newaxis]).T  # Phi_n/Phi_B, eq. 14
+    return psi_n
 
 class ABVMCMatrixAccumulator:
     """Accumulator for matrix quantities in Auxiliary Boson Variational Monte Carlo (ABVMC) calculations.
@@ -286,7 +384,11 @@ class ABVMCMatrixAccumulator:
                 jastrow_wf = wave        
         
         nconf, nelec, _ = configs.configs.shape
-        psi_n = get_psi_basis(boson_wf)
+        boson_value = boson_wf.value()
+        phi_b = boson_value[0] * np.nan_to_num(np.exp(boson_value[1])) # Phi_B
+        phi_n_value = boson_wf.value_dets()   # phase(Phi_n), log(Phi_n)
+        phi_n = phi_n_value[0] * np.nan_to_num(np.exp(phi_n_value[1])) # Phi_n
+        psi_n = get_psi_basis(boson_wf, phi_n=phi_n, phi_b=phi_b) # Phi_n/Phi_B
         ndets = psi_n.shape[0]
         
         # Determine target dtype: convert to 32-bit if requested (halves memory usage)
@@ -356,7 +458,7 @@ class ABVMCMatrixAccumulator:
 
             loggrad_phi_n = boson_wf.gradient_dets(e, epos_s) 
             loggrad_b = boson_wf.gradient(e, epos_s) # ∇log(Psi_B) eq. 4
-            
+            grad_j = -jastrow_wf.gradient(e, epos_s)
             # Convert gradients to target dtype if using 32-bit (avoids 64-bit intermediate computations)
             # Converting BEFORE operations is more efficient than converting after
             if self.use_32bit:
@@ -364,6 +466,8 @@ class ABVMCMatrixAccumulator:
                     loggrad_phi_n = loggrad_phi_n.astype(target_dtype, copy=False)
                 if loggrad_b.dtype != target_dtype:
                     loggrad_b = loggrad_b.astype(target_dtype, copy=False)
+                if grad_j.dtype != target_dtype:
+                    grad_j = grad_j.astype(target_dtype, copy=False)
             
             # grad_psi_n = np.einsum('nc, nxc->nxc', psi_n, loggrad_phi_n - loggrad_b, optimize='optimal')  
             # Optimized: use broadcasting instead of einsum for better performance
@@ -372,13 +476,14 @@ class ABVMCMatrixAccumulator:
             # This broadcasts correctly with (ndet, 3, nconf) to give (ndet, 3, nconf)
             # All arrays are now in target_dtype, so operations stay in 32-bit
             grad_psi_n = psi_n[:, np.newaxis, :] * (loggrad_phi_n - loggrad_b)
-
-            grad_j = -jastrow_wf.gradient(e, epos_s)
-            # Convert grad_j to target dtype if using 32-bit
-            if self.use_32bit and grad_j.dtype != target_dtype:
-                grad_j = grad_j.astype(target_dtype, copy=False)
-            
-            delta += np.einsum("lc,xc,nxc->cln", psi_n, grad_j, grad_psi_n, optimize='optimal')
+            if NUMBA_AVAILABLE and not np.iscomplexobj(psi_n):
+                _accumulate_delta_vmc_contributions_numba(
+                    delta, 
+                    grad_psi_n, 
+                    psi_n, 
+                    grad_j)
+            else:
+                delta += np.einsum("lc,xc,nxc->cln", psi_n, grad_j, grad_psi_n)
             # import pdb; pdb.set_trace()
         # delta += delta1 + delta2
 
@@ -516,8 +621,14 @@ class ABCDMCMatrixAccumulator:
             if isinstance(wave, jastrowspin.JastrowSpin):
                 jastrow_wf = wave        
         
-        psi_n = get_psi_basis(boson_wf) # Phi_l/Phi_B
-        ndets = psi_n.shape[0]
+        boson_value = boson_wf.value() # phase(Phi_B), log(Phi_B)
+        phi_b = boson_value[0] * np.nan_to_num(np.exp(boson_value[1])) # Phi_B
+
+        phi_n_value = boson_wf.value_dets()   # phase(Phi_n), log(Phi_n)
+        phi_n = phi_n_value[0] * np.nan_to_num(np.exp(phi_n_value[1])) # Phi_n
+        
+        psi_n = get_psi_basis(boson_wf, phi_n=phi_n, phi_b=phi_b) # Phi_n/Phi_B
+        
         
         # Determine target dtype: convert to 32-bit if requested (halves memory usage)
         # Convert EARLY to avoid wasteful 64-bit computations
@@ -534,6 +645,7 @@ class ABCDMCMatrixAccumulator:
             target_dtype = psi_n.dtype
         
         # Optimized: reuse pre-allocated array for einsum output to avoid allocation overhead
+        ndets = psi_n.shape[0]
         ovlp_ij_shape = (nconf, ndets, ndets)
         if self._ovlp_ij is None or self._ovlp_ij_shape != ovlp_ij_shape:
             # Allocate new array if first call or size changed
@@ -563,77 +675,83 @@ class ABCDMCMatrixAccumulator:
             self._delta_shape = delta_shape
         else:
             self._delta.fill(0)
+        
         delta = self._delta
 
         for e in range(nelec):
             # Get position of electron e
             epos_s = configs.electron(e)
 
-            # 1. \Phi_l\Phi_n terms
+            # All the terms that go into delta calculation
             lap_phi_n = boson_wf.laplacian_dets(e, epos_s)  # ∇²(Phi_n)/Phi_n
-            lap_phi_b = boson_wf.laplacian(e, epos_s)      # ∇²(Psi_B)/Psi_B
+            loggrad_phi_n = boson_wf.gradient_dets(e, epos_s) 
+            loggrad_b = boson_wf.gradient(e, epos_s) # ∇log(Psi_B) eq. 4
+            lap_phi_b = boson_wf.laplacian(e, epos_s, 
+                                           lap_phi_n=lap_phi_n, 
+                                           loggrad_phi_n=loggrad_phi_n, 
+                                           phi_n=phi_n, 
+                                           phi_b=phi_b)      
+            
+            grad_j = jastrow_wf.gradient(e, epos_s)
             
             # Convert laplacians to target dtype if using 32-bit (avoids 64-bit intermediate computations)
             if self.use_32bit:
                 if lap_phi_n.dtype != target_dtype:
                     lap_phi_n = lap_phi_n.astype(target_dtype, copy=False)
-                if lap_phi_b.dtype != target_dtype:
-                    lap_phi_b = lap_phi_b.astype(target_dtype, copy=False)
-
-            # delta1b_e = np.einsum('lc, c, nc->cln', psi_n, mean_eb0, psi_n) 
-            delta1c_e = np.einsum('lc, cn, nc->cln', psi_n, lap_phi_n, psi_n, optimize='optimal') 
-            delta1d_e = -np.einsum('lc, c, nc->cln', psi_n, lap_phi_b, psi_n, optimize='optimal') 
-            # delta1 = delta1b_e + delta1c_e + delta1d_e
-            # Accumulate delta1 contributions into delta
-            delta += delta1c_e + delta1d_e
-            
-
-            # Debug prints
-            # assert np.allclose(delta1, delta1a + delta1b + delta1c + delta1d)
-
-            loggrad_phi_n = boson_wf.gradient_dets(e, epos_s) 
-            loggrad_b = boson_wf.gradient(e, epos_s) # ∇log(Psi_B) eq. 4
-            
-            # Convert gradients to target dtype if using 32-bit (avoids 64-bit intermediate computations)
-            if self.use_32bit:
                 if loggrad_phi_n.dtype != target_dtype:
                     loggrad_phi_n = loggrad_phi_n.astype(target_dtype, copy=False)
                 if loggrad_b.dtype != target_dtype:
                     loggrad_b = loggrad_b.astype(target_dtype, copy=False)
-            
-            # grad_psi_n = np.einsum('nc, nxc->nxc', psi_n, loggrad_phi_n - loggrad_b, optimize='optimal')              
-            # Optimized: use broadcasting instead of einsum for better performance
-            # gradient_dets returns (ndet, 3, nconf), so we need to add newaxis in the middle
-            # psi_n is (ndet, nconf), so psi_n[:, np.newaxis, :] is (ndet, 1, nconf)
-            # This broadcasts correctly with (ndet, 3, nconf) to give (ndet, 3, nconf)
-            # All arrays are now in target_dtype, so operations stay in 32-bit
-            grad_psi_n = psi_n[:, np.newaxis, :] * (loggrad_phi_n - loggrad_b)
-            # 2. \Phi_l∇\Phi_B terms
-            
-            # loggrad_psi_bt = wf.gradient(e, epos_s) # ∇log(Psi_BT) eq. 4
-            # delta2 += np.einsum('lc, xc, nxc->cln', psi_n, -loggrad_b + loggrad_psi_bt, grad_psi_n) # Psi_l * [∇(log(Phi_B)) + ∇(log(Psi_BT))] \dot ∇Psi_n        
-            grad_j = jastrow_wf.gradient(e, epos_s)
-            # Convert grad_j to target dtype if using 32-bit
-            if self.use_32bit and grad_j.dtype != target_dtype:
-                grad_j = grad_j.astype(target_dtype, copy=False)
-            # Accumulate delta2 contributions into delta
-            delta += np.einsum('lc, xc, nxc->cln', psi_n, grad_j, grad_psi_n, optimize='optimal') 
+                if lap_phi_b.dtype != target_dtype:
+                    lap_phi_b = lap_phi_b.astype(target_dtype, copy=False)
+                if grad_j.dtype != target_dtype:
+                     grad_j = grad_j.astype(target_dtype, copy=False)
 
-            # 3. ∇\Phi_l∇\Phi_n terms (No terms)
-            # Accumulate delta3 contributions into delta
-            delta += np.einsum('lxc, nxc->cln', grad_psi_n, grad_psi_n, optimize='optimal') # Psi_l * [∇(log(Phi_B)) + ∇(log(Psi_BT))] \dot ∇Psi_n        
+            if NUMBA_AVAILABLE and not np.iscomplexobj(psi_n):
+                # Only use numba for real arrays (complex support requires more work)
+                _accumulate_delta_dmc_contributions_numba(
+                    delta,
+                    psi_n.conj(),
+                    psi_n,
+                    lap_phi_n,
+                    lap_phi_b,
+                    loggrad_phi_n,
+                    loggrad_b,
+                    grad_j,
+                )
+            else:
+                # delta1b_e = np.einsum('lc, c, nc->cln', psi_n, mean_eb0, psi_n) 
+                delta1c_e = np.einsum('lc, cn, nc->cln', psi_n, lap_phi_n, psi_n, optimize='optimal') 
+                delta1d_e = -np.einsum('lc, c, nc->cln', psi_n, lap_phi_b, psi_n, optimize='optimal') 
+                # delta1 = delta1b_e + delta1c_e + delta1d_e
+                # Accumulate delta1 contributions into delta
+                delta += delta1c_e + delta1d_e
+                
 
-        # import matplotlib.pyplot as plt
-        # plt.plot(np.diag(np.mean(delta1a, axis=0)), '-o', label='1a')
-        # plt.plot(np.diag(np.mean(delta1b, axis=0)), '-o', label='1b')
-        # plt.plot(np.diag(np.mean(delta1c, axis=0)), '-o', label='1c')
-        # plt.plot(np.diag(np.mean(delta1d, axis=0)), '-o', label='1d')
-        # plt.plot(np.diag(np.mean(delta1c+delta1d, axis=0)), '-o', label='1c+1d')
-        # plt.plot(np.diag(np.mean(delta, axis=0)), '-o', label='total')
-        # plt.legend()
-        # plt.show()
-        # delta already contains all contributions (delta1 + delta2 + delta3) accumulated in the loop
-        # No need to combine - delta is already the final result
+                # Debug prints
+                # assert np.allclose(delta1, delta1a + delta1b + delta1c + delta1d)
+
+                
+                
+                # grad_psi_n = np.einsum('nc, nxc->nxc', psi_n, loggrad_phi_n - loggrad_b, optimize='optimal')              
+                # Optimized: use broadcasting instead of einsum for better performance
+                # gradient_dets returns (ndet, 3, nconf), so we need to add newaxis in the middle
+                # psi_n is (ndet, nconf), so psi_n[:, np.newaxis, :] is (ndet, 1, nconf)
+                # This broadcasts correctly with (ndet, 3, nconf) to give (ndet, 3, nconf)
+                # All arrays are now in target_dtype, so operations stay in 32-bit
+                grad_psi_n = psi_n[:, np.newaxis, :] * (loggrad_phi_n - loggrad_b)
+                # 2. \Phi_l∇\Phi_B terms
+                
+                # loggrad_psi_bt = wf.gradient(e, epos_s) # ∇log(Psi_BT) eq. 4
+                # delta2 += np.einsum('lc, xc, nxc->cln', psi_n, -loggrad_b + loggrad_psi_bt, grad_psi_n) # Psi_l * [∇(log(Phi_B)) + ∇(log(Psi_BT))] \dot ∇Psi_n        
+                
+                # Accumulate delta2 contributions into delta
+                delta += np.einsum('lc, xc, nxc->cln', psi_n, grad_j, grad_psi_n, optimize='optimal') 
+
+                # 3. ∇\Phi_l∇\Phi_n terms (No terms)
+                # Accumulate delta3 contributions into delta
+                delta += np.einsum('lxc, nxc->cln', grad_psi_n, grad_psi_n, optimize='optimal') # Psi_l * [∇(log(Phi_B)) + ∇(log(Psi_BT))] \dot ∇Psi_n        
+
         results = {'delta': delta,
                 #    'delta1': delta1,  # Not tracked separately anymore
                 #    'delta2': delta2,  # Not tracked separately anymore
