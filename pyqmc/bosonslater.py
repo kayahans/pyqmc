@@ -328,7 +328,8 @@ class BosonWF:
                  determinants=None, 
                  eval_gto_precision=None, 
                  det_emax = None, 
-                 use_symm = True):
+                 use_symm = True, 
+                 target_dtype = None):
         """
         Create Bosonic wavefunction
         Args:
@@ -404,7 +405,10 @@ class BosonWF:
         iscomplex = self.orbitals.mo_dtype == complex or bool(
             sum(map(gpu.cp.iscomplexobj, self.parameters.values()))
         )
-        self.dtype = complex if iscomplex else float
+        if target_dtype is not None:
+            self.dtype = complex if np.issubdtype(np.dtype(target_dtype), np.complexfloating) else float
+        else:
+            self.dtype = complex if iscomplex else float
 
         self.get_phase = get_complex_phase if iscomplex else gpu.cp.sign
 

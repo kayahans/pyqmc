@@ -150,14 +150,30 @@ def ABVMC(
         #     import pdb; pdb.set_trace()
 
         #     warmup_options[kw] = vmc_kws[kw]
-        
+        try: 
+            num_det = wf.num_det
+            wf_dtype = wf.dtype
+        except:
+            for wave in wf.wf_factors:
+                try:
+                    num_det = wave.num_det
+                    wf_dtype = wave.dtype
+                except:
+                    pass
+        system_params = {
+            'nconf': configs.configs.shape[0],
+            'ndets': num_det,
+            'nelec': configs.configs.shape[1],
+            'dtype': wf_dtype
+        }
+
         if warmup_options['accumulators'] is not None:
             warmup_acc = {} 
             possible_accumulators = {
                              'energy':bosonaccumulators.ABQMCEnergyAccumulator(wf.mf_inputs),
                              'ab_vmc_excitations':bosonaccumulators.ABVMCMatrixAccumulator(wf.mf_inputs), 
                             #  'ab_dmc_excitations':bosonaccumulators.ABDMCMatrixAccumulator(),
-                             'abc_dmc_excitations':bosonaccumulators.ABCDMCMatrixAccumulator(wf.mf_inputs), 
+                             'abc_dmc_excitations':bosonaccumulators.ABCDMCMatrixAccumulator(wf.mf_inputs, system_params), 
                              'density':bosonaccumulators.DensityAccumulator(),
                              'radial_density':bosonaccumulators.RadialDensityAccumulator()}
             print('Warmup accumulators:', warmup_options['accumulators'])
@@ -631,6 +647,8 @@ def initialize_boson_qmc_objects(
         wf, to_opt = bosonwftools.generate_boson_wf(
             mol, mf, mc=mc, jastrow = None, jastrow_kws=jastrow_kws, slater_kws=slater_kws, det_emax=det_emax, use_symm=use_symm
         )
+        num_det = wf.num_det
+        wf_dtype = wf.dtype
     else:
         if njastrow == 2:
             wf, to_opt = bosonwftools.generate_boson_wf(
@@ -644,6 +662,12 @@ def initialize_boson_qmc_objects(
         if load_parameters is not None:
             print('Loading WF parameters from', load_parameters)
             wftools.read_wf(wf, load_parameters)    
+        for wave in wf.wf_factors:
+            try:
+                num_det = wave.num_det
+                wf_dtype = wave.dtype
+            except:
+                pass
 
     if opt_options is not None:
         allowed_opt_options = ['only_acoeff', 'only_bcoeff']
@@ -664,13 +688,19 @@ def initialize_boson_qmc_objects(
         print('Using spherical guess')
     configs = initial_guess(mol, nconfig, r=initial_guess_r, seed=seed, use_dft_density=use_dft_density, mf=mf, ncas = mc.ncas, nelecas = mc.nelecas, frozen = mc.ncore)
 
+    system_params = {
+        'nconf': configs.configs.shape[0],
+        'ndets': num_det,
+        'nelec': configs.configs.shape[1],
+        'dtype': wf_dtype
+    }
 
     acc = {}
     acc['energy'] = bosonaccumulators.ABQMCEnergyAccumulator(mf_inputs)
-
+    
     possible_accumulators = {'ab_vmc_excitations':bosonaccumulators.ABVMCMatrixAccumulator(mf_inputs), 
                             #  'ab_dmc_excitations':bosonaccumulators.ABDMCMatrixAccumulator(),
-                             'abc_dmc_excitations':bosonaccumulators.ABCDMCMatrixAccumulator(mf_inputs), 
+                             'abc_dmc_excitations':bosonaccumulators.ABCDMCMatrixAccumulator(mf_inputs, system_params), 
                              'density':bosonaccumulators.DensityAccumulator(),
                              'radial_density':bosonaccumulators.RadialDensityAccumulator()}
     if accumulators is not None and len(accumulators) > 0:
