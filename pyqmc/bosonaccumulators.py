@@ -640,7 +640,7 @@ class ABCDMCMatrixAccumulator:
             # All the terms that go into delta calculation
             # lap_phi_n = boson_wf.laplacian_dets(e, epos_s)  # ∇²(Phi_n)/Phi_n
             # loggrad_phi_n, loggrad_b = boson_wf.gradient_dets(e, epos_s)  #∇log(Phi_n) and ∇log(Psi_B) eq. 4
-            lap_phi_n, loggrad_phi_n = boson_wf.gradient_laplacian_dets(e, epos_s)  #∇²(Phi_n) and ∇log(Phi_n)
+            lap_phi_n, loggrad_phi_n, loggrad_b = boson_wf.gradient_laplacian_dets(e, epos_s)  #∇²(Phi_n) and ∇log(Phi_n)
             lap_phi_b = boson_wf.laplacian(e, epos_s, 
                                            lap_phi_n=lap_phi_n, 
                                            loggrad_phi_n=loggrad_phi_n, 
