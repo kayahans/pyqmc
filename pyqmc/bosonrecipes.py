@@ -168,12 +168,11 @@ def ABVMC(
         }
 
         if warmup_options['accumulators'] is not None:
-            warmup_acc = {} 
+            warmup_acc = {}
             possible_accumulators = {
                              'energy':bosonaccumulators.ABQMCEnergyAccumulator(wf.mf_inputs),
-                             'ab_vmc_excitations':bosonaccumulators.ABVMCMatrixAccumulator(wf.mf_inputs), 
-                            #  'ab_dmc_excitations':bosonaccumulators.ABDMCMatrixAccumulator(),
-                             'abc_dmc_excitations':bosonaccumulators.ABCDMCMatrixAccumulator(wf.mf_inputs, system_params), 
+                             'ab_vmc_excitations':bosonaccumulators.ABVMCMatrixAccumulator(wf.mf_inputs, use_symm=use_symm),
+                             'abc_dmc_excitations':bosonaccumulators.ABCDMCMatrixAccumulator(wf.mf_inputs, system_params, use_symm=use_symm),
                              'density':bosonaccumulators.DensityAccumulator(),
                              'radial_density':bosonaccumulators.RadialDensityAccumulator()}
             print('Warmup accumulators:', warmup_options['accumulators'])
@@ -257,7 +256,7 @@ def ABDMC(
         vmc_acc = {}
         possible_accumulators = {
                             'energy':bosonaccumulators.ABQMCEnergyAccumulator(wf.mf_inputs),
-                            'ab_vmc_excitations':bosonaccumulators.ABVMCMatrixAccumulator(wf.mf_inputs), 
+                            'ab_vmc_excitations':bosonaccumulators.ABVMCMatrixAccumulator(wf.mf_inputs, use_symm=use_symm),
                             'density':bosonaccumulators.DensityAccumulator(),
                             'radial_density':bosonaccumulators.RadialDensityAccumulator()}
         print('DMC accumulators:', vmc_options['accumulators'])
@@ -493,6 +492,7 @@ def initial_guess(mol, nconfig, r=None, seed = None, use_dft_density=False, mf =
     :rtype: ndarray
 
     """
+    
     from pyqmc.coord import OpenConfigs, PeriodicConfigs
     if use_dft_density:
         coords, weights = create_pyscf_grid(mol, level=9)
@@ -687,7 +687,7 @@ def initialize_boson_qmc_objects(
     else:
         print('Using spherical guess')
     configs = initial_guess(mol, nconfig, r=initial_guess_r, seed=seed, use_dft_density=use_dft_density, mf=mf, ncas = mc.ncas, nelecas = mc.nelecas, frozen = mc.ncore)
-
+    
     system_params = {
         'nconf': configs.configs.shape[0],
         'ndets': num_det,
@@ -698,9 +698,8 @@ def initialize_boson_qmc_objects(
     acc = {}
     acc['energy'] = bosonaccumulators.ABQMCEnergyAccumulator(mf_inputs)
     
-    possible_accumulators = {'ab_vmc_excitations':bosonaccumulators.ABVMCMatrixAccumulator(mf_inputs), 
-                            #  'ab_dmc_excitations':bosonaccumulators.ABDMCMatrixAccumulator(),
-                             'abc_dmc_excitations':bosonaccumulators.ABCDMCMatrixAccumulator(mf_inputs, system_params), 
+    possible_accumulators = {'ab_vmc_excitations':bosonaccumulators.ABVMCMatrixAccumulator(mf_inputs, use_symm=use_symm),
+                             'abc_dmc_excitations':bosonaccumulators.ABCDMCMatrixAccumulator(mf_inputs, system_params, use_symm=use_symm),
                              'density':bosonaccumulators.DensityAccumulator(),
                              'radial_density':bosonaccumulators.RadialDensityAccumulator()}
     if accumulators is not None and len(accumulators) > 0:

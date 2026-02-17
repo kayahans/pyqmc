@@ -113,7 +113,64 @@ def compute_boson_value(updets, dndets, det_coeffs):
     return gpu.asnumpy(wf_sign), gpu.asnumpy(wf_logval)
 
 
-def filter_determinants_from_ci(mc, mo_energies, det_emax, include_zeros=True):
+def _compute_det_prod_filter(mol, mf, symm_data, occupations):
+    """
+    Compute the determinant symmetry mask (ndets, ndets) where mask[l,n]=True
+    iff matrix element <l|O|n> can be nonzero (same total irrep for both spins).
+
+    Args:
+        mol: pyscf Mole object
+        mf: pyscf mean-field object (for mo_coeff)
+        symm_data: dict from BosonWF.symm_utils with 'matrix', 'irrep_to_idx'
+        occupations: list of (occ_up, occ_dn) pairs; each is list/array of orbital indices
+
+    Returns:
+        (ndets, ndets) boolean array
+    """
+    from pyscf import symm
+
+    prod_matrix = symm_data["matrix"]
+    irrep_to_idx = symm_data["irrep_to_idx"]
+
+    mo_coeff = mf.mo_coeff
+    if len(mo_coeff.shape) == 2:
+        mo_up = mo_coeff
+        mo_dn = mo_coeff
+    else:
+        mo_up = mo_coeff[0]
+        mo_dn = mo_coeff[1]
+
+    up_orbsym = symm.label_orb_symm(mol, mol.irrep_name, mol.symm_orb, mo_up)
+    down_orbsym = symm.label_orb_symm(mol, mol.irrep_name, mol.symm_orb, mo_dn)
+
+    ndets = len(occupations)
+    det_prod_filter = np.zeros((ndets, ndets), dtype=bool)
+
+    def get_prod(occ, orbsym):
+        prod = 0
+        for orb in occ:
+            irrep_name = orbsym[orb]
+            idx = irrep_to_idx.get(irrep_name)
+            if idx is None:
+                raise ValueError(f"Orbital irrep {irrep_name} not in character table")
+            prod = prod_matrix[prod, idx]
+        return prod
+
+    det_prod_up = np.zeros(ndets, dtype=int)
+    det_prod_dn = np.zeros(ndets, dtype=int)
+    for i in range(ndets):
+        occ_up, occ_dn = occupations[i]
+        det_prod_up[i] = get_prod(occ_up, up_orbsym)
+        det_prod_dn[i] = get_prod(occ_dn, down_orbsym)
+    
+    for i in range(ndets):
+        for j in range(ndets):
+            det_prod_filter[i, j] = (det_prod_up[i] == det_prod_up[j]) & (det_prod_dn[i] == det_prod_dn[j])
+
+    return det_prod_filter
+
+
+def filter_determinants_from_ci(mc, mo_energies, det_emax, include_zeros=True, mol=None, mf=None, use_symm=False):
     """
     Filter determinants from a CI object based on energy criteria before processing.
     include_zeros: Whether to include zeros in the filtering
@@ -137,6 +194,10 @@ def filter_determinants_from_ci(mc, mo_energies, det_emax, include_zeros=True):
     deters_orig = fci.addons.large_ci(mc.ci, mc.ncas, mc.nelecas, tol=-1)
     alpha_occ = np.array([binary_to_occ(x[1], ncore)[0] for x in deters_orig])
     beta_occ = np.array([binary_to_occ(x[2], ncore)[0] for x in deters_orig])
+
+    # Normalize mo_energies to [mo_up, mo_dn] format (RHF has 1D, use same for both)
+    if np.ndim(mo_energies) == 1:
+        mo_energies = [mo_energies, mo_energies]
 
     alpha_occ_ground = alpha_occ[0]
     beta_occ_ground = beta_occ[0]
@@ -226,23 +287,26 @@ def filter_determinants_from_ci(mc, mo_energies, det_emax, include_zeros=True):
     if isinstance(det_emax, float):
         assert det_emax > 0, "Emax must be positive for energy based determinant filtering"
         emax = det_emax + ground_state_energy
+        emin = np.min(total_energies)
         print("Determinants being filtered with emax + min eigenvalue", emax)
         mask = total_energies < emax
         filtered_energies = total_energies[mask]
-        
+
     elif isinstance(det_emax, int):
         assert det_emax > 0 and det_emax <= 100, "Emax must be between 0 and 100 for percentage based determinant filtering"
         percentile = det_emax
         print("Determinants being filtered with percentage ", percentile)
         emax = np.percentile(total_energies, percentile)
+        emin = np.min(total_energies)
         mask = total_energies < emax
         filtered_energies = total_energies[mask]
-        
+
     elif det_emax == 'singles' or det_emax == 'doubles':
-        
         up_num_exc = np.array([count_excitations_with_degeneracy(x, alpha_occ_ground, mo_energies[0]) for x in alpha_occ])
         dn_num_exc = np.array([count_excitations_with_degeneracy(x, beta_occ_ground, mo_energies[1]) for x in beta_occ])
         tot_exc = up_num_exc + dn_num_exc
+        emax = np.max(total_energies)
+        emin = np.min(total_energies)
         if det_emax == 'singles':
             mask = tot_exc < 2
         elif det_emax == 'doubles':
@@ -293,7 +357,9 @@ def filter_determinants_from_ci(mc, mo_energies, det_emax, include_zeros=True):
         # No filtering - return all determinants
         mask = np.ones(len(deters_orig), dtype=bool)
         filtered_energies = total_energies
-        
+        emax = np.max(total_energies)
+        emin = np.min(total_energies)
+
     # Print report on filtered determinants
     print("\nDeterminant Filtering Report:")
     print("-" * 50)
@@ -311,12 +377,28 @@ def filter_determinants_from_ci(mc, mo_energies, det_emax, include_zeros=True):
     # Convert back to the format expected by choose_evaluator_from_pyscf
     # We need to create a list of (weight, occupation) tuples
     filtered_determinants = []
-    for ind in mask_indices: 
+    for ind in mask_indices:
         weight = deters_orig[ind][0]
         occ_up = alpha_occ[ind]
         occ_dn = beta_occ[ind]
         occupation = [occ_up.tolist(), occ_dn.tolist()]
         filtered_determinants.append((weight, occupation))
+
+    # Compute symmetry mask when requested (only for groups in CHARACTER_TABLE)
+    if use_symm and mol is not None and mf is not None and mol.symmetry:
+        try:
+            symm_data = BosonWF.symm_utils(mol, mol.groupname)
+            occupations = [(alpha_occ[i], beta_occ[i]) for i in mask_indices]
+            det_prod_filter = _compute_det_prod_filter(mol, mf, symm_data, occupations)
+            if saved is None:
+                saved = {}
+            saved['det_prod_filter'] = det_prod_filter
+        except ValueError as e:
+            if "not in available groups" in str(e):
+                pass  # Group (e.g. Dooh) not in CHARACTER_TABLE, skip symmetry mask
+            else:
+                raise
+
     return filtered_determinants, saved
 
 class BosonWF:
@@ -363,10 +445,11 @@ class BosonWF:
         self.myparameters = {}
         
         # Check if we need to filter determinants before processing
+        saved_filter = None
         if mol.symmetry and det_emax is not None and mc is not None:
             # Filter determinants first, then pass them to choose_evaluator_from_pyscf
             filtered_determinants, saved_filter = filter_determinants_from_ci(
-                mc, mf.mo_energy, det_emax
+                mc, mf.mo_energy, det_emax, mol=mol, mf=mf, use_symm=use_symm
             )
             self.num_det = len(filtered_determinants)
 
@@ -387,10 +470,30 @@ class BosonWF:
         self.hmf_file      = 'hmf.hdf5'
 
         if mol.symmetry:
-            self.symm_data = self.symm_utils(mol, mol.groupname)
-            self.mo_coeff = mf.mo_coeff
+            try:
+                self.symm_data = self.symm_utils(mol, mol.groupname)
+                self.mo_coeff = mf.mo_coeff
+            except ValueError as e:
+                if "not in available groups" in str(e):
+                    self.symm_data = None  # Group (e.g. Dooh) not in CHARACTER_TABLE
+                    self.mo_coeff = mf.mo_coeff
+                else:
+                    raise
         else:
             self.symm_data = None
+
+        # Set _det_prod_filter when use_symm and mol.symmetry
+        if use_symm and mol.symmetry and self.symm_data is not None:
+            if saved_filter is not None and 'det_prod_filter' in saved_filter:
+                self._det_prod_filter = saved_filter['det_prod_filter']
+            else:
+                occupations = [
+                    (self._det_occup[0][self._det_map[0, i]], self._det_occup[1][self._det_map[1, i]])
+                    for i in range(self.num_det)
+                ]
+                self._det_prod_filter = _compute_det_prod_filter(mol, mf, self.symm_data, occupations)
+        else:
+            self._det_prod_filter = None
 
         if self.num_det > 1:
             self.get_hmf(mf.mo_energy)
@@ -413,87 +516,98 @@ class BosonWF:
         self.get_phase = get_complex_phase if iscomplex else gpu.cp.sign
 
     @staticmethod
-    def direct_product_table(characters, irrep_names = None, irrep_ids = None):
+    def direct_product_table(characters, irrep_to_idx=None):
         """
         Compute the direct product table for irreducible representations.
-        
+        Uses full character table so all irreps are included (not just mol.irrep subset).
+
         Parameters:
         characters (dict): A dictionary where keys are irrep labels and values are lists of characters
-        
+        irrep_to_idx (dict): Optional mapping from irrep name to index. If None, built from characters.keys().
+
         Returns:
-        dict: A dictionary where keys are tuples of irrep labels and values are the resulting irrep from the direct product
+        dict: table, matrix, irrep_to_idx, plot_data
         """
         irreps = list(characters.keys())
-        if irrep_ids is not None and irrep_names is not None:
-            irrep_to_idx = {name: id for name, id in zip(irrep_names, irrep_ids)}
-        else:
+        if irrep_to_idx is None:
             irrep_to_idx = {irrep: i for i, irrep in enumerate(irreps)}
         print(irrep_to_idx)
-        
-        n_irreps = len(irreps)
+
         n_ops = len(list(characters.values())[0])
-        
-        # Initialize the direct product table
+        n = len(characters.keys())
         dp_table = {}
-        n = len(irreps)
         matrix = np.zeros((n, n), dtype=int)
         plot_data = np.zeros((n, n), dtype=np.dtype('<U10'))
 
-        # Compute the direct product for each pair of irreps
         for i, irrep1 in enumerate(irreps):
             for j, irrep2 in enumerate(irreps):
-                # Calculate the product of characters
                 product = [characters[irrep1][k] * characters[irrep2][k] for k in range(n_ops)]
-                
-                # Find which irrep this corresponds to
                 for irrep in irreps:
-                    # Check if the characters match any irrep
-                    # Normalize by the order of the group
                     projection = sum(product[k] * characters[irrep][k] for k in range(n_ops)) / n_ops
-                    
-                    if abs(projection - 1.0) < 1e-10:  # Numerical tolerance
+                    if abs(projection - 1.0) < 1e-10:
                         dp_table[(irrep1, irrep2)] = irrep
                         plot_data[i, j] = irrep
                         matrix[irrep_to_idx[irrep1], irrep_to_idx[irrep2]] = irrep_to_idx[irrep]
                         break
-        
+
         return {"table": dp_table, "matrix": matrix, "irrep_to_idx": irrep_to_idx, "plot_data": plot_data}
-        
+
     @staticmethod
     def symm_utils(mol, abel_group):
-        """Given a molecule and its abelian group, returns direct product table"
-
-        Args:
-            mol (_type_): _description_
-            abel_group (_type_): _description_
+        """Given a molecule and its abelian group, returns direct product table.
+        Uses full CHARACTER_TABLE so all irreps are included (handles operations in
+        CHARACTER_TABLE that are not in mol.irrep).
         """
-        from pyscf.symm.param import CHARACTER_TABLE as character_table 
+        from pyscf.symm.param import CHARACTER_TABLE as character_table
         available_groups = character_table.keys()
         if abel_group not in available_groups:
             raise ValueError(f"Group {abel_group} not in available groups {available_groups}")
-        
+
         ct = character_table[abel_group]
         ct_dict = {}
-        for item in ct:
+        irrep_to_idx = {}
+        for i, item in enumerate(ct):
             key = item[0]
             value = np.array(item[1:])
             ct_dict[key] = value
+            irrep_to_idx[key] = i
+
         print('='*20+"Symmetry data"+"="*20)
         print("Using Symmetric MOs: ")
         print("Miller indices, irrep_ids, orb_shape")
-        for s,i,c in zip(mol.irrep_name, mol.irrep_id, mol.symm_orb):
+        for s, i, c in zip(mol.irrep_name, mol.irrep_id, mol.symm_orb):
             print(s, i, c.shape)
-        pt = BosonWF.direct_product_table(ct_dict, irrep_names = mol.irrep_name, irrep_ids = mol.irrep_id)
+        print(ct_dict.keys())
+
+        characters = ct_dict
+        irreps = list(characters.keys())
+        n_ops = len(list(characters.values())[0])
+        n = len(characters.keys())
+        dp_table = {}
+        matrix = np.zeros((n, n), dtype=int)
+        plot_data = np.zeros((n, n), dtype=np.dtype('<U10'))
+
+        for i, irrep1 in enumerate(irreps):
+            for j, irrep2 in enumerate(irreps):
+                product = [characters[irrep1][k] * characters[irrep2][k] for k in range(n_ops)]
+                for irrep in irreps:
+                    projection = sum(product[k] * characters[irrep][k] for k in range(n_ops)) / n_ops
+                    if abs(projection - 1.0) < 1e-10:
+                        dp_table[(irrep1, irrep2)] = irrep
+                        plot_data[i, j] = irrep
+                        matrix[irrep_to_idx[irrep1], irrep_to_idx[irrep2]] = irrep_to_idx[irrep]
+                        break
+
         print("Direct product table (irrep_id):")
-        print(pt["matrix"])
-        df_plot = pd.DataFrame(pt["plot_data"], index=mol.irrep_name, columns=mol.irrep_name)
+        print(matrix)
+        df_plot = pd.DataFrame(plot_data, index=irreps, columns=irreps)
         print("Direct product table (irrep_name):")
         print(df_plot)
-
         print('='*20+"Symmetry data end"+"="*20)
+
         results = {
-            "matrix": pt["matrix"],
-            "irrep_to_idx": pt["irrep_to_idx"],
+            "matrix": matrix,
+            "irrep_to_idx": irrep_to_idx,
             "irrep_names": mol.irrep_name,
             "irrep_ids": mol.irrep_id
         }
