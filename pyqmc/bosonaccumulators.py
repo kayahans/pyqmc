@@ -632,7 +632,8 @@ class ABCDMCMatrixAccumulator:
             self._boson_wf_type = bosonslater.BosonWF
             self._jastrow_wf_type = jastrowspin.JastrowSpin
         if NUMBA_AVAILABLE:
-            print('Numba is available, using symmetry mask')
+            print('Numba is available')
+        
             
 
     @timer_func

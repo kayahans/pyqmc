@@ -638,6 +638,9 @@ class BosonWF:
         hf = h5py.File(self.hmf_file, 'w')
         hf.create_dataset('hmf', data=total_energies)
         self.hmf = np.diag(total_energies)
+        if hasattr(self, 'saved_filter') and self.saved_filter is not None:
+            if 'det_prod_filter' in self.saved_filter:
+                hf.create_dataset('saved_filter/det_prod_filter', data=self.saved_filter['det_prod_filter'])
         hf.close()
     
     # def filter_determinants(self, emax, mo_energies, use_symm = False):
