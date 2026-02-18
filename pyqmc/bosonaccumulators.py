@@ -671,7 +671,7 @@ class ABCDMCMatrixAccumulator:
                      else np.ones((self.ndets, self.ndets), dtype=bool))
         
         ovlp_ij = self._ovlp_ij
-        if NUMBA_AVAILABLE:
+        if NUMBA_AVAILABLE and symm_mask is not None:
             _accumulate_ovlp_ij_numba(
                 ovlp_ij,
                 psi_n_conj,
@@ -701,7 +701,7 @@ class ABCDMCMatrixAccumulator:
 
             
 
-            if NUMBA_AVAILABLE and not np.iscomplexobj(psi_n):
+            if NUMBA_AVAILABLE and symm_mask is not None:
                 _accumulate_delta_dmc_contributions_numba(
                     delta,
                     psi_n_conj,
