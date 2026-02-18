@@ -49,6 +49,29 @@ if NUMBA_AVAILABLE:
                         delta_out[c, l, n] += psi_n[l, c] * grad_j[x, c] * grad_psi_n[n, x, c]
 
     @jit(nopython=True, cache=True, fastmath=True)
+    def _accumulate_ovlp_ij_numba(
+        ovlp_out,  # Output array (nconf, ndets, ndets)
+        psi_n_conj,  # (ndets, nconf)
+        psi_n,  # (ndets, nconf)
+        symm_mask,  # (ndets, ndets)
+    ):
+        """
+        Compute overlap matrix ovlp_ij[c,l,n] = psi_n_conj[l,c] * psi_n[n,c].
+        Implements: einsum("lc,nc->cln", psi_n_conj, psi_n)
+        Zeros elements where symm_mask[l,n] is False.
+        """
+        nconf, ndets = psi_n.shape[1], psi_n.shape[0]
+        
+        for l in range(ndets):
+            for n in range(ndets):
+                if symm_mask[l, n]:
+                    for c in range(nconf):
+                        ovlp_out[c, l, n] = psi_n_conj[l, c] * psi_n[n, c]
+                else:
+                    for c in range(nconf):
+                        ovlp_out[c, l, n] = 0.0
+
+    @jit(nopython=True, cache=True, fastmath=True)
     def _accumulate_delta_dmc_contributions_numba(
         delta_out,  # Output array to accumulate into (nconf, ndets, ndets)
         psi_n_conj,  # (ndets, nconf) - conjugated psi_n
@@ -104,6 +127,9 @@ if NUMBA_AVAILABLE:
                         delta_out[c, l, n] = 0.0
 else:
     # Fallback to numpy einsum if numba is not available
+    def _accumulate_ovlp_ij_numba(*args, **kwargs):
+        raise RuntimeError("Numba is not available. Install numba to use this optimization.")
+
     def _accumulate_delta_vmc_contributions_numba(*args, **kwargs):
         raise RuntimeError("Numba is not available. Install numba to use this optimization.")
     
@@ -640,14 +666,23 @@ class ABCDMCMatrixAccumulator:
             self._buf_delta = np.zeros((self.nconf, self.ndets, self.ndets), dtype=self.dtype)
             self._grad_psi_n = np.zeros((self.ndets, 3, self.nconf), dtype=self.dtype)
             self.memallocated = True
+
+        symm_mask = (self._symm_mask if (use_symm and self._symm_mask is not None)
+                     else np.ones((self.ndets, self.ndets), dtype=bool))
         
         ovlp_ij = self._ovlp_ij
-        np.einsum("lc,nc->cln", psi_n_conj, psi_n, out=ovlp_ij, optimize='optimal')
+        if NUMBA_AVAILABLE:
+            _accumulate_ovlp_ij_numba(
+                ovlp_ij,
+                psi_n_conj,
+                psi_n,
+                symm_mask,
+            )
+        else:
+            np.einsum("lc,nc->cln", psi_n_conj, psi_n, out=ovlp_ij, optimize='optimal')
         
         delta = self._delta
         delta.fill(0.0)
-        symm_mask = (self._symm_mask if (use_symm and self._symm_mask is not None)
-                     else np.ones((self.ndets, self.ndets), dtype=bool))
         for e in range(self.nelec):
             # Get position of electron e
             epos_s = configs.electron(e)
