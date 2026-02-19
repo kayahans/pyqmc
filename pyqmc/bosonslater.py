@@ -131,6 +131,7 @@ def _compute_det_prod_filter(mol, mf, symm_data, occupations):
 
     prod_matrix = symm_data["matrix"]
     irrep_to_idx = symm_data["irrep_to_idx"]
+    idx_to_irrep = {v: k for k, v in irrep_to_idx.items()}
 
     mo_coeff = mf.mo_coeff
     if len(mo_coeff.shape) == 2:
@@ -156,17 +157,60 @@ def _compute_det_prod_filter(mol, mf, symm_data, occupations):
             prod = prod_matrix[prod, idx]
         return prod
 
+    det_prod = np.zeros(ndets, dtype=int)
     det_prod_up = np.zeros(ndets, dtype=int)
     det_prod_dn = np.zeros(ndets, dtype=int)
     for i in range(ndets):
         occ_up, occ_dn = occupations[i]
         det_prod_up[i] = get_prod(occ_up, up_orbsym)
         det_prod_dn[i] = get_prod(occ_dn, down_orbsym)
-    
+        det_prod[i] = prod_matrix[det_prod_up[i], det_prod_dn[i]]
     for i in range(ndets):
         for j in range(ndets):
-            det_prod_filter[i, j] = (det_prod_up[i] == det_prod_up[j]) & (det_prod_dn[i] == det_prod_dn[j])
+            det_prod_filter[i, j] = (det_prod[i] == det_prod[j])
 
+    # # --- Detailed output ---
+    # print("=" * 60)
+    # print("DETERMINANT SYMMETRY FILTER - DETAILED OUTPUT")
+    # print("=" * 60)
+    # print("\n1. Direct product matrix (irrep_i ⊗ irrep_j -> index):")
+    # print("   Rows/cols: irrep indices. Entry [i,j] = index of Γ_i ⊗ Γ_j")
+    # print(prod_matrix)
+    # print("\n2. irrep_to_idx mapping:")
+    # for irrep, idx in sorted(irrep_to_idx.items(), key=lambda x: x[1]):
+    #     print(f"   {irrep!r} -> {idx}")
+    # print("\n3. Orbital irreps (up spin):")
+    # for orb in range(len(up_orbsym)):
+    #     print(f"   orb {orb:3d}: {up_orbsym[orb]!r}")
+    # print("\n4. Orbital irreps (down spin):")
+    # for orb in range(len(down_orbsym)):
+    #     print(f"   orb {orb:3d}: {down_orbsym[orb]!r}")
+    # print("\n5. Per-determinant data:")
+    # for i in range(ndets):
+    #     occ_up, occ_dn = occupations[i]
+    #     up_irrep_idx = det_prod_up[i]
+    #     dn_irrep_idx = det_prod_dn[i]
+        
+    #     up_irrep_name = idx_to_irrep.get(up_irrep_idx, "?")
+    #     dn_irrep_name = idx_to_irrep.get(dn_irrep_idx, "?")
+        
+    #     print(f"   det {i:3d}: occ_up={occ_up.tolist() if hasattr(occ_up,'tolist') else list(occ_up)} -> Γ_up={up_irrep_name} (idx {up_irrep_idx}); occ_dn={occ_dn.tolist() if hasattr(occ_dn,'tolist') else list(occ_dn)} -> Γ_dn={dn_irrep_name} (idx {dn_irrep_idx})")
+    # print("\n6. Total irreps summary (det_prod_up, det_prod_dn):")
+    # for i in range(ndets):
+    #     total_irrep_idx = det_prod[i]
+    #     total_irrep_name = idx_to_irrep.get(total_irrep_idx, "?")
+    #     print(f"   det {i:3d}: ({total_irrep_name} (idx {total_irrep_idx})")
+    # print("\n7. Filter matrix (det_prod_filter): True = <l|O|n> can be nonzero")
+    # print("   " + str(det_prod_filter.astype(int)))
+    # import seaborn as sns
+    # import matplotlib.pyplot as plt
+    # sns.heatmap(det_prod_filter.astype(int), cmap='viridis')
+    # plt.show()
+    # n_true = np.sum(det_prod_filter)
+    # n_total = ndets * ndets
+    # print(f"\n8. Summary: {n_true}/{n_total} pairs allowed ({100*n_true/n_total:.1f}%)")
+    # print("=" * 60)
+    # exit()
     return det_prod_filter
 
 
