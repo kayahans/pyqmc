@@ -214,7 +214,7 @@ def _compute_det_prod_filter(mol, mf, symm_data, occupations):
     return det_prod_filter
 
 
-def filter_determinants_from_ci(mc, mo_energies, det_emax, include_zeros=True, mol=None, mf=None, use_symm=False):
+def filter_determinants_from_ci(mc, mo_energies, det_emax, include_zeros=True, mol=None, mf=None, use_symm=False, energy_tol = 1e-3,):
     """
     Filter determinants from a CI object based on energy criteria before processing.
     include_zeros: Whether to include zeros in the filtering
@@ -333,7 +333,7 @@ def filter_determinants_from_ci(mc, mo_energies, det_emax, include_zeros=True, m
         emax = det_emax + ground_state_energy
         emin = np.min(total_energies)
         print("Determinants being filtered with emax + min eigenvalue", emax)
-        mask = total_energies <= emax
+        mask = total_energies <= emax + energy_tol
         filtered_energies = total_energies[mask]
 
     elif isinstance(det_emax, int):
@@ -342,7 +342,7 @@ def filter_determinants_from_ci(mc, mo_energies, det_emax, include_zeros=True, m
         print("Determinants being filtered with percentage ", percentile)
         emax = np.percentile(total_energies, percentile)
         emin = np.min(total_energies)
-        mask = total_energies < emax
+        mask = total_energies <= emax + energy_tol
         filtered_energies = total_energies[mask]
 
     elif det_emax == 'singles' or det_emax == 'doubles':
@@ -384,8 +384,8 @@ def filter_determinants_from_ci(mc, mo_energies, det_emax, include_zeros=True, m
         emax = emax_energy + ground_state_energy
         emin = emin_energy + ground_state_energy - 1E-6 # -1E-6 to avoid floating point issues
 
-        mask = total_energies < emax
-        mask = mask & (total_energies > emin)
+        mask = total_energies <= emax + energy_tol
+        mask = mask & (total_energies > emin - energy_tol)
 
         if include_zeros:
             mask = mask | (total_energies-ground_state_energy < 1E-6)
