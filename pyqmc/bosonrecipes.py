@@ -564,7 +564,7 @@ def initialize_boson_qmc_objects(
     opt_wf=False,
     seed = None,
     det_emax = None,
-    use_dft_density = True
+    use_dft_density = True,
     initial_guess_r = 10.0,
     use_symm = False,
     xc = 'LDA,VWN',
