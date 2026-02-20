@@ -333,7 +333,7 @@ def filter_determinants_from_ci(mc, mo_energies, det_emax, include_zeros=True, m
         emax = det_emax + ground_state_energy
         emin = np.min(total_energies)
         print("Determinants being filtered with emax + min eigenvalue", emax)
-        mask = total_energies < emax
+        mask = total_energies <= emax
         filtered_energies = total_energies[mask]
 
     elif isinstance(det_emax, int):

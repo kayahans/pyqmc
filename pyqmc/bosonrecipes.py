@@ -564,6 +564,7 @@ def initialize_boson_qmc_objects(
     opt_wf=False,
     seed = None,
     det_emax = None,
+    use_dft_density = True
     initial_guess_r = 10.0,
     use_symm = False,
     xc = 'LDA,VWN',
@@ -681,12 +682,15 @@ def initialize_boson_qmc_objects(
                 raise ValueError(f"Unknown opt_option: {opt_option}")
     
     
-    use_dft_density = True
     if use_dft_density:
         print('Using DFT density guess')
     else:
         print('Using spherical guess')
-    configs = initial_guess(mol, nconfig, r=initial_guess_r, seed=seed, use_dft_density=use_dft_density, mf=mf, ncas = mc.ncas, nelecas = mc.nelecas, frozen = mc.ncore)
+
+    if mc is not None:   
+        configs = initial_guess(mol, nconfig, r=initial_guess_r, seed=seed, use_dft_density=use_dft_density, mf=mf, ncas = mc.ncas, nelecas = mc.nelecas, frozen = mc.ncore)
+    else:
+        configs = initial_guess(mol, nconfig, r=initial_guess_r, seed=seed, use_dft_density=use_dft_density, mf=mf)
     
     system_params = {
         'nconf': configs.configs.shape[0],
