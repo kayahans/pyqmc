@@ -218,6 +218,7 @@ def ABDMC(
     xc: str = 'LDA,VWN',
     use_symm = False,
     initial_guess_r = 15.0,
+    use_dft_density = False,
     **dmc_kws,
 ):  
     """Auxiliary Boson DMC recipe
@@ -247,6 +248,7 @@ def ABDMC(
         seed=seed,
         det_emax=det_emax,
         xc=xc,
+        use_dft_density=use_dft_density,
         use_symm=use_symm,
         initial_guess_r=initial_guess_r,
     )
@@ -548,7 +550,7 @@ def initialize_boson_qmc_objects(
     opt_wf=False,
     seed = None,
     det_emax = None,
-    use_dft_density = True,
+    use_dft_density = False,
     initial_guess_r = 10.0,
     use_symm = False,
     xc = 'LDA,VWN',
