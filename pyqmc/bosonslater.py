@@ -414,8 +414,22 @@ def filter_determinants_from_ci(mc, mo_energies, det_emax, include_zeros=True, m
     print(f"Determinants remaining: {np.sum(mask)}")
     print('Min filtered eigenvalue', np.round(np.min(filtered_energies), 3), np.round(np.min(filtered_energies)-ground_state_energy, 3))
     print('Max filtered eigenvalue', np.round(np.max(filtered_energies), 3), np.round(np.max(filtered_energies)-ground_state_energy, 3))
-    print('Removed determinants', ' '.join([str(x) for x in np.round(np.sort(total_energies[~mask])-ground_state_energy, 3)]))
-    print('Used determinants', ' '.join([str(x) for x in np.round(np.sort(total_energies[mask])-ground_state_energy, 3)]))
+    if np.sum(~mask) > 0:
+        # Find unique eigenvalues and how many times each is repeated
+        unique_energies, counts = np.unique(total_energies[~mask], return_counts=True)
+        unique_rel = np.round(unique_energies - ground_state_energy, 3)
+        report = ' '.join([f'{e}(×{c})' for e, c in zip(unique_rel, counts)])
+        print('Unique removed eigenvalues (relative to ground, count):', report)
+    
+    if np.sum(mask) > 0:
+        # Find unique eigenvalues and how many times each is repeated
+        unique_energies, counts = np.unique(total_energies[mask], return_counts=True)
+        unique_rel = np.round(unique_energies - ground_state_energy, 3)
+        report = ' '.join([f'{e}(×{c})' for e, c in zip(unique_rel, counts)])
+        print('Unique used eigenvalues (relative to ground, count):', report)
+    else:
+        print('No used determinants, exiting... ')
+        exit()
     # Apply the mask to get filtered determinants
     mask_indices = np.where(mask)[0].tolist()
     # Convert back to the format expected by choose_evaluator_from_pyscf
