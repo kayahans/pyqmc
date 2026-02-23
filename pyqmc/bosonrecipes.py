@@ -353,12 +353,11 @@ def calculate_density_on_grid(mf, coords, weights, frozen=1, ncas=6, nelecas=(4,
     # Apply energy cutoff if specified
     if ecut is not None:
         mo_energy = mf.mo_energy
-        det_mf_energies = np.zeros((len(up_det), len(dn_det)))
-        for i in range(len(up_det)):
-            for j in range(len(dn_det)):
-                det_mf_energies[i, j] = (np.sum(mo_energy[0][up_det[i]]) + 
-                                        np.sum(mo_energy[1][dn_det[j]]))
-        
+        up_det_arr = np.array(up_det)
+        dn_det_arr = np.array(dn_det)
+        up_energies = np.sum(mo_energy[0][up_det_arr], axis=1)
+        dn_energies = np.sum(mo_energy[1][dn_det_arr], axis=1)
+        det_mf_energies = up_energies[:, np.newaxis] + dn_energies[np.newaxis, :]
         det_mf_energies -= np.min(det_mf_energies)
         mask = np.argwhere(det_mf_energies < ecut)
         
@@ -367,37 +366,22 @@ def calculate_density_on_grid(mf, coords, weights, frozen=1, ncas=6, nelecas=(4,
         dn_det_filtered = [dn_det[ij[1]] for ij in mask]
     else:
         # Use all determinants
-        up_det_filtered = []
-        dn_det_filtered = []
-        for up in up_det:
-            for dn in dn_det:
-                up_det_filtered.append(up)
-                dn_det_filtered.append(dn)
+        up_det_filtered = [up for up in up_det for dn in dn_det]
+        dn_det_filtered = [dn for up in up_det for dn in dn_det]
     
     n_det = len(up_det_filtered)
     print(f"  Number of determinants: {n_det}")
-    
-    # Calculate density as sum over determinants
-    density = np.zeros(len(coords))
-    
-    for i, (up_orbs, dn_orbs) in enumerate(zip(up_det_filtered, dn_det_filtered)):
-        # Ensure orbitals are numpy arrays
-        up_orbs = np.asarray(up_orbs)
-        dn_orbs = np.asarray(dn_orbs)
-        
-        # Spin-up contribution
-        psi_up = mo_values[0][:, up_orbs]  # Shape: (n_points, n_elec_up)
-        density_up = np.sum(psi_up**2, axis=1)  # Sum over orbitals -> (n_points,)
-        
-        # Spin-down contribution
-        psi_dn = mo_values[1][:, dn_orbs]  # Shape: (n_points, n_elec_dn)
-        density_dn = np.sum(psi_dn**2, axis=1)  # Sum over orbitals -> (n_points,)
-        
-        # Total density for this determinant
-        density += (density_up + density_dn)
-    
-    # Average over determinants
-    density /= n_det 
+
+    # Vectorized density calculation: precompute squared MO values
+    mo_sq = mo_values ** 2  # (2, n_points, n_mo)
+    up_orbs_array = np.array(up_det_filtered)  # (n_det, n_elec_up)
+    dn_orbs_array = np.array(dn_det_filtered)  # (n_det, n_elec_dn)
+
+    # Sum over orbitals for each determinant, then sum over determinants
+    # mo_sq[0][:, up_orbs_array] -> (n_points, n_det, n_elec_up)
+    density_up = np.sum(mo_sq[0][:, up_orbs_array], axis=(1, 2))  # (n_points,)
+    density_dn = np.sum(mo_sq[1][:, dn_orbs_array], axis=(1, 2))  # (n_points,)
+    density = (density_up + density_dn) / n_det 
     
     print(f"  Density range: [{np.min(density):.6e}, {np.max(density):.6e}]")
     
