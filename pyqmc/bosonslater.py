@@ -416,15 +416,22 @@ def filter_determinants_from_ci(mc, mo_energies, det_emax, include_zeros=True, m
     print('Max filtered eigenvalue', np.round(np.max(filtered_energies), 3), np.round(np.max(filtered_energies)-ground_state_energy, 3))
     if np.sum(~mask) > 0:
         # Find unique eigenvalues and how many times each is repeated
-        unique_energies, counts = np.unique(total_energies[~mask], return_counts=True)
+        # Find unique energies within 1e-3 tolerance
+        removed_energies = np.round(total_energies[~mask] - ground_state_energy, 3)
+        unique_rel, counts = np.unique(removed_energies, return_counts=True)
+        unique_energies = unique_rel + np.round(ground_state_energy, 3)
         unique_rel = np.round(unique_energies - ground_state_energy, 3)
         report = ' '.join([f'{e}(×{c})' for e, c in zip(unique_rel, counts)])
         print('Unique removed eigenvalues (relative to ground, count):', report)
     
     if np.sum(mask) > 0:
         # Find unique eigenvalues and how many times each is repeated
-        unique_energies, counts = np.unique(total_energies[mask], return_counts=True)
-        unique_rel = np.round(unique_energies - ground_state_energy, 3)
+        # Find unique energies within 1e-3 tolerance
+        unrounded_energies = total_energies[mask]
+        rounded_energy = np.round(unrounded_energies - ground_state_energy, 3)
+        unique_rel, idx, counts = np.unique(rounded_energy, return_index=True, return_counts=True)
+        # Take representative (unrounded) eigenvalues at each rounded cluster
+        unique_energies = unrounded_energies[idx]
         report = ' '.join([f'{e}(×{c})' for e, c in zip(unique_rel, counts)])
         print('Unique used eigenvalues (relative to ground, count):', report)
     else:
