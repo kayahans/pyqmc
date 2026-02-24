@@ -306,9 +306,12 @@ def create_pyscf_grid(mol, level=4):
     return coords, weights
 
 def calculate_density_on_grid(mf, coords, weights, frozen=1, ncas=6, nelecas=(4,1), 
-                              ecut=None):
+                              ecut=None, chunk_size=50000):
     """
     Calculate multi-determinant probability density on PySCF grid points.
+    
+    Memory-optimized: uses orbital weighting and chunked processing to avoid
+    large intermediates (n_points × n_det × n_elec).
     
     Args:
         mf: Mean field object from PySCF
@@ -318,6 +321,7 @@ def calculate_density_on_grid(mf, coords, weights, frozen=1, ncas=6, nelecas=(4,
         ncas: Number of active space orbitals
         nelecas: Number of active electrons (n_alpha, n_beta)
         ecut: Energy cutoff for determinant selection (if None, use all)
+        chunk_size: Grid points per chunk for memory efficiency (default: 50000)
         
     Returns:
         density: 1D array of probability density |Ψ|² at grid points
@@ -329,18 +333,11 @@ def calculate_density_on_grid(mf, coords, weights, frozen=1, ncas=6, nelecas=(4,
     if ecut is not None:
         print(f"  Energy cutoff: {ecut} Hartree")
     
-    # Evaluate atomic orbitals at all grid points
-    ao_value = mf.mol.eval_gto('GTOval_sph', coords)  # Shape: (n_points, n_ao)
-    
     # Get molecular orbital coefficients
     mo_coeff = mf.mo_coeff  # Shape: (2, n_ao, n_mo) for UHF/UKS
-    
-    # Calculate molecular orbital values at grid points
-    mo_values = []
-    for spin in range(2):
-        mo_val = np.dot(ao_value, mo_coeff[spin])  # Shape: (n_points, n_mo)
-        mo_values.append(mo_val)
-    mo_values = np.array(mo_values)  # Shape: (2, n_points, n_mo)
+    n_mo_needed = frozen + ncas
+    mo_coeff_up = mo_coeff[0][:, :n_mo_needed]  # Only orbitals we need
+    mo_coeff_dn = mo_coeff[1][:, :n_mo_needed]
     
     # Generate determinants
     up_orbs = dn_orbs = np.arange(ncas) + frozen
@@ -374,16 +371,34 @@ def calculate_density_on_grid(mf, coords, weights, frozen=1, ncas=6, nelecas=(4,
     n_det = len(up_det_filtered)
     print(f"  Number of determinants: {n_det}")
 
-    # Vectorized density calculation: precompute squared MO values
-    mo_sq = mo_values ** 2  # (2, n_points, n_mo)
-    up_orbs_array = np.array(up_det_filtered)  # (n_det, n_elec_up)
-    dn_orbs_array = np.array(dn_det_filtered)  # (n_det, n_elec_dn)
+    # Orbital weights: density = sum_i (count_i/n_det) * |phi_i|^2
+    # Avoids huge (n_points, n_det, n_elec) intermediate
+    orb_weights_up = np.zeros(n_mo_needed)
+    orb_weights_dn = np.zeros(n_mo_needed)
+    for up, dn in zip(up_det_filtered, dn_det_filtered):
+        for i in up:
+            orb_weights_up[i] += 1
+        for j in dn:
+            orb_weights_dn[j] += 1
+    orb_weights_up /= n_det
+    orb_weights_dn /= n_det
 
-    # Sum over orbitals for each determinant, then sum over determinants
-    # mo_sq[0][:, up_orbs_array] -> (n_points, n_det, n_elec_up)
-    density_up = np.sum(mo_sq[0][:, up_orbs_array], axis=(1, 2))  # (n_points,)
-    density_dn = np.sum(mo_sq[1][:, dn_orbs_array], axis=(1, 2))  # (n_points,)
-    density = (density_up + density_dn) / n_det 
+    # Chunked processing to limit peak memory
+    n_points = len(coords)
+    density = np.zeros(n_points)
+    for start in range(0, n_points, chunk_size):
+        end = min(start + chunk_size, n_points)
+        coords_chunk = coords[start:end]
+        
+        ao_value = mf.mol.eval_gto('GTOval_sph', coords_chunk)
+        mo_up = np.dot(ao_value, mo_coeff_up)  # (chunk, n_mo_needed)
+        mo_dn = np.dot(ao_value, mo_coeff_dn)
+        
+        # density = sum_i weight_i * |phi_i|^2
+        density[start:end] = (
+            np.dot(mo_up ** 2, orb_weights_up) +
+            np.dot(mo_dn ** 2, orb_weights_dn)
+        )
     
     print(f"  Density range: [{np.min(density):.6e}, {np.max(density):.6e}]")
     
