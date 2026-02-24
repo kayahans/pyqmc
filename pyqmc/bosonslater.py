@@ -442,21 +442,25 @@ def filter_determinants_from_ci(mc, mo_energies, det_emax, include_zeros=True, m
     # Convert back to the format expected by choose_evaluator_from_pyscf
     # We need to create a list of (weight, occupation) tuples
     filtered_determinants = []
-    for ind in mask_indices:
+    sorted_indices = np.argsort(filtered_energies)
+    sorted_mask_indices = np.array([mask_indices[x] for x in sorted_indices])
+    sorted_filtered_energies = np.array([filtered_energies[x] for x in sorted_indices])
+
+    for ind in sorted_mask_indices:
         weight = deters_orig[ind][0]
         occ_up = alpha_occ[ind]
         occ_dn = beta_occ[ind]
         occupation = [occ_up.tolist(), occ_dn.tolist()]
         filtered_determinants.append((weight, occupation))
-
+    saved = {}
+    saved['sorted_mask_indices'] = sorted_mask_indices
+    saved['sorted_filtered_energies'] = sorted_filtered_energies
     # Compute symmetry mask when requested (only for groups in CHARACTER_TABLE)
     if use_symm and mol is not None and mf is not None and mol.symmetry:
         try:
             symm_data = BosonWF.symm_utils(mol, mol.groupname)
-            occupations = [(alpha_occ[i], beta_occ[i]) for i in mask_indices]
+            occupations = [(alpha_occ[i], beta_occ[i]) for i in sorted_mask_indices]
             det_prod_filter = _compute_det_prod_filter(mol, mf, symm_data, occupations)
-            if saved is None:
-                saved = {}
             saved['det_prod_filter'] = det_prod_filter
         except ValueError as e:
             if "not in available groups" in str(e):
@@ -522,7 +526,6 @@ class BosonWF:
                 self.saved_filter = saved_filter
         else:
             filtered_determinants = None
-
         (   _,
             self._det_occup,
             self._det_map,
@@ -561,7 +564,10 @@ class BosonWF:
             self._det_prod_filter = None
 
         if self.num_det > 1:
-            self.get_hmf(mf.mo_energy)
+            if saved_filter is not None and 'sorted_filtered_energies' in saved_filter:
+                self.get_hmf(saved_filter['sorted_filtered_energies'])
+            else:
+                raise ValueError('sorted_filtered_energies not found in saved_filter')
         else:
             print('Using only one determinant')
         
@@ -679,30 +685,32 @@ class BosonWF:
         return results
 
     
-    def get_hmf(self, mo_energies):
-        mask_up = np.array(self._det_occup[0])
-        mask_dn = np.array(self._det_occup[1])
-        if isinstance(mo_energies, list):
-            mo_energies = np.array(mo_energies)
-        if len(mo_energies.shape) == 1:
-            if np.sum(mask_up) == 0:
-                raise ValueError("No occupied orbitals for up spin in RHF")
-            else:
-                up_energies = np.sum(mo_energies[mask_up], axis=1)
-                dn_energies = np.sum(mo_energies[mask_dn], axis=1)
-        else:
-            if np.sum(mask_up) == 0:
-                up_energies = np.zeros(self._det_map[0].shape)
-            else:
-                up_energies = np.sum(mo_energies[0][mask_up], axis=1)
-            if np.sum(mask_dn) == 0:
-                dn_energies = np.zeros(self._det_map[1].shape)
-            else:
-                dn_energies = np.sum(mo_energies[1][mask_dn], axis=1)
-        total_energies = up_energies[self._det_map[0]] + dn_energies[self._det_map[1]]
+    def get_hmf(self, sorted_filtered_energies):
+        # mask_up = np.array(self._det_occup[0])
+        # mask_dn = np.array(self._det_occup[1])
+        # if isinstance(mo_energies, list):
+        #     mo_energies = np.array(mo_energies)
+        # if len(mo_energies.shape) == 1:
+        #     if np.sum(mask_up) == 0:
+        #         raise ValueError("No occupied orbitals for up spin in RHF")
+        #     else:
+        #         up_energies = np.sum(mo_energies[mask_up], axis=1)
+        #         dn_energies = np.sum(mo_energies[mask_dn], axis=1)
+        # else:
+        #     if np.sum(mask_up) == 0:
+        #         up_energies = np.zeros(self._det_map[0].shape)
+        #     else:
+        #         up_energies = np.sum(mo_energies[0][mask_up], axis=1)
+        #     if np.sum(mask_dn) == 0:
+        #         dn_energies = np.zeros(self._det_map[1].shape)
+        #     else:
+        #         dn_energies = np.sum(mo_energies[1][mask_dn], axis=1)
+        # total_energies = up_energies[self._det_map[0]] + dn_energies[self._det_map[1]]
         hf = h5py.File(self.hmf_file, 'w')
-        hf.create_dataset('hmf', data=total_energies)
-        self.hmf = np.diag(total_energies)
+        # hf.create_dataset('hmf', data=total_energies)
+        hf.create_dataset('hmf', data=sorted_filtered_energies)
+        # self.hmf = np.diag(total_energies)
+        self.hmf = np.diag(sorted_filtered_energies)
         if hasattr(self, 'saved_filter') and self.saved_filter is not None:
             if 'det_prod_filter' in self.saved_filter:
                 hf.create_dataset('saved_filter/det_prod_filter', data=self.saved_filter['det_prod_filter'])
