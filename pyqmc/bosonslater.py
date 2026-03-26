@@ -1066,6 +1066,7 @@ class BosonWF:
             mograd_vals,
             self._inverse[s][..., e - s * self._nelec[0]],
         )
+        
         # import pdb
         # pdb.set_trace()
         det_coeff = self.myparameters['det_coeff']
@@ -1082,7 +1083,11 @@ class BosonWF:
                 - dnref
             )
         )
-
+        jacobi0 = jacobi[0]
+        res = np.finfo(jacobi0.dtype).resolution
+        jacobi0[jacobi0 < res] = res
+        jacobi[0] = jacobi0
+        
         jacobid = jacobi[..., self._det_map[s]]
         jacobid = jacobid[1:]/jacobid[0]
 
@@ -1101,6 +1106,7 @@ class BosonWF:
 
         res = np.finfo(denom.dtype).resolution
         denom[denom < res] = res
+        
         grad = numer / denom
         grad[~np.isfinite(grad)] = 0.0
         return grad
