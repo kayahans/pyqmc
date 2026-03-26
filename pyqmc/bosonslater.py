@@ -976,6 +976,10 @@ class BosonWF:
         det_coeff = self.myparameters['det_coeff']
         logvals = 2*(updets[1] - upref + dndets[1] - dnref)
         wf_val = gpu.cp.einsum("d, id->i", det_coeff, gpu.cp.exp(logvals))
+        
+        res = np.finfo(wf_val.dtype).resolution
+        wf_val[wf_val < res] = res
+        
 
         wf_sign = np.nan_to_num(wf_val / gpu.cp.abs(wf_val))
         wf_logval = 1./2 * np.nan_to_num(gpu.cp.log(gpu.cp.abs(wf_val)) + 2*(upref + dnref))        
