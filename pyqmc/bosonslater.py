@@ -979,7 +979,6 @@ class BosonWF:
         
         res = np.finfo(wf_val.dtype).resolution
         wf_val[wf_val < res] = res
-        
 
         wf_sign = np.nan_to_num(wf_val / gpu.cp.abs(wf_val))
         wf_logval = 1./2 * np.nan_to_num(gpu.cp.log(gpu.cp.abs(wf_val)) + 2*(upref + dnref))        
@@ -1099,6 +1098,9 @@ class BosonWF:
             det_coeff,
             det_array**2
         )
+
+        res = np.finfo(denom.dtype).resolution
+        denom[denom < res] = res
         grad = numer / denom
         grad[~np.isfinite(grad)] = 0.0
         return grad
