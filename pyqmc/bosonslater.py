@@ -976,10 +976,8 @@ class BosonWF:
         det_coeff = self.myparameters['det_coeff']
         logvals = 2*(updets[1] - upref + dndets[1] - dnref)
         wf_val = gpu.cp.einsum("d, id->i", det_coeff, gpu.cp.exp(logvals))
+        wf_val = self.regularize(wf_val)
         
-        res = np.finfo(wf_val.dtype).resolution
-        wf_val[wf_val < res] = res
-
         wf_sign = np.nan_to_num(wf_val / gpu.cp.abs(wf_val))
         wf_logval = 1./2 * np.nan_to_num(gpu.cp.log(gpu.cp.abs(wf_val)) + 2*(upref + dnref))        
         return wf_sign, wf_logval
@@ -1067,8 +1065,6 @@ class BosonWF:
             self._inverse[s][..., e - s * self._nelec[0]],
         )
         
-        # import pdb
-        # pdb.set_trace()
         det_coeff = self.myparameters['det_coeff']
         upref = gpu.cp.amax(self._dets[0][1]).real
         dnref = gpu.cp.amax(self._dets[1][1]).real
@@ -1138,7 +1134,6 @@ class BosonWF:
         # This implements the quotient rule for second derivatives of the bosonic wave function
         """
 
-        # import pdb; pdb.set_trace()
         if lap_phi_n is None:
             lap_phi_n = self.laplacian_dets(e, epos) # ∇²(Phi_n)
         
@@ -1173,10 +1168,20 @@ class BosonWF:
         # plt.figure()
         # plt.scatter(val_b,lap_b)
         # plt.show()
-        # import pdb; pdb.set_trace()
         return lap_b
     
-    
+    @staticmethod
+    def regularize(array, resolution=None):
+        '''
+        Regularize an array to resolution value to avoid division by zero.
+        '''
+        if resolution is None:
+            resolution = np.finfo(array.dtype).resolution
+        mask = np.abs(array) < resolution
+        array_sign = 2 * (array[mask] >= 0) - 1
+        array[mask] = resolution * array_sign
+        return array
+
     def gradient_value(self, e, epos):
         r"""Returns the ∇log(Phi_B) gradient of bosonic wavefunction and its log value log(Phi_B)
         Phi_B is defined in eq. 4, Phi_B = \sqrt{\sum_{n}{\Phi_n^2}}
@@ -1207,6 +1212,9 @@ class BosonWF:
         )
 
         jacobid = jacobi[..., self._det_map[s]]
+
+        jacobid[0] = self.regularize(jacobid[0])
+
         ratio = np.einsum('d, di, id-> i', det_coeff, det_array**2, jacobid[0]**2)
         jacobid = jacobid[1:]/jacobid[0]
 
@@ -1222,7 +1230,8 @@ class BosonWF:
             det_coeff,
             det_array**2
         )
-        # import pdb; pdb.set_trace()
+        denom = self.regularize(denom)
+
         ratio =  ratio/denom
         derivatives = numer / denom
         derivatives[~np.isfinite(derivatives)] = 0.0
@@ -1275,12 +1284,15 @@ class BosonWF:
             jacobi[..., self._det_map[s]],
             det_array,
         )
+        numer[0] = self.regularize(numer[0])
         grads_n = numer[1:] / numer[0]
         grads_n = np.einsum('edi->dei', grads_n)
 
         # Calculate grad as well 
         det_coeff = self.myparameters['det_coeff']
         jacobid = jacobi[..., self._det_map[s]]
+
+        jacobid[0] = self.regularize(jacobid[0])
         jacobid = jacobid[1:]/jacobid[0]
         numer =  gpu.cp.einsum(
             "ei...d,d,di->ei...",
@@ -1294,6 +1306,7 @@ class BosonWF:
             det_coeff,
             det_array**2
         )
+        denom = self.regularize(denom)
         grad = numer / denom
         grad[~np.isfinite(grad)] = 0.0
 
@@ -1476,6 +1489,7 @@ class BosonWF:
             jacobi_grad[..., self._det_map[s]],
             det_array,
         )
+        numer[0] = self.regularize(numer[0])
         grad_n = numer[1:] / numer[0]
         grad_n = np.einsum('edi->dei', grad_n)
 
@@ -1488,12 +1502,13 @@ class BosonWF:
         )
         # denom = np.sum(numer[0], axis=1)
         # lap = np.einsum('id, i->id', numer[1], 1./denom)
-        
+        numer[0] = self.regularize(numer[0])
         lap_n = numer[1]/numer[0]
 
         # Calculate grad_b as well 
         det_coeff = self.myparameters['det_coeff']
         jacobid = jacobi_grad[..., self._det_map[s]]
+        jacobid[0] = self.regularize(jacobid[0])
         jacobid = jacobid[1:]/jacobid[0]
         numer =  gpu.cp.einsum(
             "ei...d,d,di->ei...",
@@ -1507,6 +1522,7 @@ class BosonWF:
             det_coeff,
             det_array**2
         )
+        denom = self.regularize(denom)
         grad_b = numer / denom
         grad_b[~np.isfinite(grad_b)] = 0.0
 
