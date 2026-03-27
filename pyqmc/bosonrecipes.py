@@ -29,6 +29,7 @@ def ABOPTIMIZE(
     njastrow = 2,
     opt_options: list|None = None,
     opt_method: str = "linemin",
+    use_dft_density = False,
     **linemin_kws,
 ):
     """Auxiliary Boson wavefunction Slater Jastrow optimization
@@ -79,6 +80,7 @@ def ABOPTIMIZE(
         use_symm=use_symm,
         initial_guess_r=initial_guess_r,
         njastrow=njastrow,
+        use_dft_density=use_dft_density,
     )
     if anchors is None:
         if opt_method == "linemin":
