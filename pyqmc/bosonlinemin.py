@@ -472,8 +472,10 @@ def line_minimization(
         est_min, new_steprange, new_nblocks = stable_fit(xfit, yfit,steprange=steprange, nblocks=current_nblocks, pgrad_prev=pgrad_prev, pgrad=pgrad)
         
         if est_min < 0 or est_min >= steprange:
+            print('est_min is out of range, stabilizing optimization')
             # Stabilize optimization by taking the midpoint of the step range
             est_min = steprange / 2
+            print('stabilized est_min to', est_min)
 
         # Update step range and nblocks if needed
         if new_steprange != steprange:
