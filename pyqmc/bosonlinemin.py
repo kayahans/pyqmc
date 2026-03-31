@@ -565,10 +565,10 @@ def line_minimization(
             # plt.ylabel('Mean Weight')
             # plt.title('Weight Statistics vs Iteration')
 
-            plt.plot(total_energy, fmt='o-')
-            plt.xlabel('Iteration')
+            plt.plot(total_energy, '-o')
+            plt.xlabel('Step')
             plt.ylabel('Total Energy')
-            plt.title('Total Energy vs Iteration')
+            plt.title('Total Energy vs Step')
             # SR parameters plots
             plt.subplot(3, 3, 5)
             plt.plot(diagnostic_data['iterations'], diagnostic_data['sr_params']['eps'], 'o-')
