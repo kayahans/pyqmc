@@ -351,10 +351,11 @@ def line_minimization(
             npartitions=npartitions,
             **vmcoptions,
         )
-        en = np.real(np.mean(df["pgradtotal"], axis=0))
-        var = np.sqrt(1./(df["pgradtotal"].shape[0]-1)*np.sum(df['pgradtotal']**2-np.mean(df['pgradtotal'])**2))
+        total_energy = df["pgradtotal"]
+        en = np.real(np.mean(total_energy, axis=0))
+        var = np.sqrt(1./(total_energy.shape[0]-1)*np.sum(total_energy**2-np.mean(total_energy)**2))
         ratio = abs(var/en)
-        sigma = np.std(df["pgradtotal"], axis=0) * np.sqrt(np.mean(df["nconfig"]))
+        sigma = np.std(total_energy, axis=0) * np.sqrt(np.mean(df["nconfig"]))
         dpH = np.mean(df["pgraddpH"], axis=0)
         dp = np.mean(df["pgraddppsi"], axis=0)
         dpdp = np.mean(df["pgraddpidpj"], axis=0)
@@ -364,12 +365,13 @@ def line_minimization(
         for k in df.keys():
             saved_results[k] = np.mean(df[k], axis=0)
 
+
         if np.any(np.isnan(grad)):
             for nm, quant in {"dpH": dpH, "dp": dp, "en": en}.items():
                 print(nm, quant)
             raise ValueError("NaN detected in derivatives")
 
-        return coords, grad, Sij, en, var, sigma, ratio, saved_results
+        return coords, grad, Sij, en, var, sigma, ratio, saved_results, total_energy
     
     x0 = pgrad_acc.transform.serialize_parameters(wf.parameters)
     
@@ -381,7 +383,7 @@ def line_minimization(
         print('it', it, 'starting ' + '='*20)
         print('steprange', steprange)
         print('nblocks', vmcoptions['nblocks'])
-        coords, pgrad, Sij, en, en_err, sigma, ratio, saved_results = gradient_energy_function(x0, coords)
+        coords, pgrad, Sij, en, en_err, sigma, ratio, saved_results, total_energy = gradient_energy_function(x0, coords)
         # Track diagnostics
         diagnostic_data['iterations'].append(it)
         diagnostic_data['energies'].append(en)
@@ -556,13 +558,17 @@ def line_minimization(
             
             # Weight statistics plot
             plt.subplot(3, 3, 4)
-            weight_means = [np.mean(d['mean']) for d in diagnostic_data['weight_stats']]
-            weight_stds = [np.mean(d['std']) for d in diagnostic_data['weight_stats']]
-            plt.errorbar(diagnostic_data['iterations'], weight_means, yerr=weight_stds, fmt='o-')
-            plt.xlabel('Iteration')
-            plt.ylabel('Mean Weight')
-            plt.title('Weight Statistics vs Iteration')
+            # weight_means = [np.mean(d['mean']) for d in diagnostic_data['weight_stats']]
+            # weight_stds = [np.mean(d['std']) for d in diagnostic_data['weight_stats']]
+            # plt.errorbar(diagnostic_data['iterations'], weight_means, yerr=weight_stds, fmt='o-')
+            # plt.xlabel('Iteration')
+            # plt.ylabel('Mean Weight')
+            # plt.title('Weight Statistics vs Iteration')
 
+            plt.plot(total_energy, fmt='o-')
+            plt.xlabel('Iteration')
+            plt.ylabel('Total Energy')
+            plt.title('Total Energy vs Iteration')
             # SR parameters plots
             plt.subplot(3, 3, 5)
             plt.plot(diagnostic_data['iterations'], diagnostic_data['sr_params']['eps'], 'o-')
