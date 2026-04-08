@@ -938,16 +938,13 @@ class BosonWF:
         which allows us to update only certain walkers"""
 
         s = int(e >= self._nelec[0])
-        nconf = epos.configs.shape[0]
         if mask is None:
-            mask_np = np.ones(nconf, dtype=bool)
+            mask_np = np.ones(epos.configs.shape[0], dtype=bool)
         else:
             mask_np = np.asarray(mask, dtype=bool)
-        # aos() uses configs.configs[mask] (NumPy); CuPy boolean masks break that path.
-        # GPU arrays need a CuPy mask for indexing on HIP.
         mask_ix = gpu.cp.asarray(mask_np) if self.using_gpu else mask_np
-        is_zero = gpu.cp.sum(gpu.cp.isinf(self._dets[s][1]))
-        if gpu.asnumpy(is_zero) > 0:
+        is_zero = gpu.asnumpy(gpu.cp.sum(gpu.cp.isinf(self._dets[s][1])))
+        if is_zero:
             warnings.warn(
                 "Found a zero in the wave function. Recomputing everything. This should not happen often."
             )
@@ -961,8 +958,8 @@ class BosonWF:
             mo = self.orbitals.mos(ao, s)
         else:
             ao, mo = saved_values
-            self._aovals[:, mask_ix, e, :] = ao[:, mask_ix]
-            mo = mo[mask_ix]
+            self._aovals[:, mask_ix, e, :] = ao[:, mask_np]
+            mo = mo[mask_np]
         mo_vals = mo[:, self._det_occup[s]]
         det_ratio, self._inverse[s][mask_ix, :, :, :] = sherman_morrison_ms(
             eeff, self._inverse[s][mask_ix, :, :, :], mo_vals
