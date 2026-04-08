@@ -956,11 +956,13 @@ class BosonWF:
             ao = self.orbitals.aos("GTOval_sph", epos, mask_np)
             self._aovals[:, mask_ix, e, :] = gpu.cp.asarray(ao) if self.using_gpu else ao
             mo = self.orbitals.mos(ao, s)
+            mo_vals = gpu.cp.asarray(mo[:, self._det_occup[s]]) if self.using_gpu else mo[:, self._det_occup[s]]
         else:
             ao, mo = saved_values
-            self._aovals[:, mask_ix, e, :] = gpu.cp.asarray(ao[:, mask_np]) if self.using_gpu else ao[:, mask_np]
-            mo = mo[mask_np]
-        mo_vals = gpu.cp.asarray(mo[:, self._det_occup[s]]) if self.using_gpu else mo[:, self._det_occup[s]]
+            self._aovals[:, mask_ix, e, :] = ao[:, mask_ix]
+            mo = mo[mask_ix]
+            mo_vals = mo[:, self._det_occup[s]]
+        
         det_ratio, self._inverse[s][mask_ix, :, :, :] = sherman_morrison_ms(
             eeff, self._inverse[s][mask_ix, :, :, :], mo_vals
         )
