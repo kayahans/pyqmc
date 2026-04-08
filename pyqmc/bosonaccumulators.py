@@ -3,6 +3,7 @@ from pyqmc import energy
 from pyqmc import bosonenergy
 import pyqmc.ewald as ewald
 import copy
+import pyqmc.gpu as gpu
 
 from pyqmc.accumulators import LinearTransform
 from pyqmc import bosonslater
@@ -90,7 +91,7 @@ if NUMBA_AVAILABLE:
         Computes:
         1. delta1c_e = einsum('lc, cn, nc->cln', psi_n_conj, lap_phi_n, psi_n)
         2. delta1d_e = -einsum('lc, c, nc->cln', psi_n_conj, lap_phi_b, psi_n)
-        3. grad_psi_n = psi_n[:, np.newaxis, :] * (loggrad_phi_n - loggrad_b)
+        3. grad_psi_n = psi_n[:, gpu.cp.newaxis, :] * (loggrad_phi_n - loggrad_b)
         4. delta2 = einsum('lc, xc, nxc->cln', psi_n_conj, grad_j, grad_psi_n)
         5. delta3 = einsum('lxc, nxc->cln', grad_psi_n, grad_psi_n)
         """
@@ -148,20 +149,20 @@ def calculate_radial_orbital_densities(mol, dm, mo_coeff):
     coords = grids.coords
     weights = grids.weights
     ao_value = dft.numint.eval_ao(mol, coords)
-    mo_coeff = np.einsum('pi,ij,pj->p', ao_value, mo_coeff, ao_value)
+    mo_coeff = gpu.cp.einsum('pi,ij,pj->p', ao_value, mo_coeff, ao_value)
     # Calculate densit  y at each point for molecular 
     # rho(r) = Σ_μν P_μν φ_μ(r) φ_ν(r)
     if len(dm.shape) == 3:
         # UHF case - dm is (dm_a, dm_b)
         dm_up = dm[0]
         dm_dn = dm[1]
-        rho_up = np.einsum('pi,ij,pj->p', ao_value, dm_up, ao_value)
-        rho_dn = np.einsum('pi,ij,pj->p', ao_value, dm_dn, ao_value)
+        rho_up = gpu.cp.einsum('pi,ij,pj->p', ao_value, dm_up, ao_value)
+        rho_dn = gpu.cp.einsum('pi,ij,pj->p', ao_value, dm_dn, ao_value)
         rho = rho_up + rho_dn
     else:
         raise ValueError("RHF case not implemented")
         # Once implemented, uncomment the following line
-        # rho = np.einsum('pi,ij,pj->p', ao_value, dm, ao_value)    
+        # rho = gpu.cp.einsum('pi,ij,pj->p', ao_value, dm, ao_value)    
     
     return rho, coords, weights
 
@@ -201,8 +202,8 @@ def calculate_mf_density(mol, dm):
         # UHF case - dm is (dm_a, dm_b)
         dm_up = dm[0]
         dm_dn = dm[1]
-        rho_up = np.einsum('pi,ij,pj->p', ao_value, dm_up, ao_value)
-        rho_dn = np.einsum('pi,ij,pj->p', ao_value, dm_dn, ao_value)
+        rho_up = gpu.cp.einsum('pi,ij,pj->p', ao_value, dm_up, ao_value)
+        rho_dn = gpu.cp.einsum('pi,ij,pj->p', ao_value, dm_dn, ao_value)
         rho = rho_up + rho_dn
     else:
         raise ValueError("RHF case not implemented")
@@ -210,7 +211,7 @@ def calculate_mf_density(mol, dm):
         # RHF case - dm is single matrix
         # rho = np.einsum('pi,ij,pj->p', ao_value, dm, ao_value)    
     print("Total number of electrons in Mean Field method (numerical integration):", 
-        np.sum(rho * weights))  # Should be close to the total number of electrons        
+        gpu.cp.sum(rho * weights))  # Should be close to the total number of electrons        
     return rho, grids
 
 def boson_gradient_generator(mf, wf, to_opt=None, nodal_cutoff=1e-3, **ewald_kwargs):
@@ -343,15 +344,15 @@ def get_psi_basis(boson_wf, phi_b = None, phi_n = None):
     """
     if phi_b is None:
         phase, log_val = boson_wf.value() # log(Phi_B) Eq. 4
-        phi_b = phase * np.nan_to_num(np.exp(log_val)) #Phi_B
+        phi_b = phase * gpu.cp.nan_to_num(gpu.cp.exp(log_val)) #Phi_B
     
     if phi_n is None:
         phases, log_vals = boson_wf.value_dets() #log(Phi_l)
-        phi_n = phases * np.nan_to_num(np.exp(log_vals)) # Phi_l
+        phi_n = phases * gpu.cp.nan_to_num(gpu.cp.exp(log_vals)) # Phi_l
     
     # psi_basis = np.einsum('cn, c->nc', psis, 1./val) # Phi_l/Phi_B, eq. 14
     # # Optimized: use broadcasting instead of einsum for better performance
-    psi_n = (phi_n / phi_b[:, np.newaxis]).T  # Phi_n/Phi_B, eq. 14
+    psi_n = (phi_n / phi_b[:, gpu.cp.newaxis]).T  # Phi_n/Phi_B, eq. 14
     return psi_n
 
 class ABVMCMatrixAccumulator:
@@ -421,10 +422,10 @@ class ABVMCMatrixAccumulator:
             self._symm_mask = boson_wf._det_prod_filter
         
         nconf, nelec, _ = configs.configs.shape
-        boson_value = boson_wf.value()
-        phi_b = boson_value[0] * np.nan_to_num(np.exp(boson_value[1])) # Phi_B
+        boson_value = boson_wf.value(return_numpy=False)
+        phi_b = boson_value[0] * gpu.cp.nan_to_num(gpu.cp.exp(boson_value[1])) # Phi_B
         phi_n_value = boson_wf.value_dets()   # phase(Phi_n), log(Phi_n)
-        phi_n = phi_n_value[0] * np.nan_to_num(np.exp(phi_n_value[1])) # Phi_n
+        phi_n = phi_n_value[0] * gpu.cp.nan_to_num(gpu.cp.exp(phi_n_value[1])) # Phi_n
         psi_n = get_psi_basis(boson_wf, phi_n=phi_n, phi_b=phi_b) # Phi_n/Phi_B
         ndets = psi_n.shape[0]
         
@@ -451,7 +452,7 @@ class ABVMCMatrixAccumulator:
         ovlp_ij_shape = (nconf, ndets, ndets)
         if self._ovlp_ij is None or self._ovlp_ij_shape != ovlp_ij_shape:
             # Allocate new array if first call or size changed
-            self._ovlp_ij = np.zeros(ovlp_ij_shape, dtype=target_dtype)
+            self._ovlp_ij = gpu.cp.zeros(ovlp_ij_shape, dtype=target_dtype)
             self._ovlp_ij_shape = ovlp_ij_shape
         else:
             self._ovlp_ij.fill(0)
@@ -459,19 +460,19 @@ class ABVMCMatrixAccumulator:
         
         # Use einsum with out parameter to write directly into pre-allocated array
         # psi_n is already in target_dtype, so no conversion needed
-        np.einsum("lc,nc->cln", psi_n.conj(), psi_n, out=ovlp_ij, optimize='optimal')
+        gpu.cp.einsum("lc,nc->cln", psi_n.conj(), psi_n, out=ovlp_ij, optimize='optimal')
         # ovlp_ij2 = psi_n.conj()[None, :, :] * psi_n[:, None, :]
         # en_acc = self.en_acc(configs, wf)
         # # eb0 = en_acc['total'] - en_acc['corr']
-        # mean_eb0 = np.mean(eb0, axis=0)*np.ones_like(eb0)
+        # mean_eb0 = gpu.cp.mean(eb0, axis=0)*gpu.cp.ones_like(eb0)
 
-        # delta = np.einsum('lc, n, nc->cln', psi_n, np.diag(boson_wf.hmf), psi_n) 
+        # delta = gpu.cp.einsum('lc, n, nc->cln', psi_n, gpu.cp.diag(boson_wf.hmf), psi_n) 
         # Optimized: reuse pre-allocated array if size matches, otherwise reallocate
         # Use same dtype as ovlp_ij for consistency
         delta_shape = (nconf, ndets, ndets)
         if self._delta is None or self._delta_shape != delta_shape:
             # Allocate new array if first call or size changed
-            self._delta = np.zeros(delta_shape, dtype=target_dtype)
+            self._delta = gpu.cp.zeros(delta_shape, dtype=target_dtype)
             self._delta_shape = delta_shape
         else:
             # Reuse existing array and reset to zero (faster than reallocating)
@@ -512,15 +513,15 @@ class ABVMCMatrixAccumulator:
             # psi_n is (ndet, nconf), so psi_n[:, np.newaxis, :] is (ndet, 1, nconf)
             # This broadcasts correctly with (ndet, 3, nconf) to give (ndet, 3, nconf)
             # All arrays are now in target_dtype, so operations stay in 32-bit
-            grad_psi_n = psi_n[:, np.newaxis, :] * (loggrad_phi_n - loggrad_b)
-            if NUMBA_AVAILABLE and not np.iscomplexobj(psi_n):
+            grad_psi_n = psi_n[:, gpu.cp.newaxis, :] * (loggrad_phi_n - loggrad_b)
+            if NUMBA_AVAILABLE and not gpu.cp.iscomplexobj(psi_n):
                 _accumulate_delta_vmc_contributions_numba(
                     delta, 
                     grad_psi_n, 
                     psi_n, 
                     grad_j)
             else:
-                delta += np.einsum("lc,xc,nxc->cln", psi_n, grad_j, grad_psi_n)
+                delta += gpu.cp.einsum("lc,xc,nxc->cln", psi_n, grad_j, grad_psi_n)
             # import pdb; pdb.set_trace()
         # delta += delta1 + delta2
 
@@ -541,10 +542,10 @@ class ABVMCMatrixAccumulator:
         #     delta += np.einsum("lc,xc,nxc->cln", psi_n, grad_j, grad_psi_n)
         #     # print('VMC', e, np.sum(grad_j), np.sum(grad_psi_n), np.sum(psi_n), np.sum(delta), delta[0,0,0],)
 
-        results = {'delta':delta, 
+        results = {'delta':gpu.asnumpy(delta), 
                 #    'delta1': delta1,
                 #    'delta2': delta2,
-                   'ovlp': ovlp_ij}
+                   'ovlp': gpu.asnumpy(ovlp_ij)}
         return results 
 
     def avg(self, configs, wf):
