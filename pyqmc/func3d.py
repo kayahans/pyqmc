@@ -151,12 +151,18 @@ class PolyPadeFunction:
             "rcut": gpu.cp.asarray(rcut),
         }
 
+    # def value(self, rvec, r):
+    #     mask = r < self.parameters["rcut"]
+    #     z = r[mask] / self.parameters["rcut"]
+    #     func = gpu.cp.zeros(r.shape)
+    #     func[mask] = polypadevalue(z, self.parameters["beta"])
+    #     return func
+
     def value(self, rvec, r):
         mask = r < self.parameters["rcut"]
-        z = r[mask] / self.parameters["rcut"]
-        func = gpu.cp.zeros(r.shape)
-        func[mask] = polypadevalue(z, self.parameters["beta"])
-        return func
+        z = r / self.parameters["rcut"]
+        func = polypadevalue(z, self.parameters["beta"])
+        return gpu.cp.where(mask, func, 0.0)
 
     def gradient_value(self, rvec, r):
         value = gpu.cp.zeros(r.shape)
