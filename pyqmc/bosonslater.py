@@ -938,10 +938,16 @@ class BosonWF:
         which allows us to update only certain walkers"""
 
         s = int(e >= self._nelec[0])
+        nconf = epos.configs.shape[0]
         if mask is None:
-            mask = gpu.cp.ones(epos.configs.shape[0], dtype=bool)
+            mask_np = np.ones(nconf, dtype=bool)
+        else:
+            mask_np = np.asarray(mask, dtype=bool)
+        # aos() uses configs.configs[mask] (NumPy); CuPy boolean masks break that path.
+        # GPU arrays need a CuPy mask for indexing on HIP.
+        mask_ix = gpu.cp.asarray(mask_np) if self.using_gpu else mask_np
         is_zero = gpu.cp.sum(gpu.cp.isinf(self._dets[s][1]))
-        if is_zero:
+        if gpu.asnumpy(is_zero) > 0:
             warnings.warn(
                 "Found a zero in the wave function. Recomputing everything. This should not happen often."
             )
@@ -950,19 +956,19 @@ class BosonWF:
 
         eeff = e - s * self._nelec[0]
         if saved_values is None:
-            ao = self.orbitals.aos("GTOval_sph", epos, mask)
-            self._aovals[:, mask, e, :] = ao
+            ao = self.orbitals.aos("GTOval_sph", epos, mask_np)
+            self._aovals[:, mask_ix, e, :] = ao
             mo = self.orbitals.mos(ao, s)
         else:
             ao, mo = saved_values
-            self._aovals[:, mask, e, :] = ao[:, mask]
-            mo = mo[mask]
+            self._aovals[:, mask_ix, e, :] = ao[:, mask_ix]
+            mo = mo[mask_ix]
         mo_vals = mo[:, self._det_occup[s]]
-        det_ratio, self._inverse[s][mask, :, :, :] = sherman_morrison_ms(
-            eeff, self._inverse[s][mask, :, :, :], mo_vals
+        det_ratio, self._inverse[s][mask_ix, :, :, :] = sherman_morrison_ms(
+            eeff, self._inverse[s][mask_ix, :, :, :], mo_vals
         )
-        self._dets[s][0, mask, :] *= self.get_phase(det_ratio)
-        self._dets[s][1, mask, :] += gpu.cp.log(gpu.cp.abs(det_ratio))
+        self._dets[s][0, mask_ix, :] *= self.get_phase(det_ratio)
+        self._dets[s][1, mask_ix, :] += gpu.cp.log(gpu.cp.abs(det_ratio))
     
     @timer_func
     def value(self, return_numpy=True):
