@@ -923,8 +923,9 @@ class BosonWF:
                 print(f"zero {is_zero/np.prod(compute.shape)}")
             self._inverse.append(gpu.cp.zeros(mo_vals.shape, dtype=mo_vals.dtype))
             for d in range(compute.shape[1]):
-                self._inverse[s][compute[:, d], d, :, :] = gpu.cp.linalg.inv(
-                    mo_vals[compute[:, d], d, :, :]
+                idx = gpu.cp.where(compute[:, d])[0]
+                self._inverse[s][idx, d, :, :] = gpu.cp.linalg.inv(
+                    mo_vals[idx, d, :, :]
                 )
             # spin, Nconf, [ndet_up, ndet_dn], nelec, nelec
         return self.value()
