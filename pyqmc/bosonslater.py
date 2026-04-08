@@ -1250,12 +1250,14 @@ class BosonWF:
 
         ratio =  ratio/denom
         derivatives = numer / denom
-        derivatives[~gpu.cp.isfinite(derivatives)] = 0.0
+        
         # values = derivatives[0]
         # values[~np.isfinite(values)] = 1.0
         if return_numpy and self.using_gpu:
+            derivatives[~gpu.cp.isfinite(derivatives)] = 0.0
             return gpu.asnumpy(derivatives), gpu.asnumpy(ratio), (aograd[:, 0], mograd[0])
         else:
+            derivatives[~np.isfinite(derivatives)] = 0.0
             return derivatives, ratio, (aograd[:, 0], mograd[0])
     
     @timer_func
