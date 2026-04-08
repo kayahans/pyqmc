@@ -66,8 +66,8 @@ class MultiplyWF:
         self.dtype = complex if iscomplex else float
 
     def recompute(self, configs):
-        signs = gpu.cp.ones(len(configs.configs))
-        vals = gpu.cp.zeros(len(configs.configs))
+        signs = np.ones(len(configs.configs))
+        vals = np.zeros(len(configs.configs))
         for wf in self.wf_factors:
             results = wf.recompute(configs)
             signs = signs * results[0]
