@@ -1,5 +1,5 @@
 import numpy as np
-import pyqmc.gpu as gpu
+
 
 class Parameters:
     def __init__(self, dicts):

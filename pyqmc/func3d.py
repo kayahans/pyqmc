@@ -153,42 +153,47 @@ class PolyPadeFunction:
 
     def value(self, rvec, r):
         mask = r < self.parameters["rcut"]
-        z = r / self.parameters["rcut"]
-        func = polypadevalue(z, self.parameters["beta"])
-        return gpu.cp.where(mask, func, 0.0)
+        z = r[mask] / self.parameters["rcut"]
+        func = gpu.cp.zeros(r.shape)
+        func[mask] = polypadevalue(z, self.parameters["beta"])
+        return func
 
     def gradient_value(self, rvec, r):
+        value = gpu.cp.zeros(r.shape)
+        grad = gpu.cp.zeros(rvec.shape)
         mask = r < self.parameters["rcut"]
-        grad_rvec, val = polypadegradvalue(
-            r,
+        grad_rvec, value[mask] = polypadegradvalue(
+            r[mask],
             self.parameters["beta"],
             self.parameters["rcut"],
         )
-        grad_full = rvec * grad_rvec[..., np.newaxis]
-        grad = gpu.cp.where(mask[..., np.newaxis], grad_full, 0.0)
-        value = gpu.cp.where(mask, val, 0.0)
+        grad[mask] = np.einsum("ij,i->ij", rvec[mask], grad_rvec)
         return grad, value
 
     def gradient(self, rvec, r):
+        grad = gpu.cp.zeros(rvec.shape)
         mask = r < self.parameters["rcut"]
-        rr = r[..., np.newaxis]
-        rcut = self.parameters["rcut"]
-        z = rr / rcut
+        r = r[mask][..., np.newaxis]
+        rvec = rvec[mask]
+        z = r / self.parameters["rcut"]
         p = z * z * (6 - 8 * z + 3 * z * z)
         dpdz = 12 * z * (z * z - 2 * z + 1)
         dbdp = -(1 + self.parameters["beta"]) / (1 + self.parameters["beta"] * p) ** 2
-        dzdx = rvec / (rr * rcut)
-        grad_full = dbdp * dpdz * dzdx
-        return gpu.cp.where(mask[..., np.newaxis], grad_full, 0.0)
+        dzdx = rvec / (r * self.parameters["rcut"])
+        grad[mask] = dbdp * dpdz * dzdx
+        return grad
 
     def laplacian(self, rvec, r):
         return self.gradient_laplacian(rvec, r)[1]
 
     def gradient_laplacian(self, rvec, r):
+        grad = gpu.cp.zeros(rvec.shape)
+        lap = gpu.cp.zeros(rvec.shape)
         mask = r < self.parameters["rcut"]
-        rr = r[..., np.newaxis]
-        rcut = self.parameters["rcut"]
-        z = rr / rcut
+        r = r[..., np.newaxis]
+        r = r[mask]
+        rvec = rvec[mask]
+        z = r / self.parameters["rcut"]
         z1 = z - 1
         z12 = z1 * z1
         beta = self.parameters["beta"]
@@ -197,16 +202,15 @@ class PolyPadeFunction:
         obp = 1 / (1 + beta * p)
         dpdz = 12 * z * z12
         dbdp = -(1 + beta) * obp * obp
-        dzdx = rvec / (rr * rcut)
-        grad_full = dbdp * dpdz * dzdx
+        dzdx = rvec / (r * self.parameters["rcut"])
+        gradmask = dbdp * dpdz * dzdx
         d2pdz2_over_dpdz = (3 * z - 1) / (z * z1)
         d2bdp2_over_dbdp = -2 * beta * obp
-        d2zdx2 = (1 - (rvec / rr) ** 2) / (rr * rcut)
-        lap_full = dbdp * dpdz * d2zdx2 + (
-            grad_full * (d2bdp2_over_dbdp * dpdz * dzdx + d2pdz2_over_dpdz * dzdx)
+        d2zdx2 = (1 - (rvec / r) ** 2) / (r * self.parameters["rcut"])
+        grad[mask] = gradmask
+        lap[mask] += dbdp * dpdz * d2zdx2 + (
+            gradmask * (d2bdp2_over_dbdp * dpdz * dzdx + d2pdz2_over_dpdz * dzdx)
         )
-        grad = gpu.cp.where(mask[..., np.newaxis], grad_full, 0.0)
-        lap = gpu.cp.where(mask[..., np.newaxis], lap_full, 0.0)
         return grad, lap
 
     def pgradient(self, rvec, r):
@@ -226,10 +230,9 @@ class PolyPadeFunction:
         dbdp = -(1 + beta) * obp * obp
         derivrcut = dbdp * dpdz * (-z / self.parameters["rcut"])
         derivbeta = -p * (1 - p) * obp * obp
-        pderiv = {
-            "rcut": gpu.cp.where(mask, 0.0, derivrcut),
-            "beta": gpu.cp.where(mask, 0.0, derivbeta),
-        }
+        derivrcut[mask] = 0.0
+        derivbeta[mask] = 0.0
+        pderiv = {"rcut": derivrcut, "beta": derivbeta}
         return pderiv
 
 
@@ -248,86 +251,89 @@ class CutoffCuspFunction:
 
     def value(self, rvec, r):
         mask = r < self.parameters["rcut"]
-        rcut = self.parameters["rcut"]
+        y = r[mask] / self.parameters["rcut"]
         gamma = self.parameters["gamma"]
-        y = r / rcut
         y1 = y - 1
         p = (y1 * y1 * y1 + 1) / 3
-        inner = -p / (1 + gamma * p) + 1 / (3 + gamma)
-        func = gpu.cp.where(mask, inner, 0.0)
-        return func * rcut
+        func = gpu.cp.zeros(r.shape)
+        func[mask] = -p / (1 + gamma * p) + 1 / (3 + gamma)
+        return func * self.parameters["rcut"]
 
     def gradient(self, rvec, r):
         rcut = self.parameters["rcut"]
         gamma = self.parameters["gamma"]
         mask = r < rcut
-        rr = r[..., np.newaxis]
-        y = rr / rcut
+        r = r[mask][..., np.newaxis]
+        y = r / rcut
         y1 = y - 1
 
         a = y1 * y1
         b = (a * y1 + 1) / 3
-        c = 1 / (1 + gamma * b) ** 2 / (rcut * rr)
+        c = 1 / (1 + gamma * b) ** 2 / (rcut * r)
 
-        grad_full = -rvec * a * c * rcut
-        return gpu.cp.where(mask[..., np.newaxis], grad_full, 0.0)
+        grad = gpu.cp.zeros(rvec.shape)
+        grad[mask] = -rvec[mask] * a * c * rcut
+        return grad
 
     def gradient_value(self, rvec, r):
+        grad = gpu.cp.zeros(rvec.shape)
+        value = gpu.cp.zeros(r.shape)
         rcut = self.parameters["rcut"]
         gamma = self.parameters["gamma"]
         mask = r < rcut
-        rr = r[..., np.newaxis]
-        y = rr / rcut
+        r = r[mask][..., np.newaxis]
+        y = r / rcut
         y1 = y - 1
 
         a = y1 * y1
         b = (a * y1 + 1) / 3
         ogb = 1 / (1 + gamma * b)
-        c = ogb * ogb / (rcut * rr)
+        c = ogb * ogb / (rcut * r)
 
-        grad_full = -rvec * a * c * rcut
-        grad = gpu.cp.where(mask[..., np.newaxis], grad_full, 0.0)
-        value_inner = -(b * ogb)[..., 0] + 1 / (3 + gamma)
-        value = gpu.cp.where(mask, value_inner, 0.0)
+        grad[mask] = -rvec[mask] * a * c * rcut
+        value[mask] = -(b * ogb)[..., 0] + 1 / (3 + gamma)
         return grad, value * rcut
 
     def laplacian(self, rvec, r):
+        lap = gpu.cp.zeros(rvec.shape)
         rcut = self.parameters["rcut"]
         gamma = self.parameters["gamma"]
         mask = r < rcut
-        rr = r[..., np.newaxis]
-        y = rr / rcut
+        r = r[mask][..., np.newaxis]
+        rvec = rvec[mask]
+        y = r / rcut
         y1 = y - 1
 
         a = y1 * y1
         b = (a * y1 + 1) / 3
-        c = 1 / (1 + gamma * b) ** 2 / (rcut * rr)
+        c = 1 / (1 + gamma * b) ** 2 / (rcut * r)
 
-        temp = 2 * y1 / (rcut * rr)
-        temp -= a / rr**2
+        temp = 2 * y1 / (rcut * r)
+        temp -= a / r**2
         temp -= 2 * a * a * c * gamma * (1 + gamma * b)
-        lap_full = -rcut * c * (a + rvec**2 * temp)
-        return gpu.cp.where(mask[..., np.newaxis], lap_full, 0.0)
+        lap[mask] = -rcut * c * (a + rvec**2 * temp)
+        return lap
 
     def gradient_laplacian(self, rvec, r):
+        grad = gpu.cp.zeros(rvec.shape)
+        lap = gpu.cp.zeros(rvec.shape)
         rcut = self.parameters["rcut"]
         gamma = self.parameters["gamma"]
         mask = r < rcut
-        rr = r[..., np.newaxis]
-        y = rr / rcut
+        r = r[mask][..., np.newaxis]
+        rvec = rvec[mask]
+        y = r / rcut
         y1 = y - 1
 
         a = y1 * y1
         b = (a * y1 + 1) / 3
-        c = 1 / (1 + gamma * b) ** 2 / (rcut * rr)
+        c = 1 / (1 + gamma * b) ** 2 / (rcut * r)
 
-        grad_full = -rcut * a * c * rvec
-        temp = 2 * y1 / (rcut * rr)
-        temp -= a / rr**2
+        grad[mask] = -rcut * a * c * rvec
+        temp = 2 * y1 / (rcut * r)
+        temp -= a / r**2
         temp -= 2 * a * a * c * gamma * (1 + gamma * b)
-        lap_full = -rcut * c * (a + rvec**2 * temp)
-        grad = gpu.cp.where(mask[..., np.newaxis], grad_full, 0.0)
-        lap = gpu.cp.where(mask[..., np.newaxis], lap_full, 0.0)
+        lap[mask] = -rcut * c * (a + rvec**2 * temp)
         return grad, lap
 
     def pgradient(self, rvec, r):
@@ -352,10 +358,9 @@ class CutoffCuspFunction:
 
         dfdrcut = y * a * ogb * ogb + val
         dfdgamma = ((b * ogb) ** 2 - 1 / (3 + gamma) ** 2) * rcut
-        func = {
-            "rcut": gpu.cp.where(mask, 0.0, dfdrcut),
-            "gamma": gpu.cp.where(mask, 0.0, dfdgamma),
-        }
+        dfdrcut[mask] = 0.0
+        dfdgamma[mask] = 0.0
+        func = {"rcut": dfdrcut, "gamma": dfdgamma}
 
         return func
 

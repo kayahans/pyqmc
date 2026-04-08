@@ -108,9 +108,9 @@ def compute_boson_value(updets, dndets, det_coeffs):
     logvals = 2*(updets[1] - upref + dndets[1] - dnref)
     wf_val = gpu.cp.einsum("d,id->i", det_coeffs, gpu.cp.exp(logvals))
     
-    wf_sign = gpu.cp.nan_to_num(wf_val / gpu.cp.abs(wf_val))
-    wf_logval = 1./2 * gpu.cp.nan_to_num(gpu.cp.log(gpu.cp.abs(wf_val)) + 2*(upref + dnref))
-    return wf_sign, wf_logval
+    wf_sign = np.nan_to_num(wf_val / gpu.cp.abs(wf_val))
+    wf_logval = 1./2 * np.nan_to_num(gpu.cp.log(gpu.cp.abs(wf_val)) + 2*(upref + dnref))
+    return gpu.asnumpy(wf_sign), gpu.asnumpy(wf_logval)
 
 
 def _compute_det_prod_filter(mol, mf, symm_data, occupations):
@@ -495,8 +495,6 @@ class BosonWF:
         """
         self.tol = -1 if tol is None else tol
         self._mol = mol
-        self.using_gpu = (gpu.cp.__name__ != "numpy")
-
         if hasattr(mc, "nelecas"):
             # In case nelecas overrode the information from the molecule object.
             ncore = mc.ncore
@@ -913,7 +911,7 @@ class BosonWF:
             mo = self.orbitals.mos(self._aovals[:, :, begin:end, :], s)
             mo_vals = gpu.cp.swapaxes(mo[:, :, self._det_occup[s]], 1, 2)
             self._dets.append(
-                gpu.cp.asarray(gpu.cp.linalg.slogdet(mo_vals))
+                gpu.cp.asarray(np.linalg.slogdet(mo_vals))
             )  # Spin, (sign, val), nconf, [ndet_up, ndet_dn]
             is_zero = np.sum(np.abs(self._dets[s][0]) < 1e-16)
             compute = np.isfinite(self._dets[s][1])
@@ -925,9 +923,8 @@ class BosonWF:
                 print(f"zero {is_zero/np.prod(compute.shape)}")
             self._inverse.append(gpu.cp.zeros(mo_vals.shape, dtype=mo_vals.dtype))
             for d in range(compute.shape[1]):
-                idx = gpu.cp.where(compute[:, d])[0]
-                self._inverse[s][idx, d, :, :] = gpu.cp.linalg.inv(
-                    mo_vals[idx, d, :, :]
+                self._inverse[s][compute[:, d], d, :, :] = gpu.cp.linalg.inv(
+                    mo_vals[compute[:, d], d, :, :]
                 )
             # spin, Nconf, [ndet_up, ndet_dn], nelec, nelec
         return self.value()
@@ -939,11 +936,8 @@ class BosonWF:
 
         s = int(e >= self._nelec[0])
         if mask is None:
-            mask_np = np.ones(epos.configs.shape[0], dtype=bool)
-        else:
-            mask_np = np.asarray(mask, dtype=bool)
-        mask_ix = gpu.cp.asarray(mask_np) if self.using_gpu else mask_np
-        is_zero = gpu.asnumpy(gpu.cp.sum(gpu.cp.isinf(self._dets[s][1])))
+            mask = np.ones(epos.configs.shape[0], dtype=bool)
+        is_zero = np.sum(np.isinf(self._dets[s][1]))
         if is_zero:
             warnings.warn(
                 "Found a zero in the wave function. Recomputing everything. This should not happen often."
@@ -953,24 +947,22 @@ class BosonWF:
 
         eeff = e - s * self._nelec[0]
         if saved_values is None:
-            ao = self.orbitals.aos("GTOval_sph", epos, mask_np)
-            self._aovals[:, mask_ix, e, :] = gpu.cp.asarray(ao) if self.using_gpu else ao
+            ao = self.orbitals.aos("GTOval_sph", epos, mask)
+            self._aovals[:, mask, e, :] = ao
             mo = self.orbitals.mos(ao, s)
-            mo_vals = gpu.cp.asarray(mo[:, self._det_occup[s]]) if self.using_gpu else mo[:, self._det_occup[s]]
         else:
             ao, mo = saved_values
-            self._aovals[:, mask_ix, e, :] = ao[:, mask_ix]
-            mo = mo[mask_ix]
-            mo_vals = mo[:, self._det_occup[s]]
-        
-        det_ratio, self._inverse[s][mask_ix, :, :, :] = sherman_morrison_ms(
-            eeff, self._inverse[s][mask_ix, :, :, :], mo_vals
+            self._aovals[:, mask, e, :] = ao[:, mask]
+            mo = mo[mask]
+        mo_vals = mo[:, self._det_occup[s]]
+        det_ratio, self._inverse[s][mask, :, :, :] = sherman_morrison_ms(
+            eeff, self._inverse[s][mask, :, :, :], mo_vals
         )
-        self._dets[s][0, mask_ix, :] *= self.get_phase(det_ratio)
-        self._dets[s][1, mask_ix, :] += gpu.cp.log(gpu.cp.abs(det_ratio))
+        self._dets[s][0, mask, :] *= self.get_phase(det_ratio)
+        self._dets[s][1, mask, :] += gpu.cp.log(gpu.cp.abs(det_ratio))
     
     @timer_func
-    def value(self, return_numpy=True):
+    def value(self):
         r"""Returns the logarithmic value of the bosonic wavefunction: log(\Phi_B)
 
         Returns:
@@ -986,14 +978,11 @@ class BosonWF:
         wf_val = gpu.cp.einsum("d, id->i", det_coeff, gpu.cp.exp(logvals))
         # wf_val = self.regularize(wf_val)
         
-        wf_sign = gpu.cp.nan_to_num(wf_val / gpu.cp.abs(wf_val))
-        wf_logval = 1./2 * gpu.cp.nan_to_num(gpu.cp.log(gpu.cp.abs(wf_val)) + 2*(upref + dnref))        
-        if return_numpy and self.using_gpu:
-            return gpu.asnumpy(wf_sign), gpu.asnumpy(wf_logval)
-        else:
-            return wf_sign, wf_logval
+        wf_sign = np.nan_to_num(wf_val / gpu.cp.abs(wf_val))
+        wf_logval = 1./2 * np.nan_to_num(gpu.cp.log(gpu.cp.abs(wf_val)) + 2*(upref + dnref))        
+        return wf_sign, wf_logval
     
-    def value_configs(self, configs, return_numpy=True):
+    def value_configs(self, configs):
         r"""Returns the value of the bosonic wavefunction for a given configuration"""
         nconf, nelec, ndim = configs.configs.shape
         aos = self.orbitals.aos("GTOval_sph", configs)
@@ -1025,12 +1014,9 @@ class BosonWF:
         logvals = 2*(updets[1] - upref + dndets[1] - dnref)
         wf_val = gpu.cp.einsum("d, id->i", det_coeff, gpu.cp.exp(logvals))
 
-        wf_sign = gpu.cp.nan_to_num(wf_val / gpu.cp.abs(wf_val))
-        wf_logval = 1./2 * gpu.cp.nan_to_num(gpu.cp.log(gpu.cp.abs(wf_val)) + 2*(upref + dnref))        
-        if return_numpy and self.using_gpu:
-            return gpu.asnumpy(wf_sign), gpu.asnumpy(wf_logval)
-        else:
-            return wf_sign, wf_logval
+        wf_sign = np.nan_to_num(wf_val / gpu.cp.abs(wf_val))
+        wf_logval = 1./2 * np.nan_to_num(gpu.cp.log(gpu.cp.abs(wf_val)) + 2*(upref + dnref))        
+        return wf_sign, wf_logval
     
     @timer_func
     def value_dets(self, test = False):
@@ -1052,16 +1038,16 @@ class BosonWF:
         if test:
             det_coeff = self.myparameters['det_coeff']
             tol = 1E-12
-            phi_b = 1./2 * gpu.cp.log(gpu.cp.einsum('d, id->i', det_coeff,gpu.cp.exp(2*wf_logval) ))
+            phi_b = 1./2 * np.log(np.einsum('d, id->i', det_coeff,np.exp(2*wf_logval) ))
             try:
-                assert ((gpu.cp.abs(phi_b - self.value()[1]) < tol).all())
+                assert ((np.abs(phi_b - self.value()[1]) < tol).all())
             except:
-                print('value_dets error', gpu.cp.max(gpu.cp.abs(phi_b - self.value()[1])))
+                print('value_dets error', np.max(np.abs(phi_b - self.value()[1])))
                       
-        return wf_sign, wf_logval   
+        return wf_sign, wf_logval
     
     @timer_func
-    def gradient(self, e, epos, return_numpy=True):
+    def gradient(self, e, epos):
         r"""Compute the gradient of the log wave function ∇log(Psi_B) 
         Note that this can be called even if the internals have not been updated for electron e,
         if epos differs from the current position of electron e."""
@@ -1094,7 +1080,7 @@ class BosonWF:
             )
         )
         jacobi0 = jacobi[0]
-        res = gpu.cp.finfo(jacobi0.dtype).resolution
+        res = np.finfo(jacobi0.dtype).resolution
         jacobi0[jacobi0 < res] = res
         jacobi[0] = jacobi0
         
@@ -1114,24 +1100,20 @@ class BosonWF:
             det_array**2
         )
 
-        res = gpu.cp.finfo(denom.dtype).resolution
+        res = np.finfo(denom.dtype).resolution
         denom[denom < res] = res
         
         grad = numer / denom
-        grad = gpu.cp.where(gpu.cp.isfinite(grad), grad, 0.0)
-
-        if return_numpy and self.using_gpu:
-            return gpu.asnumpy(grad)
-        else:
-            return grad
+        grad[~np.isfinite(grad)] = 0.0
+        return grad
     
-    def gradient_laplacian(self, e, epos, return_numpy=True):
-        grad = self.gradient(e, epos, return_numpy=return_numpy)
-        lap = self.laplacian(e, epos, return_numpy=return_numpy)
+    def gradient_laplacian(self, e, epos):
+        grad = self.gradient(e, epos)
+        lap = self.laplacian(e, epos)
         return grad, lap
     
     @ timer_func
-    def laplacian(self, e, epos, lap_phi_n = None, loggrad_phi_n = None, phi_n = None, phi_b = None, return_numpy=True):
+    def laplacian(self, e, epos, lap_phi_n = None, loggrad_phi_n = None, phi_n = None, phi_b = None):
         r"""Returns ∇²(Phi_B)/Phi_B of bosonic wave function for electron e at position epos
         Returns array of shape (nconfigs,)
         \[
@@ -1160,36 +1142,33 @@ class BosonWF:
 
         if phi_n is None:
             phase_n, logval_n = self.value_dets()   # phase(Phi_n), log(Phi_n)
-            phi_n = phase_n * gpu.cp.nan_to_num(gpu.cp.exp(logval_n)) # Phi_n
+            phi_n = phase_n * np.nan_to_num(np.exp(logval_n)) # Phi_n
         
         if phi_b is None:
             phase_b, logval_b = self.value() # phase(Phi_B), log(Phi_B)
-            phi_b = phase_b * gpu.cp.nan_to_num(gpu.cp.exp(logval_b)) # Phi_B
+            phi_b = phase_b * np.nan_to_num(np.exp(logval_b)) # Phi_B
 
         
 
         # Calculate ∇²(Phi_B)/Phi_B
         # First term: Sum over determinants l of: (gradient of Phi_l)·(gradient of Phi_l)  [dot product of gradients]
         
-        grad_phi_l = gpu.cp.einsum('nxc, cn->nxc', loggrad_phi_n, phi_n)
+        grad_phi_l = np.einsum('nxc, cn->nxc', loggrad_phi_n, phi_n)
         
-        lap_b1 = gpu.cp.einsum('nxc, nxc->c', grad_phi_l, grad_phi_l)
+        lap_b1 = np.einsum('nxc, nxc->c', grad_phi_l, grad_phi_l)
         # term below can be executed only once. 
-        lap_b1 += gpu.cp.einsum('cn, cn->c', phi_n**2, lap_phi_n) # Changed due to new lap_n definition in this commit
+        lap_b1 += np.einsum('cn, cn->c', phi_n**2, lap_phi_n) # Changed due to new lap_n definition in this commit
         lap_b1 /= phi_b**2
         # Second term: Minus the square of (sum of Phi_l times gradient of Phi_l)
-        lap_b2 = gpu.cp.einsum('cn, nxc->cx', phi_n, grad_phi_l)
-        lap_b2 = gpu.cp.einsum('cx, cx->c', lap_b2, lap_b2)
+        lap_b2 = np.einsum('cn, nxc->cx', phi_n, grad_phi_l)
+        lap_b2 = np.einsum('cx, cx->c', lap_b2, lap_b2)
         lap_b2 /= phi_b**4
         lap_b = lap_b1 - lap_b2
         # import matplotlib.pyplot as plt
         # plt.figure()
         # plt.scatter(val_b,lap_b)
         # plt.show()
-        if return_numpy and self.using_gpu:
-            return gpu.asnumpy(lap_b)
-        else:
-            return lap_b
+        return lap_b
     
     @staticmethod
     def regularize(array, resolution=None):
@@ -1197,13 +1176,13 @@ class BosonWF:
         Regularize an array to resolution value to avoid division by zero.
         '''
         if resolution is None:
-            resolution = gpu.cp.finfo(array.dtype).resolution
-        mask = gpu.cp.abs(array) < resolution
+            resolution = np.finfo(array.dtype).resolution
+        mask = np.abs(array) < resolution
         array_sign = 2 * (array[mask] >= 0) - 1
         array[mask] = resolution * array_sign
         return array
 
-    def gradient_value(self, e, epos, return_numpy=True):
+    def gradient_value(self, e, epos):
         r"""Returns the ∇log(Phi_B) gradient of bosonic wavefunction and its log value log(Phi_B)
         Phi_B is defined in eq. 4, Phi_B = \sqrt{\sum_{n}{\Phi_n^2}}
         Returns array of shape (nconfigs, 3) and (nconfigs,)"""
@@ -1236,7 +1215,7 @@ class BosonWF:
 
         # jacobid[0] = self.regularize(jacobid[0])
 
-        ratio = gpu.cp.einsum('d, di, id-> i', det_coeff, det_array**2, jacobid[0]**2)
+        ratio = np.einsum('d, di, id-> i', det_coeff, det_array**2, jacobid[0]**2)
         jacobid = jacobid[1:]/jacobid[0]
 
         numer =  gpu.cp.einsum(
@@ -1255,14 +1234,10 @@ class BosonWF:
 
         ratio =  ratio/denom
         derivatives = numer / denom
-        derivatives = gpu.cp.where(gpu.cp.isfinite(derivatives), derivatives, 0.0)
-
+        derivatives[~np.isfinite(derivatives)] = 0.0
         # values = derivatives[0]
         # values[~np.isfinite(values)] = 1.0
-        if return_numpy and self.using_gpu:
-            return gpu.asnumpy(derivatives), gpu.asnumpy(ratio), (aograd[:, 0], mograd[0])
-        else:
-            return derivatives, ratio, (aograd[:, 0], mograd[0])
+        return derivatives, ratio, (aograd[:, 0], mograd[0])
     
     @timer_func
     def gradient_dets(self, e, epos, test=False):
@@ -1284,7 +1259,7 @@ class BosonWF:
         mograd = self.orbitals.mos(aograd, s)
         mograd_vals = mograd[:, :, self._det_occup[s]]
 
-        jacobi = gpu.cp.einsum(
+        jacobi = np.einsum(
             "ei...dj,idj...->ei...d",
             mograd_vals,
             self._inverse[s][..., e - s * self._nelec[0]],
@@ -1304,14 +1279,14 @@ class BosonWF:
             )
         )
 
-        numer = gpu.cp.einsum(
+        numer = np.einsum(
             "ei...d,di->edi...",
             jacobi[..., self._det_map[s]],
             det_array,
         )
         # numer[0] = self.regularize(numer[0])
         grads_n = numer[1:] / numer[0]
-        grads_n = gpu.cp.einsum('edi->dei', grads_n)
+        grads_n = np.einsum('edi->dei', grads_n)
 
         # Calculate grad as well 
         det_coeff = self.myparameters['det_coeff']
@@ -1333,7 +1308,7 @@ class BosonWF:
         )
         # denom = self.regularize(denom)
         grad = numer / denom
-        grad = gpu.cp.where(gpu.cp.isfinite(grad), grad, 0.0)
+        grad[~np.isfinite(grad)] = 0.0
 
         
         # det_array = (
@@ -1482,7 +1457,7 @@ class BosonWF:
         )
         
         
-        jacobi_grad = gpu.cp.einsum(
+        jacobi_grad = np.einsum(
             "ei...dj,idj...->ei...d",
             mo_grad_vals,
             self._inverse[s][..., e - s * self._nelec[0]],
@@ -1509,14 +1484,14 @@ class BosonWF:
         )
         
         # Calculate grad_n
-        numer = gpu.cp.einsum(
+        numer = np.einsum(
             "ei...d,di->edi...",
             jacobi_grad[..., self._det_map[s]],
             det_array,
         )
         # numer[0] = self.regularize(numer[0])
         grad_n = numer[1:] / numer[0]
-        grad_n = gpu.cp.einsum('edi->dei', grad_n)
+        grad_n = np.einsum('edi->dei', grad_n)
 
         # Calculate lap_n
         numer = gpu.cp.einsum(
@@ -1549,7 +1524,7 @@ class BosonWF:
         )
         # denom = self.regularize(denom)
         grad_b = numer / denom
-        grad_b = gpu.cp.where(gpu.cp.isfinite(grad_b), grad_b, 0.0)
+        grad_b[~np.isfinite(grad_b)] = 0.0
 
         return lap_n, grad_n, grad_b
 
