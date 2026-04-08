@@ -1113,8 +1113,8 @@ class BosonWF:
         denom[denom < res] = res
         
         grad = numer / denom
-        grad[~gpu.cp.isfinite(grad)] = 0.0
-        
+        grad = gpu.cp.where(gpu.cp.isfinite(grad), grad, 0.0)
+
         if return_numpy and self.using_gpu:
             return gpu.asnumpy(grad)
         else:
@@ -1250,14 +1250,13 @@ class BosonWF:
 
         ratio =  ratio/denom
         derivatives = numer / denom
-        
+        derivatives = gpu.cp.where(gpu.cp.isfinite(derivatives), derivatives, 0.0)
+
         # values = derivatives[0]
         # values[~np.isfinite(values)] = 1.0
         if return_numpy and self.using_gpu:
-            derivatives[~gpu.cp.isfinite(derivatives)] = 0.0
             return gpu.asnumpy(derivatives), gpu.asnumpy(ratio), (aograd[:, 0], mograd[0])
         else:
-            derivatives[~np.isfinite(derivatives)] = 0.0
             return derivatives, ratio, (aograd[:, 0], mograd[0])
     
     @timer_func
@@ -1329,7 +1328,7 @@ class BosonWF:
         )
         # denom = self.regularize(denom)
         grad = numer / denom
-        grad[~gpu.cp.isfinite(grad)] = 0.0
+        grad = gpu.cp.where(gpu.cp.isfinite(grad), grad, 0.0)
 
         
         # det_array = (
@@ -1545,7 +1544,7 @@ class BosonWF:
         )
         # denom = self.regularize(denom)
         grad_b = numer / denom
-        grad_b[~gpu.cp.isfinite(grad_b)] = 0.0
+        grad_b = gpu.cp.where(gpu.cp.isfinite(grad_b), grad_b, 0.0)
 
         return lap_n, grad_n, grad_b
 
