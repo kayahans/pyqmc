@@ -939,8 +939,8 @@ class BosonWF:
 
         s = int(e >= self._nelec[0])
         if mask is None:
-            mask = np.ones(epos.configs.shape[0], dtype=bool)
-        is_zero = np.sum(np.isinf(self._dets[s][1]))
+            mask = gpu.cp.ones(epos.configs.shape[0], dtype=bool)
+        is_zero = gpu.cp.sum(gpu.cp.isinf(self._dets[s][1]))
         if is_zero:
             warnings.warn(
                 "Found a zero in the wave function. Recomputing everything. This should not happen often."
