@@ -333,6 +333,8 @@ def filter_determinants_from_ci(mc, mo_energies, det_emax, include_zeros=True, m
         emax = det_emax + ground_state_energy
         emin = np.min(total_energies)
         print("Determinants being filtered with emax + min eigenvalue", emax)
+        if include_zeros:
+            mask = mask | (total_energies-ground_state_energy < 1E-6)
         mask = total_energies <= emax + energy_tol
         filtered_energies = total_energies[mask]
 
@@ -343,9 +345,12 @@ def filter_determinants_from_ci(mc, mo_energies, det_emax, include_zeros=True, m
         emax = np.percentile(total_energies, percentile)
         emin = np.min(total_energies)
         mask = total_energies <= emax + energy_tol
+        if include_zeros:
+            mask = mask | (total_energies-ground_state_energy < 1E-6)
         filtered_energies = total_energies[mask]
 
     elif det_emax == 'singles' or det_emax == 'doubles':
+
         up_num_exc = np.array([count_excitations_with_degeneracy(x, alpha_occ_ground, mo_energies[0]) for x in alpha_occ])
         dn_num_exc = np.array([count_excitations_with_degeneracy(x, beta_occ_ground, mo_energies[1]) for x in beta_occ])
         tot_exc = up_num_exc + dn_num_exc
@@ -355,13 +360,15 @@ def filter_determinants_from_ci(mc, mo_energies, det_emax, include_zeros=True, m
             mask = tot_exc < 2
         elif det_emax == 'doubles':
             mask = tot_exc < 3
+        if include_zeros:
+            mask = mask | (total_energies-ground_state_energy < 1E-6)
         print('Det excitations', tot_exc[mask])
         filtered_energies = total_energies[mask]
         
     elif isinstance(det_emax, str) and ',' in det_emax:
         # Parse string of format "energy,criteria" e.g. "1.5,singles"
         # If the float portion has two energies " e.g. "1.0 1.5,singles", than we work inside the range of the two energies
-
+        
         try:
             emax_energy, emax_criteria = det_emax.split(',')
             try: 
@@ -373,7 +380,7 @@ def filter_determinants_from_ci(mc, mo_energies, det_emax, include_zeros=True, m
                 emax_energy = float(emax_energy)
 
             emax_criteria = emax_criteria.lower()
-            if emax_criteria not in ['singles', 'doubles']:
+            if emax_criteria not in ['singles', 'doubles', 'doubles_from_singles']:
                 raise ValueError("Criteria must be singles or doubles")
         except Exception as exc:
             raise ValueError("String format must be 'energy,criteria' where energy is a float and criteria is 'singles' or 'doubles'") from exc
@@ -384,26 +391,133 @@ def filter_determinants_from_ci(mc, mo_energies, det_emax, include_zeros=True, m
         emax = emax_energy + ground_state_energy
         emin = emin_energy + ground_state_energy - 1E-6 # -1E-6 to avoid floating point issues
 
-        mask = total_energies <= emax + energy_tol
-        mask = mask & (total_energies > emin - energy_tol)
+        if emax_criteria == 'singles' or emax_criteria == 'doubles':
+            mask = total_energies <= emax + energy_tol
+            mask = mask & (total_energies > emin - energy_tol)
+            if emax_criteria == 'singles':
+                mask = mask & (tot_exc < 2)
+            elif emax_criteria == 'doubles':
+                mask = mask & (tot_exc < 3)
+            if include_zeros:
+                mask = mask | (total_energies-ground_state_energy < 1E-6)
+            filtered_energies = total_energies[mask]
+        elif emax_criteria == 'doubles_linked_singles':
+            import itertools
+            def single_key_alpha(occ, occ_g):
+                rem = set(occ_g) - set(occ)
+                add = set(occ) - set(occ_g)
+                if len(rem) != 1 or len(add) != 1:
+                    return None
+                return ("a", rem.pop(), add.pop())
 
-        if include_zeros:
-            mask = mask | (total_energies-ground_state_energy < 1E-6)
+            def single_key_beta(occ, occ_g):
+                rem = set(occ_g) - set(occ)
+                add = set(occ) - set(occ_g)
+                if len(rem) != 1 or len(add) != 1:
+                    return None
+                return ("b", rem.pop(), add.pop())
 
-        if emax_criteria == 'singles':
-            mask = mask & (tot_exc < 2)
-        elif emax_criteria == 'doubles':
-            mask = mask & (tot_exc < 3)
-        
-        filtered_energies = total_energies[mask]
-        saved = {'up_num_exc': up_num_exc, 'dn_num_exc': dn_num_exc, 'tot_exc': tot_exc}    
+            def double_is_product_of_allowed_singles(occ_a, occ_b, occ_ag, occ_bg, up_n, dn_n, allowed):
+                if up_n == 1 and dn_n == 1:
+                    ka, kb = single_key_alpha(occ_a, occ_ag), single_key_beta(occ_b, occ_bg)
+                    return ka is not None and kb is not None and ka in allowed and kb in allowed
+
+                if up_n == 2 and dn_n == 0:
+                    rem = list(set(occ_ag) - set(occ_a))
+                    add = list(set(occ_a) - set(occ_ag))
+                    if len(rem) != 2 or len(add) != 2:
+                        return False
+                    for p1, p2 in itertools.permutations(add):
+                        k1, k2 = ("a", rem[0], p1), ("a", rem[1], p2)
+                        if k1 in allowed and k2 in allowed:
+                            return True
+                    return False
+
+                if up_n == 0 and dn_n == 2:
+                    rem = list(set(occ_bg) - set(occ_b))
+                    add = list(set(occ_b) - set(occ_bg))
+                    if len(rem) != 2 or len(add) != 2:
+                        return False
+                    for p1, p2 in itertools.permutations(add):
+                        k1, k2 = ("b", rem[0], p1), ("b", rem[1], p2)
+                        if k1 in allowed and k2 in allowed:
+                            return True
+                    return False
+
+                return False
+            single_energy_ok = (tot_exc == 1) & (total_energies <= emax + energy_tol)
+            allowed_singles = set()
+            for i in np.where(single_energy_ok)[0]:
+                if tot_exc[i] == 0:
+                    continue
+                ua, ub = up_num_exc[i], dn_num_exc[i]
+                if ua == 1 and ub == 0:
+                    k = single_key_alpha(alpha_occ[i], alpha_occ_ground)
+                elif ua == 0 and ub == 1:
+                    k = single_key_beta(beta_occ[i], beta_occ_ground)
+                else:
+                    continue
+                if k is not None:
+                    allowed_singles.add(k)
+            mask = np.zeros(len(deters_orig), dtype=bool)
+            for i in range(len(deters_orig)):
+                if tot_exc[i] == 0:
+                    mask[i] = include_zeros
+                elif tot_exc[i] == 1:
+                    mask[i] = single_energy_ok[i]
+                elif tot_exc[i] == 2:
+                    mask[i] = double_is_product_of_allowed_singles(
+                        alpha_occ[i], beta_occ[i],
+                        alpha_occ_ground, beta_occ_ground,
+                        up_num_exc[i], dn_num_exc[i], allowed_singles,
+                    )
+                # tot_exc > 2: leave False
+            filtered_energies = total_energies[mask]
+
+            ag, bg = alpha_occ_ground, beta_occ_ground
+            print("\nFiltered determinants (doubles_from_singles path):")
+            print(
+                "  i | E (abs) | ΔE vs ground | class | α_exc β_exc | "
+                "α rem→add | β rem→add"
+            )
+            print("  " + "-" * 78)
+            kept = np.where(mask)[0]
+            kept = kept[np.argsort(total_energies[kept])]
+            for i in kept:
+                E_i = float(total_energies[i])
+                dE = E_i - ground_state_energy
+                te = int(tot_exc[i])
+                ua, ub = int(up_num_exc[i]), int(dn_num_exc[i])
+                a_i, b_i = alpha_occ[i], beta_occ[i]
+                a_rem = [int(x) for x in sorted(set(ag) - set(a_i))]
+                a_add = [int(x) for x in sorted(set(a_i) - set(ag))]
+                b_rem = [int(x) for x in sorted(set(bg) - set(b_i))]
+                b_add = [int(x) for x in sorted(set(b_i) - set(bg))]
+                if te == 0:
+                    exc_class = "ground"
+                elif te == 1:
+                    exc_class = "single"
+                elif te == 2:
+                    exc_class = "double"
+                else:
+                    exc_class = f"higher({te})"
+                a_part = f"{a_rem}→{a_add}" if a_rem or a_add else "—"
+                b_part = f"{b_rem}→{b_add}" if b_rem or b_add else "—"
+                print(
+                    f"  {int(i):3d} | {E_i:11.6f} | {dE:12.6f} | {exc_class:7s} | "
+                    f"{ua:1d} {ub:1d}     | {a_part:16s} | {b_part:16s}"
+                )
+
+        # saved = {'up_num_exc': up_num_exc, 'dn_num_exc': dn_num_exc, 'tot_exc': tot_exc}    
     else:
         # No filtering - return all determinants
         mask = np.ones(len(deters_orig), dtype=bool)
         filtered_energies = total_energies
         emax = np.max(total_energies)
         emin = np.min(total_energies)
-
+    
+    if include_zeros:
+        mask = mask | (total_energies-ground_state_energy < 1E-6)
     # Print report on filtered determinants
     print("\nDeterminant Filtering Report:")
     print("-" * 50)
@@ -467,7 +581,6 @@ def filter_determinants_from_ci(mc, mo_energies, det_emax, include_zeros=True, m
                 pass  # Group (e.g. Dooh) not in CHARACTER_TABLE, skip symmetry mask
             else:
                 raise
-
     return filtered_determinants, saved
 
 class BosonWF:
