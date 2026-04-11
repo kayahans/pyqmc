@@ -380,7 +380,7 @@ def filter_determinants_from_ci(mc, mo_energies, det_emax, include_zeros=True, m
                 emax_energy = float(emax_energy)
 
             emax_criteria = emax_criteria.lower()
-            if emax_criteria not in ['singles', 'doubles', 'doubles_from_singles']:
+            if emax_criteria not in ['singles', 'doubles', 'doubles_linked_singles']:
                 raise ValueError("Criteria must be singles or doubles")
         except Exception as exc:
             raise ValueError("String format must be 'energy,criteria' where energy is a float and criteria is 'singles' or 'doubles'") from exc
