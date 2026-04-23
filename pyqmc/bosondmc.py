@@ -13,6 +13,7 @@
 # copies or substantial portions of the Software.
 
 import os
+import time
 import numpy as np
 # import pyqmc.mc as mc
 from pyqmc import mc
@@ -21,6 +22,24 @@ import h5py
 import logging
 import copy
 import pyqmc.bosonmc as bosonmc
+
+_bacc = None
+
+
+def _bacc_mod():
+    global _bacc
+    if _bacc is None:
+        from pyqmc import bosonaccumulators as m
+
+        _bacc = m
+    return _bacc
+
+
+def _bosondmc_prof_enabled():
+    return (
+        os.environ.get("PYQMC_PROFILE_BOSON_DMC") == "1"
+        or os.environ.get("PYQMC_PROFILE_ABCDMC") == "1"
+    )
 
 def limdrift(g, tau, acyrus=0.25):
     """
@@ -185,6 +204,10 @@ def dmc_propagate(
     df = []
 
     for _ in range(nsteps):
+        b = _bacc_mod() if _bosondmc_prof_enabled() else None
+        if b is not None:
+            t_step0 = time.perf_counter()
+        t_abcdmc = 0.0
         r2_accepted = np.zeros(nconfig)
         r2_proposed = np.zeros(nconfig)
         prob_acceptance = np.zeros(nconfig)
@@ -231,7 +254,15 @@ def dmc_propagate(
         
         avg = {}
         for k, accumulator in accumulators.items():
-            dat = accumulator(configs, wf) if k != ekey[0] else energydat
+            if k == ekey[0]:
+                dat = energydat
+            elif b is not None and k == b.ABCDMC_ACC_KEY:
+                t0a = time.perf_counter()
+                dat = accumulator(configs, wf)
+                t_abcdmc = time.perf_counter() - t0a
+                b.bdmc_profile_add_abcdmc(t_abcdmc)
+            else:
+                dat = accumulator(configs, wf)
             for m, res in dat.items():
                 avg[k + m] = np.einsum("...i,i...->...", weights, res) / (
                     nconfig * wavg
@@ -239,6 +270,9 @@ def dmc_propagate(
         avg["weight"] = wavg
         avg["acceptance"] = np.mean(prob_acceptance)
         # avg["tmove_acceptance"] = np.mean(tmove_acceptance)
+        if b is not None:
+            b.bdmc_profile_add_prop(time.perf_counter() - t_step0 - t_abcdmc)
+            b.bdmc_profile_end_step(accumulators)
         df.append(avg)
     weight = np.asarray([d["weight"] for d in df])
     avg_weight = weight / np.mean(weight)
@@ -567,7 +601,12 @@ def rundmc(
         configs, weights, branch_info = branch(configs, weights)
         df_.update(branch_info)
         df.append(df_)
-        dmc_file(hdf_file, df_, {}, configs, weights)
+        if _bosondmc_prof_enabled():
+            t_h0 = time.perf_counter()
+            dmc_file(hdf_file, df_, {}, configs, weights)
+            _bacc_mod().bdmc_profile_add_hdf(time.perf_counter() - t_h0)
+        else:
+            dmc_file(hdf_file, df_, {}, configs, weights)
 
         e_est = estimate_energy(hdf_file, df, ekey)
         e_trial = e_est - feedback * np.log(np.mean(weights)).real

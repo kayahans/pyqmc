@@ -1,3 +1,5 @@
+import os
+import time
 import numpy as np
 from pyqmc import energy
 from pyqmc import bosonenergy
@@ -12,6 +14,106 @@ from pyqmc import jastrowspin
 from pyqmc.bosonslater import timer_func
 
 from pyqmc.accumulators import PGradTransform
+
+# --- optional boson DMC / ABCDMC wall-clock profiling (env-gated) ---
+ABCDMC_ACC_KEY = "abc_dmc_excitations"
+
+
+def boson_dmc_profile_enabled():
+    return (
+        os.environ.get("PYQMC_PROFILE_BOSON_DMC") == "1"
+        or os.environ.get("PYQMC_PROFILE_ABCDMC") == "1"
+    )
+
+
+def boson_dmc_profile_print_every():
+    try:
+        return max(0, int(os.environ.get("PYQMC_PROFILE_ABCDMC_PRINT_EVERY", "0")))
+    except ValueError:
+        return 0
+
+
+_bdmc_w_prop = 0.0
+_bdmc_w_hdf = 0.0
+_bdmc_w_abcdmc = 0.0
+_bdmc_step = 0
+
+
+def bdmc_profile_add_prop(dt):
+    global _bdmc_w_prop
+    _bdmc_w_prop += dt
+
+
+def bdmc_profile_add_hdf(dt):
+    global _bdmc_w_hdf
+    _bdmc_w_hdf += dt
+
+
+def bdmc_profile_add_abcdmc(dt):
+    global _bdmc_w_abcdmc
+    _bdmc_w_abcdmc += dt
+
+
+def bdmc_profile_reset_window():
+    global _bdmc_w_prop, _bdmc_w_hdf, _bdmc_w_abcdmc
+    _bdmc_w_prop = _bdmc_w_hdf = _bdmc_w_abcdmc = 0.0
+
+
+def _profile_bar(pct, width=18):
+    n = int(round(width * min(100.0, max(0.0, pct)) / 100.0))
+    return "#" * n + "." * (width - n)
+
+
+def bdmc_profile_format_report(accumulators):
+    """Build text for coarse timers + ABCDMC internal breakdown."""
+    lines = []
+    nwin = boson_dmc_profile_print_every()
+    tot = _bdmc_w_prop + _bdmc_w_hdf + _bdmc_w_abcdmc
+    lines.append(
+        f"--- boson DMC profile (global step {_bdmc_step}, window ~{nwin} steps) ---"
+    )
+    if tot <= 0:
+        lines.append("(no coarse time recorded this window)")
+        return "\n".join(lines)
+    for name, sec in (
+        ("DMC_propagate_ex_ABCDMC", _bdmc_w_prop),
+        ("HDF5_dmc_file", _bdmc_w_hdf),
+        ("ABCDMCMatrixAccumulator", _bdmc_w_abcdmc),
+    ):
+        pct = 100.0 * sec / tot
+        lines.append(f"  {name:28s} {sec:8.4f}s  {pct:5.1f}%  {_profile_bar(pct)}")
+    acc = accumulators.get(ABCDMC_ACC_KEY) if accumulators else None
+    if acc is not None and hasattr(acc, "_prof_secs"):
+        secs = acc._prof_secs
+        inner = sum(secs.values())
+        lines.append(
+            f"  ABCDMC config: numba_installed={NUMBA_AVAILABLE} use_symm={getattr(acc, 'use_symm', '?')} "
+            f"symm_mask_all_ones={getattr(acc, '_prof_symm_all_ones', '?')}"
+        )
+        if inner > 0:
+            lines.append("  inside ABCDMC (__call__):")
+            for k in sorted(secs, key=lambda x: -secs[x]):
+                p = 100.0 * secs[k] / inner
+                lines.append(
+                    f"    {k:22s} {secs[k]:8.4f}s  {p:5.1f}%  {_profile_bar(p)}"
+                )
+    return "\n".join(lines)
+
+
+def bdmc_profile_end_step(accumulators):
+    global _bdmc_step
+    if not boson_dmc_profile_enabled():
+        return
+    _bdmc_step += 1
+    n = boson_dmc_profile_print_every()
+    if n <= 0 or _bdmc_step % n != 0:
+        return
+    print(bdmc_profile_format_report(accumulators))
+    bdmc_profile_reset_window()
+    acc = accumulators.get(ABCDMC_ACC_KEY) if accumulators else None
+    if acc is not None and hasattr(acc, "_prof_secs"):
+        acc._prof_secs.clear()
+
 
 try:
     from numba import jit
@@ -633,11 +735,16 @@ class ABCDMCMatrixAccumulator:
             self._jastrow_wf_type = jastrowspin.JastrowSpin
         if NUMBA_AVAILABLE:
             print('Numba is available')
-        
-            
+        self._prof_secs = {}
+
+    def _prof_add(self, key, t0):
+        self._prof_secs[key] = self._prof_secs.get(key, 0.0) + (time.perf_counter() - t0)
+        return time.perf_counter()
 
     @timer_func
     def __call__(self, configs, wf, use_symm=None):
+        do = boson_dmc_profile_enabled()
+        t0 = time.perf_counter() if do else None
         for wave in wf.wf_factors:
             if isinstance(wave, self._boson_wf_type):
                 boson_wf = wave
@@ -668,9 +775,14 @@ class ABCDMCMatrixAccumulator:
             self._grad_psi_n = np.zeros((self.ndets, 3, self.nconf), dtype=self.dtype)
             self.memallocated = True
 
+        if do:
+            t0 = self._prof_add("values_psi", t0)
+
         symm_mask = (self._symm_mask if (use_symm and self._symm_mask is not None)
                      else np.ones((self.ndets, self.ndets), dtype=bool))
-        
+        if do:
+            self._prof_symm_all_ones = bool(np.all(symm_mask))
+
         ovlp_ij = self._ovlp_ij
         if NUMBA_AVAILABLE and symm_mask is not None:
             _accumulate_ovlp_ij_numba(
@@ -679,8 +791,12 @@ class ABCDMCMatrixAccumulator:
                 psi_n,
                 symm_mask,
             )
+            if do:
+                t0 = self._prof_add("ovlp_numba", t0)
         else:
             np.einsum("lc,nc->cln", psi_n_conj, psi_n, out=ovlp_ij, optimize='optimal')
+            if do:
+                t0 = self._prof_add("ovlp_einsum", t0)
         
         delta = self._delta
         delta.fill(0.0)
@@ -691,17 +807,28 @@ class ABCDMCMatrixAccumulator:
             # All the terms that go into delta calculation
             # lap_phi_n = boson_wf.laplacian_dets(e, epos_s)  # ∇²(Phi_n)/Phi_n
             # loggrad_phi_n, loggrad_b = boson_wf.gradient_dets(e, epos_s)  #∇log(Phi_n) and ∇log(Psi_B) eq. 4
+            if do:
+                te = time.perf_counter()
             lap_phi_n, loggrad_phi_n, loggrad_b = boson_wf.gradient_laplacian_dets(e, epos_s)  #∇²(Phi_n) and ∇log(Phi_n)
+            if do:
+                te = self._prof_add("elec_grad_lap", te)
+            if do:
+                te = time.perf_counter()
             lap_phi_b = boson_wf.laplacian(e, epos_s, 
                                            lap_phi_n=lap_phi_n, 
                                            loggrad_phi_n=loggrad_phi_n, 
                                            phi_n=phi_n, 
                                            phi_b=phi_b)      
-            
+            if do:
+                te = self._prof_add("elec_lap_b", te)
+            if do:
+                te = time.perf_counter()
             grad_j = jastrow_wf.gradient(e, epos_s)
+            if do:
+                te = self._prof_add("elec_jastrow", te)
 
-            
-
+            if do:
+                te = time.perf_counter()
             if NUMBA_AVAILABLE and symm_mask is not None:
                 _accumulate_delta_dmc_contributions_numba(
                     delta,
@@ -725,6 +852,8 @@ class ABCDMCMatrixAccumulator:
                 delta += self._buf_delta
                 np.einsum('lxc, nxc->cln', grad_psi_n, grad_psi_n, out=self._buf_delta, optimize='optimal')
                 delta += self._buf_delta
+            if do:
+                self._prof_add("delta_numba" if (NUMBA_AVAILABLE and symm_mask is not None) else "delta_einsum", te)
             
         results = {'delta': delta,
                    'ovlp': ovlp_ij}
