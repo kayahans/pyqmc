@@ -35,11 +35,11 @@ def _bacc_mod():
     return _bacc
 
 
-def _bosondmc_prof_enabled():
-    def _t(k):
-        return os.environ.get(k, "").strip().lower() in ("1", "true", "yes", "on")
+from pyqmc import boson_profile_config as _bpf
 
-    return _t("PYQMC_PROFILE_BOSON_DMC") or _t("PYQMC_PROFILE_ABCDMC")
+
+def _bosondmc_prof_enabled():
+    return _bpf.is_enabled()
 
 
 _prof_parallel_client_warned = False
@@ -68,7 +68,7 @@ def _warn_profile_parallel_client(client):
         "Banner and periodic profile lines are printed from worker ranks during "
         "dmc_propagate—they may not appear in this process's stdout. "
         "Use serial DMC (client=None) to see them here, or inspect worker/MPI logs. "
-        "Set PYQMC_PROFILE_BOSON_DMC=1 and optionally PYQMC_PROFILE_ABCDMC_PRINT_EVERY=N."
+        "Enable via config.yaml (profile_boson_dmc / profile_abcdmc_print_every) or env PYQMC_PROFILE_*."
     )
 
 

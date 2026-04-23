@@ -16,25 +16,23 @@ from pyqmc.bosonslater import timer_func
 
 from pyqmc.accumulators import PGradTransform
 
-# --- optional boson DMC / ABCDMC wall-clock profiling (env-gated) ---
+# --- optional boson DMC / ABCDMC wall-clock profiling (env or pyqmc.boson_profile_config) ---
+from pyqmc import boson_profile_config as _bprof
+
 ABCDMC_ACC_KEY = "abc_dmc_excitations"
 
 
-def _prof_env_truthy(key):
-    return os.environ.get(key, "").strip().lower() in ("1", "true", "yes", "on")
+def configure_boson_dmc_profiling(enabled=None, print_every=None):
+    """Set profiling from ``config.yaml`` (recommended on batch systems). See ``pyqmc.boson_profile_config``."""
+    _bprof.configure(enabled=enabled, print_every=print_every)
 
 
 def boson_dmc_profile_enabled():
-    return _prof_env_truthy("PYQMC_PROFILE_BOSON_DMC") or _prof_env_truthy(
-        "PYQMC_PROFILE_ABCDMC"
-    )
+    return _bprof.is_enabled()
 
 
 def boson_dmc_profile_print_every():
-    try:
-        return max(0, int(os.environ.get("PYQMC_PROFILE_ABCDMC_PRINT_EVERY", "0")))
-    except ValueError:
-        return 0
+    return _bprof.print_interval()
 
 
 def bdmc_profile_worker_label():
@@ -72,10 +70,9 @@ def bdmc_profile_note_rundmc_start(client_is_parallel):
         return
     _bdmc_rundmc_entry_announced = True
     mode = "parallel_client" if client_is_parallel else "serial"
-    pe = os.environ.get("PYQMC_PROFILE_ABCDMC_PRINT_EVERY", "(unset)")
+    nrep = boson_dmc_profile_print_every()
     bdmc_profile_print(
-        f"rundmc: profiling active on this process ({mode}); "
-        f"PYQMC_PROFILE_ABCDMC_PRINT_EVERY={pe!r}"
+        f"rundmc: profiling active on this process ({mode}); print_every={nrep}"
     )
 
 
@@ -85,14 +82,16 @@ def bdmc_profile_ensure_banner_once():
         return
     _bdmc_prof_banner_shown = True
     n = boson_dmc_profile_print_every()
-    pe = os.environ.get("PYQMC_PROFILE_ABCDMC_PRINT_EVERY", "0")
     if n <= 0:
-        extra = "periodic reports off (set PYQMC_PROFILE_ABCDMC_PRINT_EVERY=N for every N DMC steps)"
+        extra = (
+            "periodic reports off (set profile_abcdmc_print_every in config.yaml "
+            "or PYQMC_PROFILE_ABCDMC_PRINT_EVERY=N)"
+        )
     else:
-        extra = f"periodic reports every {n} DMC steps (PYQMC_PROFILE_ABCDMC_PRINT_EVERY={pe})"
+        extra = f"periodic reports every {n} DMC steps"
     bdmc_profile_print(
         "--- pyqmc boson DMC profiling: ON "
-        "(PYQMC_PROFILE_BOSON_DMC or PYQMC_PROFILE_ABCDMC = 1/true/yes/on). "
+        "(config: profile_boson_dmc / profile_abcdmc_print_every, or env PYQMC_PROFILE_*). "
         f"{extra}. ---"
     )
 
