@@ -214,7 +214,7 @@ def _compute_det_prod_filter(mol, mf, symm_data, occupations):
     return det_prod_filter
 
 
-def filter_determinants_from_ci(mc, mo_energies, det_emax, include_zeros=True, mol=None, mf=None, use_symm=False, energy_tol = 1e-3,):
+def filter_determinants_from_ci(mc, mo_energies, det_emax, include_zeros=True, mol=None, mf=None, use_symm=False, energy_tol = 1e-3, print_report = True):
     """
     Filter determinants from a CI object based on energy criteria before processing.
     include_zeros: Whether to include zeros in the filtering
@@ -230,9 +230,10 @@ def filter_determinants_from_ci(mc, mo_energies, det_emax, include_zeros=True, m
     """
     from pyscf import fci
     
-    print("="*20 + "Filtering determinants start" + "="*20)
-    print("Filtering determinants, energy units are in Hartree")
-    
+    if print_report:
+        print("="*20 + "Filtering determinants start" + "="*20)
+        print("Filtering determinants, energy units are in Hartree")
+        
     # Extract all determinants using the same logic as interpret_ci
     ncore = mc.ncore if hasattr(mc, "ncore") else 0
     deters_orig = fci.addons.large_ci(mc.ci, mc.ncas, mc.nelecas, tol=-1)
@@ -328,11 +329,12 @@ def filter_determinants_from_ci(mc, mo_energies, det_emax, include_zeros=True, m
     # detwt, occup, det_map = pyqmc.determinant_tools.create_packed_objects(deters, ncore, -1)
     saved = None
     # Apply filtering based on det_emax criteria
+    option_text = ""
     if isinstance(det_emax, float):
         assert det_emax > 0, "Emax must be positive for energy based determinant filtering"
         emax = det_emax + ground_state_energy
         emin = np.min(total_energies)
-        print("Determinants being filtered with emax + min eigenvalue", emax)
+        option_text = "Determinants being filtered with emax + min eigenvalue" + str(emax)
         if include_zeros:
             mask = mask | (total_energies-ground_state_energy < 1E-6)
         mask = total_energies <= emax + energy_tol
@@ -341,7 +343,7 @@ def filter_determinants_from_ci(mc, mo_energies, det_emax, include_zeros=True, m
     elif isinstance(det_emax, int):
         assert det_emax > 0 and det_emax <= 100, "Emax must be between 0 and 100 for percentage based determinant filtering"
         percentile = det_emax
-        print("Determinants being filtered with percentage ", percentile)
+        option_text = "Determinants being filtered with percentage " + str(percentile)
         emax = np.percentile(total_energies, percentile)
         emin = np.min(total_energies)
         mask = total_energies <= emax + energy_tol
@@ -362,13 +364,13 @@ def filter_determinants_from_ci(mc, mo_energies, det_emax, include_zeros=True, m
             mask = tot_exc < 3
         if include_zeros:
             mask = mask | (total_energies-ground_state_energy < 1E-6)
-        print('Det excitations', tot_exc[mask])
+        option_text = 'Det excitations' + str(tot_exc[mask])
         filtered_energies = total_energies[mask]
         
     elif isinstance(det_emax, str) and ',' in det_emax:
         # Parse string of format "energy,criteria" e.g. "1.5,singles"
         # If the float portion has two energies " e.g. "1.0 1.5,singles", than we work inside the range of the two energies
-        
+        option_text = "Determinants being filtered with energy range " + str(emin_energy) + " to " + str(emax_energy) + " and criteria " + str(emax_criteria)
         try:
             emax_energy, emax_criteria = det_emax.split(',')
             try: 
@@ -511,23 +513,28 @@ def filter_determinants_from_ci(mc, mo_energies, det_emax, include_zeros=True, m
         # saved = {'up_num_exc': up_num_exc, 'dn_num_exc': dn_num_exc, 'tot_exc': tot_exc}    
     else:
         # No filtering - return all determinants
+        option_text = "No filtering"
         mask = np.ones(len(deters_orig), dtype=bool)
         filtered_energies = total_energies
         emax = np.max(total_energies)
         emin = np.min(total_energies)
     
+    
+
     if include_zeros:
         mask = mask | (total_energies-ground_state_energy < 1E-6)
     # Print report on filtered determinants
-    print("\nDeterminant Filtering Report:")
-    print("-" * 50)
-    print('Emax', np.round(emax, 3), np.round(emax-ground_state_energy, 3))
-    print('Emin', np.round(emin, 3), np.round(emin-ground_state_energy, 3))
-    print(f"Total determinants before filtering: {len(deters_orig)}")
-    print(f"Determinants removed: {len(deters_orig) - np.sum(mask)}")
-    print(f"Determinants remaining: {np.sum(mask)}")
-    print('Min filtered eigenvalue', np.round(np.min(filtered_energies), 3), np.round(np.min(filtered_energies)-ground_state_energy, 3))
-    print('Max filtered eigenvalue', np.round(np.max(filtered_energies), 3), np.round(np.max(filtered_energies)-ground_state_energy, 3))
+    if print_report:
+        print(option_text)
+        print("\nDeterminant Filtering Report:")
+        print("-" * 50)
+        print('Emax', np.round(emax, 3), np.round(emax-ground_state_energy, 3))
+        print('Emin', np.round(emin, 3), np.round(emin-ground_state_energy, 3))
+        print(f"Total determinants before filtering: {len(deters_orig)}")
+        print(f"Determinants removed: {len(deters_orig) - np.sum(mask)}")
+        print(f"Determinants remaining: {np.sum(mask)}")
+        print('Min filtered eigenvalue', np.round(np.min(filtered_energies), 3), np.round(np.min(filtered_energies)-ground_state_energy, 3))
+        print('Max filtered eigenvalue', np.round(np.max(filtered_energies), 3), np.round(np.max(filtered_energies)-ground_state_energy, 3))
     if np.sum(~mask) > 0:
         # Find unique eigenvalues and how many times each is repeated
         # Find unique energies within 1e-3 tolerance
@@ -536,7 +543,8 @@ def filter_determinants_from_ci(mc, mo_energies, det_emax, include_zeros=True, m
         unique_energies = unique_rel + np.round(ground_state_energy, 3)
         unique_rel = np.round(unique_energies - ground_state_energy, 3)
         report = ' '.join([f'{e}(×{c})' for e, c in zip(unique_rel, counts)])
-        print('Unique removed eigenvalues (relative to ground, count):', report)
+        if print_report:
+            print('Unique removed eigenvalues (relative to ground, count):', report)
     
     if np.sum(mask) > 0:
         # Find unique eigenvalues and how many times each is repeated
@@ -547,7 +555,8 @@ def filter_determinants_from_ci(mc, mo_energies, det_emax, include_zeros=True, m
         # Take representative (unrounded) eigenvalues at each rounded cluster
         unique_energies = unrounded_energies[idx]
         report = ' '.join([f'{e}(×{c})' for e, c in zip(unique_rel, counts)])
-        print('Unique used eigenvalues (relative to ground, count):', report)
+        if print_report:
+            print('Unique used eigenvalues (relative to ground, count):', report)
     else:
         print('No used determinants, exiting... ')
         exit()
