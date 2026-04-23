@@ -20,6 +20,7 @@ from pyqmc.accumulators import PGradTransform
 from pyqmc import boson_profile_config as _bprof
 
 ABCDMC_ACC_KEY = "abc_dmc_excitations"
+ABQMC_ENERGY_ACC_KEY = "energy"
 
 
 def configure_boson_dmc_profiling(enabled=None, print_every=None):
@@ -177,6 +178,20 @@ def bdmc_profile_format_report(accumulators):
             lines.append(
                 f"    {k:26s} {display[k]:8.4f}s  {p:5.1f}%  {_profile_bar(p)}"
             )
+    en_acc = accumulators.get(ABQMC_ENERGY_ACC_KEY) if accumulators else None
+    if en_acc is not None and hasattr(en_acc, "_prof_secs"):
+        esecs = en_acc._prof_secs
+        ein = sum(esecs.values())
+        if ein > 0:
+            lines.append(
+                "  inside ABQMCEnergyAccumulator (__call__) "
+                "(percents vs sum of these components):"
+            )
+            for k in sorted(esecs, key=lambda x: -esecs[x]):
+                p = 100.0 * esecs[k] / ein
+                lines.append(
+                    f"    {k:22s} {esecs[k]:8.4f}s  {p:5.1f}%  {_profile_bar(p)}"
+                )
     acc = accumulators.get(ABCDMC_ACC_KEY) if accumulators else None
     if acc is not None and hasattr(acc, "_prof_secs"):
         secs = acc._prof_secs
@@ -208,6 +223,9 @@ def bdmc_profile_end_step(accumulators):
     acc = accumulators.get(ABCDMC_ACC_KEY) if accumulators else None
     if acc is not None and hasattr(acc, "_prof_secs"):
         acc._prof_secs.clear()
+    en_acc = accumulators.get(ABQMC_ENERGY_ACC_KEY) if accumulators else None
+    if en_acc is not None and hasattr(en_acc, "_prof_secs"):
+        en_acc._prof_secs.clear()
 
 
 try:
@@ -455,10 +473,25 @@ class ABQMCEnergyAccumulator:
             self.coulomb = ewald.Ewald(self.mol, **kwargs)
         else:
             self.coulomb = energy.OpenCoulomb(self.mol, **kwargs)
-    
+        self._prof_secs = {}
+
+    def _abqmc_energy_prof_add(self, key, t0):
+        if not boson_dmc_profile_enabled():
+            return time.perf_counter()
+        self._prof_secs[key] = self._prof_secs.get(key, 0.0) + (
+            time.perf_counter() - t0
+        )
+        return time.perf_counter()
+
     @timer_func
     def __call__(self, configs, wf):
+        do_prof = boson_dmc_profile_enabled()
+        te = time.perf_counter() if do_prof else None
+
         ee, ei, ii = self.coulomb.energy(configs)
+        if do_prof:
+            te = self._abqmc_energy_prof_add("coulomb_energy", te)
+
         try:
             nwf = len(wf.wf_factors)
         except:
@@ -474,8 +507,17 @@ class ABQMCEnergyAccumulator:
                         nup_dn = wfi._nelec
                     except:
                         pass
+        if do_prof:
+            te = self._abqmc_energy_prof_add("nelec_resolve", te)
+
         v_mf, ecorr, saved_results = bosonenergy.dft_energy(self.mf_inputs, configs)
+        if do_prof:
+            te = self._abqmc_energy_prof_add("dft_energy", te)
+
         ke1, ke2, grad2 = bosonenergy.boson_kinetic(configs, wf)
+        if do_prof:
+            te = self._abqmc_energy_prof_add("boson_kinetic", te)
+
         # ke1 *= 0
         # ke2 *= 0
         ke = ke1+ke2
@@ -497,6 +539,8 @@ class ABQMCEnergyAccumulator:
         }
         if len(saved_results.keys()) > 0:
             energies.update(saved_results)
+        if do_prof:
+            self._abqmc_energy_prof_add("en_dict_build", te)
         # print(np.mean(ke1), np.mean(ke2), np.mean(ee), np.mean(vh), np.mean(vxc), np.mean(ecorr), np.mean(ei), np.mean(ii), np.mean(energies['total']))
         return energies 
 
