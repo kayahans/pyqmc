@@ -41,6 +41,36 @@ def _bosondmc_prof_enabled():
         or os.environ.get("PYQMC_PROFILE_ABCDMC") == "1"
     )
 
+
+_prof_parallel_client_warned = False
+
+
+def _warn_profile_parallel_client(client):
+    """Profiling prints run inside worker dmc_propagate; driver logs often miss them."""
+    global _prof_parallel_client_warned
+    if (
+        client is None
+        or not _bosondmc_prof_enabled()
+        or _prof_parallel_client_warned
+    ):
+        return
+    _prof_parallel_client_warned = True
+    try:
+        from mpi4py import MPI
+
+        if MPI.COMM_WORLD.Get_rank() != 0:
+            return
+    except Exception:
+        pass
+    _bacc_mod().bdmc_profile_print(
+        "pyqmc boson DMC profiling: a parallel client is in use (e.g. MPIPoolExecutor). "
+        "Banner and periodic profile lines are printed from worker ranks during "
+        "dmc_propagate—they may not appear in this process's stdout. "
+        "Use serial DMC (client=None) to see them here, or inspect worker/MPI logs. "
+        "Set PYQMC_PROFILE_BOSON_DMC=1 and optionally PYQMC_PROFILE_ABCDMC_PRINT_EVERY=N."
+    )
+
+
 def limdrift(g, tau, acyrus=0.25):
     """
     Use Cyrus Umrigar's algorithm to limit the drift near nodes.
@@ -559,6 +589,7 @@ def rundmc(
     if blockoffset >= nblocks:
         logging.warning(f"blockoffset {blockoffset} >= nblocks {nblocks}; no steps will be run.")
     for block in range(blockoffset, nblocks):
+        _warn_profile_parallel_client(client)
         if client is None:
             df_, configs, weights = dmc_propagate(
                 wf,

@@ -33,6 +33,23 @@ def boson_dmc_profile_print_every():
         return 0
 
 
+def bdmc_profile_worker_label():
+    """Tag for this OS process (MPI rank if mpi4py is available, else pid)."""
+    try:
+        from mpi4py import MPI
+
+        return f"[worker {MPI.COMM_WORLD.Get_rank()}]"
+    except Exception:
+        return f"[worker pid={os.getpid()}]"
+
+
+def bdmc_profile_print(text):
+    """Print profiling lines with a worker tag on every line (for log post-processing)."""
+    tag = bdmc_profile_worker_label()
+    for line in str(text).splitlines():
+        print(f"{tag} {line}", flush=True)
+
+
 _bdmc_w_prop = 0.0
 _bdmc_w_hdf = 0.0
 _bdmc_w_abcdmc = 0.0
@@ -51,7 +68,7 @@ def bdmc_profile_ensure_banner_once():
         extra = "periodic reports off (set PYQMC_PROFILE_ABCDMC_PRINT_EVERY=N for every N DMC steps)"
     else:
         extra = f"periodic reports every {n} DMC steps (PYQMC_PROFILE_ABCDMC_PRINT_EVERY={pe})"
-    print(
+    bdmc_profile_print(
         "--- pyqmc boson DMC profiling: ON "
         "(PYQMC_PROFILE_BOSON_DMC=1 or PYQMC_PROFILE_ABCDMC=1). "
         f"{extra}. ---"
@@ -128,7 +145,7 @@ def bdmc_profile_end_step(accumulators):
     n = boson_dmc_profile_print_every()
     if n <= 0 or _bdmc_step % n != 0:
         return
-    print(bdmc_profile_format_report(accumulators))
+    bdmc_profile_print(bdmc_profile_format_report(accumulators))
     bdmc_profile_reset_window()
     acc = accumulators.get(ABCDMC_ACC_KEY) if accumulators else None
     if acc is not None and hasattr(acc, "_prof_secs"):
