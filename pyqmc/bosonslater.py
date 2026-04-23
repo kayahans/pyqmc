@@ -370,7 +370,7 @@ def filter_determinants_from_ci(mc, mo_energies, det_emax, include_zeros=True, m
     elif isinstance(det_emax, str) and ',' in det_emax:
         # Parse string of format "energy,criteria" e.g. "1.5,singles"
         # If the float portion has two energies " e.g. "1.0 1.5,singles", than we work inside the range of the two energies
-        option_text = "Determinants being filtered with energy range " + str(emin_energy) + " to " + str(emax_energy) + " and criteria " + str(emax_criteria)
+        
         try:
             emax_energy, emax_criteria = det_emax.split(',')
             try: 
@@ -382,6 +382,7 @@ def filter_determinants_from_ci(mc, mo_energies, det_emax, include_zeros=True, m
                 emax_energy = float(emax_energy)
 
             emax_criteria = emax_criteria.lower()
+            option_text = "Determinants being filtered with energy range " + str(emin_energy) + " to " + str(emax_energy) + " and criteria " + str(emax_criteria)
             if emax_criteria not in ['singles', 'doubles', 'doubles_linked_singles']:
                 raise ValueError("Criteria must be singles or doubles")
         except Exception as exc:
