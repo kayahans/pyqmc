@@ -101,11 +101,19 @@ def get_V2(configs, wf, acc_out):
 
 def propose_drift_diffusion(wf, configs, tstep, e):
     nconfig = configs.configs.shape[0]
+    prof = _bosondmc_prof_enabled()
+    bacc = _bacc_mod() if prof else None
 
     # _, val_old = wf.recompute(configs) # Kayahan added 
     # wf_new = copy.deepcopy(wf)         # Kayahan added (1)
 
-    gradt = limdrift(np.real(wf.gradient(e, configs.electron(e)).T), tstep)
+    if prof:
+        t0 = time.perf_counter()
+    grad_e = wf.gradient(e, configs.electron(e))
+    if prof:
+        bacc.bdmc_prop_inner_add("propdd_wf_gradient", time.perf_counter() - t0)
+        t0 = time.perf_counter()
+    gradt = limdrift(np.real(grad_e.T), tstep)
     # np.random.seed(1)
     gauss = np.random.normal(scale=np.sqrt(tstep), size=(nconfig, 3))
     # print(e, gauss[0])
@@ -113,10 +121,18 @@ def propose_drift_diffusion(wf, configs, tstep, e):
     # print(e, eposnew[0])
     # print(e, 'grad', np.sum(grad))
     newepos = configs.make_irreducible(e, eposnew)
+    if prof:
+        bacc.bdmc_prop_inner_add(
+            "propdd_forward_drift_draw_geom", time.perf_counter() - t0
+        )
+        t0 = time.perf_counter()
 
     # Compute reverse move
     # g, wfratio, saved = wf.gradient_value(e, newepos)
-    g, ks_ratio, saved = wf.gradient_value(e, newepos) # Kayahan modified (2)
+    g, ks_ratio, saved = wf.gradient_value(e, newepos)  # Kayahan modified (2)
+    if prof:
+        bacc.bdmc_prop_inner_add("propdd_wf_gradient_value", time.perf_counter() - t0)
+        t0 = time.perf_counter()
     new_grad = limdrift(np.real(g.T), tstep)
     forward = np.sum(gauss**2, axis=1)
     backward = np.sum((gauss + gradt + new_grad) ** 2, axis=1)
@@ -140,6 +156,8 @@ def propose_drift_diffusion(wf, configs, tstep, e):
     #     ratio *= np.sign(wfratio)     # Kayahan modified, no fixed node error
     accept = ratio > np.random.rand(nconfig)
     r2 = np.sum((gauss + gradt) ** 2, axis=1)
+    if prof:
+        bacc.bdmc_prop_inner_add("propdd_metropolis_accept", time.perf_counter() - t0)
 
     return newepos, accept, r2, saved
 
@@ -273,9 +291,8 @@ def dmc_propagate(
         for e in range(nelec):  # drift-diffusion
             newepos, accept, r2, saved = propose_drift_diffusion(wf, configs, tstep, e)
             if b is not None:
-                t_inner = _bacc_mod().bdmc_prop_inner_mark(
-                    "propose_drift_diffusion", t_inner
-                )
+                # propose_drift_diffusion adds propdd_* keys; refresh mark for next section
+                t_inner = time.perf_counter()
             configs.move(e, newepos, accept)
             if b is not None:
                 t_inner = _bacc_mod().bdmc_prop_inner_mark("configs_move", t_inner)
