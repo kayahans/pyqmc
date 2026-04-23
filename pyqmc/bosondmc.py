@@ -266,7 +266,7 @@ def dmc_propagate(
         #         wf.updateinternals(e, newepos, configs, mask=accept)
         #         tmove_acceptance += accept / nelec
         
-        wf.curr_config = copy.deepcopy(configs)
+        # wf.curr_config = copy.deepcopy(configs)
 
         for e in range(nelec):  # drift-diffusion
             newepos, accept, r2, saved = propose_drift_diffusion(wf, configs, tstep, e)
