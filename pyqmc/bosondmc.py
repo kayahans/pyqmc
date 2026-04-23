@@ -255,6 +255,8 @@ def dmc_propagate(
         r2_proposed = np.zeros(nconfig)
         prob_acceptance = np.zeros(nconfig)
         # tmove_acceptance = np.zeros(nconfig)
+        if b is not None:
+            t_inner = time.perf_counter()
 
         # if accumulators[ekey[0]].has_nonlocal_moves():
         #     for e in range(nelec):  # T-moves
@@ -270,32 +272,59 @@ def dmc_propagate(
 
         for e in range(nelec):  # drift-diffusion
             newepos, accept, r2, saved = propose_drift_diffusion(wf, configs, tstep, e)
+            if b is not None:
+                t_inner = _bacc_mod().bdmc_prop_inner_mark(
+                    "propose_drift_diffusion", t_inner
+                )
             configs.move(e, newepos, accept)
+            if b is not None:
+                t_inner = _bacc_mod().bdmc_prop_inner_mark("configs_move", t_inner)
             wf.updateinternals(e, newepos, configs, mask=accept, saved_values=saved)
+            if b is not None:
+                t_inner = _bacc_mod().bdmc_prop_inner_mark(
+                    "wf_updateinternals", t_inner
+                )
             r2_proposed += r2
             r2_accepted[accept] += r2[accept]
             prob_acceptance += accept / nelec
+            if b is not None:
+                t_inner = _bacc_mod().bdmc_prop_inner_mark(
+                    "electron_r2_accept_stats", t_inner
+                )
 
         # weights
         elocold = eloc.copy()
         v2old = v2.copy()
+        if b is not None:
+            t_inner = _bacc_mod().bdmc_prop_inner_mark("state_copy_eloc_v2", t_inner)
         energydat = accumulators[ekey[0]](configs, wf)
+        if b is not None:
+            t_inner = _bacc_mod().bdmc_prop_inner_mark("energy_accumulator", t_inner)
         eloc = energydat[ekey[1]].real
 
         tdamp = r2_accepted / r2_proposed
+        if b is not None:
+            t_inner = _bacc_mod().bdmc_prop_inner_mark("tdamp_eloc_extract", t_inner)
         v2 = get_V2(configs, wf, energydat)
+        if b is not None:
+            t_inner = _bacc_mod().bdmc_prop_inner_mark("get_V2", t_inner)
 
         Snew = compute_S(e_trial, e_est, branchcut_start, v2, tstep, eloc, nelec)
         Sold = compute_S(e_trial, e_est, branchcut_start, v2old, tstep, elocold, nelec)
+        if b is not None:
+            t_inner = _bacc_mod().bdmc_prop_inner_mark("compute_S", t_inner)
         if no_branching:
             wmult = 1
         else:
             wmult = np.exp(tstep * tdamp * (0.5 * Snew + 0.5 * Sold))
         weights *= wmult
         wavg = np.mean(weights)
+        if b is not None:
+            t_inner = _bacc_mod().bdmc_prop_inner_mark("weight_update", t_inner)
         # print(wavg)
         
         avg = {}
+        t_accum_loop = time.perf_counter() if b is not None else None
         for k, accumulator in accumulators.items():
             if k == ekey[0]:
                 dat = energydat
@@ -310,6 +339,11 @@ def dmc_propagate(
                 avg[k + m] = np.einsum("...i,i...->...", weights, res) / (
                     nconfig * wavg
                 )
+        if b is not None:
+            _bacc_mod().bdmc_prop_inner_add(
+                "accumulators_avg_loop_excl_ABCDMC",
+                time.perf_counter() - t_accum_loop - t_abcdmc,
+            )
         avg["weight"] = wavg
         avg["acceptance"] = np.mean(prob_acceptance)
         # avg["tmove_acceptance"] = np.mean(tmove_acceptance)

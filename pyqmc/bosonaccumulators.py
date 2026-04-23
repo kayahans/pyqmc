@@ -62,6 +62,10 @@ _bdmc_step = 0
 _bdmc_prof_banner_shown = False
 _bdmc_rundmc_entry_announced = False
 
+# Per-DMC-step wall time inside dmc_propagate excluding the ABCDMC accumulator call
+# (same bucket as DMC_propagate_ex_ABCDMC). Keys are filled from bosondmc.dmc_propagate.
+_dmc_prop_inner_secs = {}
+
 
 def bdmc_profile_note_rundmc_start(client_is_parallel):
     """One line per process when rundmc runs with profiling (confirms env is visible here)."""
@@ -113,8 +117,26 @@ def bdmc_profile_add_abcdmc(dt):
 
 
 def bdmc_profile_reset_window():
-    global _bdmc_w_prop, _bdmc_w_hdf, _bdmc_w_abcdmc
+    global _bdmc_w_prop, _bdmc_w_hdf, _bdmc_w_abcdmc, _dmc_prop_inner_secs
     _bdmc_w_prop = _bdmc_w_hdf = _bdmc_w_abcdmc = 0.0
+    _dmc_prop_inner_secs.clear()
+
+
+def bdmc_prop_inner_add(key, dt):
+    """Accumulate fine-grained time inside ``dmc_propagate`` (excl. ABCDMC accumulator)."""
+    global _dmc_prop_inner_secs
+    if not boson_dmc_profile_enabled() or dt <= 0.0:
+        return
+    _dmc_prop_inner_secs[key] = _dmc_prop_inner_secs.get(key, 0.0) + dt
+
+
+def bdmc_prop_inner_mark(key, tmark):
+    """Record wall time since ``tmark`` for ``key``; return new ``perf_counter()``."""
+    if not boson_dmc_profile_enabled():
+        return time.perf_counter()
+    now = time.perf_counter()
+    bdmc_prop_inner_add(key, now - tmark)
+    return now
 
 
 def _profile_bar(pct, width=18):
@@ -140,6 +162,21 @@ def bdmc_profile_format_report(accumulators):
     ):
         pct = 100.0 * sec / tot
         lines.append(f"  {name:28s} {sec:8.4f}s  {pct:5.1f}%  {_profile_bar(pct)}")
+    inner_sum = sum(_dmc_prop_inner_secs.values())
+    if _bdmc_w_prop > 0.0 and inner_sum > 0.0:
+        lines.append(
+            "  inside DMC_propagate_ex_ABCDMC (each line as % of that bucket; "
+            "sums to ~100% if fully covered):"
+        )
+        display = dict(_dmc_prop_inner_secs)
+        unacc = _bdmc_w_prop - inner_sum
+        if unacc > 1e-9:
+            display["_unaccounted"] = max(0.0, unacc)
+        for k in sorted(display, key=lambda x: -display[x]):
+            p = 100.0 * display[k] / _bdmc_w_prop
+            lines.append(
+                f"    {k:26s} {display[k]:8.4f}s  {p:5.1f}%  {_profile_bar(p)}"
+            )
     acc = accumulators.get(ABCDMC_ACC_KEY) if accumulators else None
     if acc is not None and hasattr(acc, "_prof_secs"):
         secs = acc._prof_secs
