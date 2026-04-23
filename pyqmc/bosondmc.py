@@ -36,13 +36,14 @@ def _bacc_mod():
 
 
 def _bosondmc_prof_enabled():
-    return (
-        os.environ.get("PYQMC_PROFILE_BOSON_DMC") == "1"
-        or os.environ.get("PYQMC_PROFILE_ABCDMC") == "1"
-    )
+    def _t(k):
+        return os.environ.get(k, "").strip().lower() in ("1", "true", "yes", "on")
+
+    return _t("PYQMC_PROFILE_BOSON_DMC") or _t("PYQMC_PROFILE_ABCDMC")
 
 
 _prof_parallel_client_warned = False
+_dmc_propagate_mpi_prof_noted = False
 
 
 def _warn_profile_parallel_client(client):
@@ -224,7 +225,19 @@ def dmc_propagate(
       weights: The final weights from this calculation
 
     """
+    global _dmc_propagate_mpi_prof_noted
     assert accumulators is not None, "Need an energy accumulator for DMC"
+    if _bosondmc_prof_enabled() and not _dmc_propagate_mpi_prof_noted:
+        _dmc_propagate_mpi_prof_noted = True
+        try:
+            from mpi4py import MPI
+
+            if MPI.COMM_WORLD.Get_size() > 1:
+                _bacc_mod().bdmc_profile_print(
+                    "dmc_propagate: profiling on this MPI rank (parallel DMC partition)."
+                )
+        except Exception:
+            pass
     nconfig, nelec = configs.configs.shape[0:2]
     wf.recompute(configs)
     
@@ -584,6 +597,9 @@ def rundmc(
     nconfig = configs.configs.shape[0]
     if weights is None:
         weights = np.ones(nconfig)
+
+    if _bosondmc_prof_enabled():
+        _bacc_mod().bdmc_profile_note_rundmc_start(client is not None)
 
     df = []
     if blockoffset >= nblocks:

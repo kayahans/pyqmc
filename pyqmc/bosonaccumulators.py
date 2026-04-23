@@ -1,4 +1,5 @@
 import os
+import sys
 import time
 import numpy as np
 from pyqmc import energy
@@ -19,10 +20,13 @@ from pyqmc.accumulators import PGradTransform
 ABCDMC_ACC_KEY = "abc_dmc_excitations"
 
 
+def _prof_env_truthy(key):
+    return os.environ.get(key, "").strip().lower() in ("1", "true", "yes", "on")
+
+
 def boson_dmc_profile_enabled():
-    return (
-        os.environ.get("PYQMC_PROFILE_BOSON_DMC") == "1"
-        or os.environ.get("PYQMC_PROFILE_ABCDMC") == "1"
+    return _prof_env_truthy("PYQMC_PROFILE_BOSON_DMC") or _prof_env_truthy(
+        "PYQMC_PROFILE_ABCDMC"
     )
 
 
@@ -47,7 +51,10 @@ def bdmc_profile_print(text):
     """Print profiling lines with a worker tag on every line (for log post-processing)."""
     tag = bdmc_profile_worker_label()
     for line in str(text).splitlines():
-        print(f"{tag} {line}", flush=True)
+        msg = f"{tag} {line}"
+        print(msg, flush=True)
+        # Many batch systems capture stderr more reliably than worker stdout.
+        print(msg, file=sys.stderr, flush=True)
 
 
 _bdmc_w_prop = 0.0
@@ -55,6 +62,21 @@ _bdmc_w_hdf = 0.0
 _bdmc_w_abcdmc = 0.0
 _bdmc_step = 0
 _bdmc_prof_banner_shown = False
+_bdmc_rundmc_entry_announced = False
+
+
+def bdmc_profile_note_rundmc_start(client_is_parallel):
+    """One line per process when rundmc runs with profiling (confirms env is visible here)."""
+    global _bdmc_rundmc_entry_announced
+    if not boson_dmc_profile_enabled() or _bdmc_rundmc_entry_announced:
+        return
+    _bdmc_rundmc_entry_announced = True
+    mode = "parallel_client" if client_is_parallel else "serial"
+    pe = os.environ.get("PYQMC_PROFILE_ABCDMC_PRINT_EVERY", "(unset)")
+    bdmc_profile_print(
+        f"rundmc: profiling active on this process ({mode}); "
+        f"PYQMC_PROFILE_ABCDMC_PRINT_EVERY={pe!r}"
+    )
 
 
 def bdmc_profile_ensure_banner_once():
@@ -70,7 +92,7 @@ def bdmc_profile_ensure_banner_once():
         extra = f"periodic reports every {n} DMC steps (PYQMC_PROFILE_ABCDMC_PRINT_EVERY={pe})"
     bdmc_profile_print(
         "--- pyqmc boson DMC profiling: ON "
-        "(PYQMC_PROFILE_BOSON_DMC=1 or PYQMC_PROFILE_ABCDMC=1). "
+        "(PYQMC_PROFILE_BOSON_DMC or PYQMC_PROFILE_ABCDMC = 1/true/yes/on). "
         f"{extra}. ---"
     )
 
