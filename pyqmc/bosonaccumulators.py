@@ -37,10 +37,30 @@ _bdmc_w_prop = 0.0
 _bdmc_w_hdf = 0.0
 _bdmc_w_abcdmc = 0.0
 _bdmc_step = 0
+_bdmc_prof_banner_shown = False
+
+
+def bdmc_profile_ensure_banner_once():
+    global _bdmc_prof_banner_shown
+    if _bdmc_prof_banner_shown or not boson_dmc_profile_enabled():
+        return
+    _bdmc_prof_banner_shown = True
+    n = boson_dmc_profile_print_every()
+    pe = os.environ.get("PYQMC_PROFILE_ABCDMC_PRINT_EVERY", "0")
+    if n <= 0:
+        extra = "periodic reports off (set PYQMC_PROFILE_ABCDMC_PRINT_EVERY=N for every N DMC steps)"
+    else:
+        extra = f"periodic reports every {n} DMC steps (PYQMC_PROFILE_ABCDMC_PRINT_EVERY={pe})"
+    print(
+        "--- pyqmc boson DMC profiling: ON "
+        "(PYQMC_PROFILE_BOSON_DMC=1 or PYQMC_PROFILE_ABCDMC=1). "
+        f"{extra}. ---"
+    )
 
 
 def bdmc_profile_add_prop(dt):
     global _bdmc_w_prop
+    bdmc_profile_ensure_banner_once()
     _bdmc_w_prop += dt
 
 
@@ -744,6 +764,8 @@ class ABCDMCMatrixAccumulator:
     @timer_func
     def __call__(self, configs, wf, use_symm=None):
         do = boson_dmc_profile_enabled()
+        if do:
+            bdmc_profile_ensure_banner_once()
         t0 = time.perf_counter() if do else None
         for wave in wf.wf_factors:
             if isinstance(wave, self._boson_wf_type):
