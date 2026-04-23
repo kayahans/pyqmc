@@ -102,7 +102,7 @@ def get_V2(configs, wf, acc_out):
 def propose_drift_diffusion(wf, configs, tstep, e):
     nconfig = configs.configs.shape[0]
 
-    _, val_old = wf.recompute(configs) # Kayahan added 
+    # _, val_old = wf.recompute(configs) # Kayahan added 
     # wf_new = copy.deepcopy(wf)         # Kayahan added (1)
 
     gradt = limdrift(np.real(wf.gradient(e, configs.electron(e)).T), tstep)
