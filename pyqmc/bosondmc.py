@@ -571,6 +571,9 @@ def rundmc(
             esigma = hdf["esigma"][-1]
             if verbose:
                 print(f"Restarting calculation {continue_from} from block {blockoffset}")
+            # Evaluate once to update the wave function
+            wf.recompute(configs)
+
     else:
         vmc_options_default = {'nsteps_per_block': 10, 'nblocks': 100,  'tstep': 0.3, "hdf_file": "vmc.hdf5"}
         if vmc_options is not None:
