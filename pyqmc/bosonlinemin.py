@@ -62,13 +62,11 @@ def sr_update_adaptive(pgrad, Sij, step, eps_min=1e-4, eps_max=0.1, cond_thresho
     return -v * step
 
 def sr_update_svd(pgrad, Sij, step, min_eigval=1e-6):
-    # import pdb; pdb.set_trace()
     eigvals, eigvecs = np.linalg.eigh(Sij)
     mask = eigvals > min_eigval
     invSij = (eigvecs[:, mask] / eigvals[mask]) @ eigvecs[:, mask].T
     v = np.einsum("ij,j->i", invSij, pgrad)
     svd_step = -v*step
-    # print(('max svd_step', np.max(np.abs(svd_step))))
     return svd_step
 
 def sr_update_gradient_based(pgrad, Sij, step, eps_min=1e-4, eps_max=0.1, grad_threshold=1.0):

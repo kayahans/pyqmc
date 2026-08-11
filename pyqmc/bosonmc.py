@@ -65,14 +65,6 @@ def boson_vmc_worker(wf, configs, tstep, nsteps, accumulators):
     grad = np.empty((nconf, 3))
     new_grad = np.empty((nconf, 3))
     wf.recompute(configs) 
-    # nsteps = 1 # TODO: restore to proper form
-    # from bosonaccumulators import RadialDensityAccumulator
-    # rda = RadialDensityAccumulator()
-    # res = rda(configs, wf)
-    # import matplotlib.pyplot as plt
-    # plt.plot(res['r'], res['radial_density'])
-    # plt.show()
-    # import pdb; pdb.set_trace()
 
     for _ in range(nsteps):
         acc = 0.0
@@ -124,7 +116,6 @@ def boson_vmc_worker(wf, configs, tstep, nsteps, accumulators):
             # newcoord = copy.deepcopy(configs)
             # newcoord.configs[:,e,:] = newcoorde.configs
             # _, val_new = wf.value_configs(newcoord)
-            # import pdb; pdb.set_trace()
             # ratio = np.exp(2*(val_new-val_old)) * t_prob 
             # accept = ratio > np.random.rand(nconf)
             ratio = ks_ratio * t_prob
@@ -138,7 +129,6 @@ def boson_vmc_worker(wf, configs, tstep, nsteps, accumulators):
             acc += np.mean(accept) / nelec
             # option 1 no electon resolution wf.accept_array += accept.astype(float)/nelec 
             # option 2 e resolution wf.accept_array[e] += accept.astype(float)
-            # print(e, np.max(ratio), np.max(new_val), np.max(t_prob))
         # Rolling average on step
         for k, accumulator in accumulators.items():
             dat = accumulator.avg(configs, wf)

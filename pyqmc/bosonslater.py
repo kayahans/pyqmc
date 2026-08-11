@@ -131,7 +131,6 @@ def _compute_det_prod_filter(mol, mf, symm_data, occupations):
 
     prod_matrix = symm_data["matrix"]
     irrep_to_idx = symm_data["irrep_to_idx"]
-    idx_to_irrep = {v: k for k, v in irrep_to_idx.items()}
 
     mo_coeff = mf.mo_coeff
     if len(mo_coeff.shape) == 2:
@@ -169,48 +168,6 @@ def _compute_det_prod_filter(mol, mf, symm_data, occupations):
         for j in range(ndets):
             det_prod_filter[i, j] = (det_prod[i] == det_prod[j])
 
-    # # --- Detailed output ---
-    # print("=" * 60)
-    # print("DETERMINANT SYMMETRY FILTER - DETAILED OUTPUT")
-    # print("=" * 60)
-    # print("\n1. Direct product matrix (irrep_i ⊗ irrep_j -> index):")
-    # print("   Rows/cols: irrep indices. Entry [i,j] = index of Γ_i ⊗ Γ_j")
-    # print(prod_matrix)
-    # print("\n2. irrep_to_idx mapping:")
-    # for irrep, idx in sorted(irrep_to_idx.items(), key=lambda x: x[1]):
-    #     print(f"   {irrep!r} -> {idx}")
-    # print("\n3. Orbital irreps (up spin):")
-    # for orb in range(len(up_orbsym)):
-    #     print(f"   orb {orb:3d}: {up_orbsym[orb]!r}")
-    # print("\n4. Orbital irreps (down spin):")
-    # for orb in range(len(down_orbsym)):
-    #     print(f"   orb {orb:3d}: {down_orbsym[orb]!r}")
-    # print("\n5. Per-determinant data:")
-    # for i in range(ndets):
-    #     occ_up, occ_dn = occupations[i]
-    #     up_irrep_idx = det_prod_up[i]
-    #     dn_irrep_idx = det_prod_dn[i]
-        
-    #     up_irrep_name = idx_to_irrep.get(up_irrep_idx, "?")
-    #     dn_irrep_name = idx_to_irrep.get(dn_irrep_idx, "?")
-        
-    #     print(f"   det {i:3d}: occ_up={occ_up.tolist() if hasattr(occ_up,'tolist') else list(occ_up)} -> Γ_up={up_irrep_name} (idx {up_irrep_idx}); occ_dn={occ_dn.tolist() if hasattr(occ_dn,'tolist') else list(occ_dn)} -> Γ_dn={dn_irrep_name} (idx {dn_irrep_idx})")
-    # print("\n6. Total irreps summary (det_prod_up, det_prod_dn):")
-    # for i in range(ndets):
-    #     total_irrep_idx = det_prod[i]
-    #     total_irrep_name = idx_to_irrep.get(total_irrep_idx, "?")
-    #     print(f"   det {i:3d}: ({total_irrep_name} (idx {total_irrep_idx})")
-    # print("\n7. Filter matrix (det_prod_filter): True = <l|O|n> can be nonzero")
-    # print("   " + str(det_prod_filter.astype(int)))
-    # import seaborn as sns
-    # import matplotlib.pyplot as plt
-    # sns.heatmap(det_prod_filter.astype(int), cmap='viridis')
-    # plt.show()
-    # n_true = np.sum(det_prod_filter)
-    # n_total = ndets * ndets
-    # print(f"\n8. Summary: {n_true}/{n_total} pairs allowed ({100*n_true/n_total:.1f}%)")
-    # print("=" * 60)
-    # exit()
     return det_prod_filter
 
 
@@ -229,7 +186,7 @@ def filter_determinants_from_ci(mc, mo_energies, det_emax, include_zeros=True, m
         list: Filtered determinants in format suitable for choose_evaluator_from_pyscf
     """
     from pyscf import fci
-    
+    import pdb; pdb.set_trace()
     if print_report:
         print("="*20 + "Filtering determinants start" + "="*20)
         print("Filtering determinants, energy units are in Hartree")
@@ -237,8 +194,9 @@ def filter_determinants_from_ci(mc, mo_energies, det_emax, include_zeros=True, m
     # Extract all determinants using the same logic as interpret_ci
     ncore = mc.ncore if hasattr(mc, "ncore") else 0
     deters_orig = fci.addons.large_ci(mc.ci, mc.ncas, mc.nelecas, tol=-1)
-    alpha_occ = np.array([binary_to_occ(x[1], ncore)[0] for x in deters_orig])
-    beta_occ = np.array([binary_to_occ(x[2], ncore)[0] for x in deters_orig])
+    alpha_occ = np.array([binary_to_occ(x[1], ncore)[0] for x in deters_orig], dtype=int)
+    beta_occ = np.array([binary_to_occ(x[2], ncore)[0] for x in deters_orig], dtype=int)
+
 
     # Normalize mo_energies to [mo_up, mo_dn] format (RHF has 1D, use same for both)
     if np.ndim(mo_energies) == 1:
@@ -325,9 +283,6 @@ def filter_determinants_from_ci(mc, mo_energies, det_emax, include_zeros=True, m
         
         return true_excitations
 
-    # Convert to packed objects to get the data structures we need for filtering
-    # detwt, occup, det_map = pyqmc.determinant_tools.create_packed_objects(deters, ncore, -1)
-    saved = None
     # Apply filtering based on det_emax criteria
     option_text = ""
     if isinstance(det_emax, float):
@@ -477,41 +432,41 @@ def filter_determinants_from_ci(mc, mo_energies, det_emax, include_zeros=True, m
                 # tot_exc > 2: leave False
             filtered_energies = total_energies[mask]
 
-            ag, bg = alpha_occ_ground, beta_occ_ground
-            print("\nFiltered determinants (doubles_from_singles path):")
-            print(
-                "  i | E (abs) | ΔE vs ground | class | α_exc β_exc | "
-                "α rem→add | β rem→add"
-            )
-            print("  " + "-" * 78)
-            kept = np.where(mask)[0]
-            kept = kept[np.argsort(total_energies[kept])]
-            for i in kept:
-                E_i = float(total_energies[i])
-                dE = E_i - ground_state_energy
-                te = int(tot_exc[i])
-                ua, ub = int(up_num_exc[i]), int(dn_num_exc[i])
-                a_i, b_i = alpha_occ[i], beta_occ[i]
-                a_rem = [int(x) for x in sorted(set(ag) - set(a_i))]
-                a_add = [int(x) for x in sorted(set(a_i) - set(ag))]
-                b_rem = [int(x) for x in sorted(set(bg) - set(b_i))]
-                b_add = [int(x) for x in sorted(set(b_i) - set(bg))]
-                if te == 0:
-                    exc_class = "ground"
-                elif te == 1:
-                    exc_class = "single"
-                elif te == 2:
-                    exc_class = "double"
-                else:
-                    exc_class = f"higher({te})"
-                a_part = f"{a_rem}→{a_add}" if a_rem or a_add else "—"
-                b_part = f"{b_rem}→{b_add}" if b_rem or b_add else "—"
+            if print_report:
+                ag, bg = alpha_occ_ground, beta_occ_ground
+                print("\nFiltered determinants (doubles_from_singles path):")
                 print(
-                    f"  {int(i):3d} | {E_i:11.6f} | {dE:12.6f} | {exc_class:7s} | "
-                    f"{ua:1d} {ub:1d}     | {a_part:16s} | {b_part:16s}"
+                    "  i | E (abs) | ΔE vs ground | class | α_exc β_exc | "
+                    "α rem→add | β rem→add"
                 )
+                print("  " + "-" * 78)
+                kept = np.where(mask)[0]
+                kept = kept[np.argsort(total_energies[kept])]
+                for i in kept:
+                    E_i = float(total_energies[i])
+                    dE = E_i - ground_state_energy
+                    te = int(tot_exc[i])
+                    ua, ub = int(up_num_exc[i]), int(dn_num_exc[i])
+                    a_i, b_i = alpha_occ[i], beta_occ[i]
+                    a_rem = [int(x) for x in sorted(set(ag) - set(a_i))]
+                    a_add = [int(x) for x in sorted(set(a_i) - set(ag))]
+                    b_rem = [int(x) for x in sorted(set(bg) - set(b_i))]
+                    b_add = [int(x) for x in sorted(set(b_i) - set(bg))]
+                    if te == 0:
+                        exc_class = "ground"
+                    elif te == 1:
+                        exc_class = "single"
+                    elif te == 2:
+                        exc_class = "double"
+                    else:
+                        exc_class = f"higher({te})"
+                    a_part = f"{a_rem}→{a_add}" if a_rem or a_add else "—"
+                    b_part = f"{b_rem}→{b_add}" if b_rem or b_add else "—"
+                    print(
+                        f"  {int(i):3d} | {E_i:11.6f} | {dE:12.6f} | {exc_class:7s} | "
+                        f"{ua:1d} {ub:1d}     | {a_part:16s} | {b_part:16s}"
+                    )
 
-        # saved = {'up_num_exc': up_num_exc, 'dn_num_exc': dn_num_exc, 'tot_exc': tot_exc}    
     else:
         # No filtering - return all determinants
         option_text = "No filtering"
@@ -809,215 +764,13 @@ class BosonWF:
 
     
     def get_hmf(self, sorted_filtered_energies):
-        # mask_up = np.array(self._det_occup[0])
-        # mask_dn = np.array(self._det_occup[1])
-        # if isinstance(mo_energies, list):
-        #     mo_energies = np.array(mo_energies)
-        # if len(mo_energies.shape) == 1:
-        #     if np.sum(mask_up) == 0:
-        #         raise ValueError("No occupied orbitals for up spin in RHF")
-        #     else:
-        #         up_energies = np.sum(mo_energies[mask_up], axis=1)
-        #         dn_energies = np.sum(mo_energies[mask_dn], axis=1)
-        # else:
-        #     if np.sum(mask_up) == 0:
-        #         up_energies = np.zeros(self._det_map[0].shape)
-        #     else:
-        #         up_energies = np.sum(mo_energies[0][mask_up], axis=1)
-        #     if np.sum(mask_dn) == 0:
-        #         dn_energies = np.zeros(self._det_map[1].shape)
-        #     else:
-        #         dn_energies = np.sum(mo_energies[1][mask_dn], axis=1)
-        # total_energies = up_energies[self._det_map[0]] + dn_energies[self._det_map[1]]
         hf = h5py.File(self.hmf_file, 'w')
-        # hf.create_dataset('hmf', data=total_energies)
         hf.create_dataset('hmf', data=sorted_filtered_energies)
-        # self.hmf = np.diag(total_energies)
         self.hmf = np.diag(sorted_filtered_energies)
         if hasattr(self, 'saved_filter') and self.saved_filter is not None:
             if 'det_prod_filter' in self.saved_filter:
                 hf.create_dataset('saved_filter/det_prod_filter', data=self.saved_filter['det_prod_filter'])
         hf.close()
-    
-    # def filter_determinants(self, emax, mo_energies, use_symm = False):
-    #     determinants_filtered = False
-    #     print("="*20 + "Filtering determinants start" + "="*20)
-    #     print("Filtering determinants, energy units are in Hartree")
-    #     if isinstance(emax, float):
-    #         assert emax > 0, "Emax must be positive for energy based determinant filtering"
-    #         determinants_filtered = True
-    #         up_energies = np.sum(mo_energies[0][self._det_occup[0]], axis=1)
-    #         dn_energies = np.sum(mo_energies[1][self._det_occup[1]], axis=1)
-    #         total_energies = up_energies[self._det_map[0]] + dn_energies[self._det_map[1]]
-    #         min_energy = np.min(total_energies)
-    #         if self.print_mf_dets:
-    #             info_string = "Eigenvalues: " + ' '.join([str(np.round(x - min_energy, 3)) for x in np.sort(total_energies)])
-    #             print(info_string)
-    #         emax = emax + min_energy
-    #         print("Determinants being filtered with emax + min eigenvalue", emax)
-    #         mask = total_energies < emax
-    #         temp_det_map = self._det_map[np.row_stack((mask, mask))]
-    #         num_init_dets = len(self._det_map[0])
-    #         unused_temp_det_map = self._det_map[np.row_stack((~mask, ~mask))]
-    #         det_map_shape = np.array(temp_det_map.shape)
-    #         num_used_dets = int(det_map_shape[0]/2)
-
-    #         det_map = temp_det_map.reshape(2, num_used_dets)
-    #         unused_det_map = unused_temp_det_map.reshape(2, num_init_dets-num_used_dets)
-    #         print('Min eigenvalue', np.round(np.min(total_energies), 3))
-    #         print('Max eigenvalue', np.round(np.max(total_energies), 3))
-    #     elif isinstance(emax, int):
-    #         assert emax > 0 and emax <= 100, "Emax must be between 0 and 100 for percentage based determinant filtering"
-    #         determinants_filtered = True
-    #         percentile = emax
-    #         print("Determinants being filtered with percentage ", percentile)
-    #         up_energies = np.sum(mo_energies[0][self._det_occup[0]], axis=1)
-    #         dn_energies = np.sum(mo_energies[1][self._det_occup[1]], axis=1)
-    #         total_energies = up_energies[self._det_map[0]] + dn_energies[self._det_map[1]]
-    #         emax = np.percentile(total_energies, percentile)
-    #         if self.print_mf_dets:
-    #             energy_range = np.max(total_energies) - np.min(total_energies)
-    #             info_string = "Eigenvalues percentiles: " + ' '.join([str(np.round((x - np.min(total_energies))/energy_range, 3)) for x in np.sort(total_energies)])
-    #             print(info_string)
-
-    #         mask = total_energies < emax
-    #         temp_det_map = self._det_map[np.row_stack((mask, mask))]
-    #         num_init_dets = len(self._det_map[0])
-    #         unused_temp_det_map = self._det_map[np.row_stack((~mask, ~mask))]
-    #         det_map_shape = np.array(temp_det_map.shape)
-    #         num_used_dets = int(det_map_shape[0]/2)
-
-    #         det_map = temp_det_map.reshape(2, num_used_dets)
-    #         unused_det_map = unused_temp_det_map.reshape(2, num_init_dets-num_used_dets)
-    #         print('Min eigenvalue', np.round(np.min(total_energies), 3))
-    #         print('Max eigenvalue', np.round(np.max(total_energies), 3))
-    #     elif emax == 'singles' or emax == 'doubles':
-    #         determinants_filtered = True
-    #         up_ground = self._det_occup[0][0]
-    #         dn_ground = self._det_occup[1][0]
-    #         up_num_exc = np.array([np.setdiff1d(x, up_ground).shape[0] for x in self._det_occup[0]])
-    #         dn_num_exc = np.array([np.setdiff1d(x, dn_ground).shape[0] for x in self._det_occup[1]])
-    #         tot_exc = up_num_exc[self._det_map[0]] + dn_num_exc[self._det_map[1]]
-    #         if emax == 'singles':
-    #             mask = tot_exc < 2
-    #         elif emax == 'doubles':
-    #             mask = tot_exc < 3
-    #         tot_used_exc = tot_exc[mask]
-    #         det_map = self._det_map[np.row_stack((mask, mask))].reshape(2, -1)
-    #         unused_det_map = self._det_map[np.row_stack((~mask, ~mask))].reshape(2, -1)
-    #         num_init_dets = len(self._det_map[0])
-    #         det_map_shape = np.array(det_map.shape)
-    #         num_used_dets = int(det_map_shape[1])
-    #         print('Det excitations', tot_used_exc)
-    #         self._tot_used_exc = tot_used_exc
-    #     elif isinstance(emax, str) and ',' in emax:
-    #         # Parse string of format "energy,criteria" e.g. "1.5,singles"
-    #         try:
-    #             emax_energy, emax_criteria = emax.split(',')
-    #             emax_energy = float(emax_energy)
-    #             emax_criteria = emax_criteria.lower()
-    #             if emax_criteria not in ['singles', 'doubles']:
-    #                 raise ValueError("Criteria must be singles or doubles")
-    #         except:
-    #             raise ValueError("String format must be 'energy,criteria' where energy is a float and criteria is 'singles' or 'doubles'")
-    #         up_ground = self._det_occup[0][0]
-    #         dn_ground = self._det_occup[1][0]
-    #         up_num_exc = np.array([np.setdiff1d(x, up_ground).shape[0] for x in self._det_occup[0]])
-    #         dn_num_exc = np.array([np.setdiff1d(x, dn_ground).shape[0] for x in self._det_occup[1]])
-    #         tot_exc = up_num_exc[self._det_map[0]] + dn_num_exc[self._det_map[1]]
-
-    #         up_energies = np.sum(mo_energies[0][self._det_occup[0]], axis=1)
-    #         dn_energies = np.sum(mo_energies[1][self._det_occup[1]], axis=1)
-    #         total_energies = up_energies[self._det_map[0]] + dn_energies[self._det_map[1]]
-    #         min_energy = np.min(total_energies)
-    #         if self.print_mf_dets:
-    #             info_string = "Eigenvalues: " + ' '.join([str(np.round(x - min_energy, 3)) for x in np.sort(total_energies)])
-    #             print(info_string)
-    #         emax_energy = emax_energy + min_energy
-
-    #         mask = total_energies < emax_energy
-
-    #         if emax_criteria == 'singles':
-    #             mask = mask & (tot_exc < 2)
-    #         elif emax_criteria == 'doubles':
-    #             mask = mask & (tot_exc < 3)
-
-    #         tot_used_exc = tot_exc[mask]
-    #         # det_map = self._det_map[np.row_stack((mask, mask))].reshape(2, -1)
-    #         # unused_det_map = self._det_map[np.row_stack((~mask, ~mask))].reshape(2, -1)
-    #         # num_init_dets = len(self._det_map[0])
-    #         # det_map_shape = np.array(det_map.shape)
-    #         # num_used_dets = int(det_map_shape[1])            
-    #         self._tot_used_exc = tot_used_exc
-    #     else:
-    #         num_used_dets = len(self._det_map[0])
-    #         det_map = self._det_map
-    #         print('Used # of determinants', num_used_dets)
-
-    #     if use_symm:
-    #         symm_data = self.symm_data
-    #         prod_matrix = symm_data["matrix"]
-    #         det_map_up = det_map[0]
-    #         det_map_dn = det_map[1]
-    #         det_mo_occ_up = np.array(self._det_occup[0])[det_map_up]
-    #         det_mo_occ_dn = np.array(self._det_occup[1])[det_map_dn]
-    #         det_prod_matrix_up = lil_matrix((num_used_dets, num_used_dets), dtype=bool)
-    #         det_prod_matrix_dn = lil_matrix((num_used_dets, num_used_dets), dtype=bool)
-    #         up_orbsym = pyscf.symm.label_orb_symm(self._mol, self._mol.irrep_id, self._mol.symm_orb, self.mo_coeff[0])
-    #         down_orbsym = pyscf.symm.label_orb_symm(self._mol, self._mol.irrep_id, self._mol.symm_orb, self.mo_coeff[1])
-    #         for i in range(num_used_dets):
-    #             for j in range(num_used_dets):
-    #                 # Using det_mo_occ_up[i], calculate the product of the irreps of the orbitals recursively
-    #                 # using the direct product table    
-    #                 # Get the irrep indices for the occupied orbitals in determinant i
-    #                 up_irreps_i = [up_orbsym[orb] for orb in det_mo_occ_up[i]]
-    #                 dn_irreps_i = [down_orbsym[orb] for orb in det_mo_occ_dn[i]]
-                    
-    #                 # Get the irrep indices for the occupied orbitals in determinant j
-    #                 up_irreps_j = [up_orbsym[orb] for orb in det_mo_occ_up[j]]
-    #                 dn_irreps_j = [down_orbsym[orb] for orb in det_mo_occ_dn[j]]
-                    
-    #                 # Calculate the product of irreps for up determinants
-    #                 up_prod_i = 0  # Start with identity irrep
-    #                 for irrep in up_irreps_i:
-    #                     up_prod_i = prod_matrix[up_prod_i, irrep]
-                    
-    #                 up_prod_j = 0  # Start with identity irrep
-    #                 for irrep in up_irreps_j:
-    #                     up_prod_j = prod_matrix[up_prod_j, irrep]
-                    
-    #                 det_prod_matrix_up[i, j] = up_prod_i == up_prod_j
-                    
-
-    #                 # Calculate the product of irreps for down determinants
-    #                 dn_prod_i = 0  # Start with identity irrep
-    #                 for irrep in dn_irreps_i:
-    #                     dn_prod_i = prod_matrix[dn_prod_i, irrep]
-    #                 dn_prod_j = 0  # Start with identity irrep
-    #                 for irrep in dn_irreps_j:
-    #                     dn_prod_j = prod_matrix[dn_prod_j, irrep]
-    #                 det_prod_matrix_dn[i, j] = dn_prod_i == dn_prod_j
-            
-    #         self._det_prod_filter = det_prod_matrix_up & det_prod_matrix_dn
-
-    #     if determinants_filtered:
-    #         self._det_map_orig = copy.deepcopy(self._det_map)
-    #         self._det_map_mask = mask
-    #         self._det_map = det_map
-    #         self.num_det = num_used_dets
-    #         print('Initial # of determinants', num_init_dets)
-    #         print('Filtered # of determinants', num_init_dets-num_used_dets)
-    #         print('Used # of determinants', num_used_dets)
-    #         if num_used_dets == 0:
-    #             raise ValueError("No determinants left after filtering")
-    #         hf = h5py.File(self.det_info_file, 'w')
-    #         hf.create_dataset('det_map_orig', data=self._det_map_orig)
-    #         hf.create_dataset('det_map_mask', data=self._det_map_mask)
-    #         hf.create_dataset('det_map',      data=self._det_map)
-    #         if use_symm:
-    #             hf.create_dataset('det_symm', data=self._det_prod_filter)
-    #         hf.close()
-    #     print("="*20 + "Filtering determinants end" + "="*20)
 
     @timer_func
     def recompute(self, configs):
@@ -1042,7 +795,6 @@ class BosonWF:
                 warnings.warn(
                     f"A wave function is zero. Found this proportion: {is_zero/nconf}"
                 )
-                # print(configs.configs[])
                 print(f"zero {is_zero/np.prod(compute.shape)}")
             self._inverse.append(gpu.cp.zeros(mo_vals.shape, dtype=mo_vals.dtype))
             for d in range(compute.shape[1]):
@@ -1125,7 +877,6 @@ class BosonWF:
                 warnings.warn(
                     f"A wave function is zero. Found this proportion: {is_zero/nconf}"
                 )
-                # print(configs.configs[])
                 print(f"zero {is_zero/np.prod(compute.shape)}")
 
         updets = dets[0][:, :, self._det_map[0]]
@@ -1287,10 +1038,6 @@ class BosonWF:
         lap_b2 = np.einsum('cx, cx->c', lap_b2, lap_b2)
         lap_b2 /= phi_b**4
         lap_b = lap_b1 - lap_b2
-        # import matplotlib.pyplot as plt
-        # plt.figure()
-        # plt.scatter(val_b,lap_b)
-        # plt.show()
         return lap_b
     
     @staticmethod

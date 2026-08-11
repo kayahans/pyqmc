@@ -146,13 +146,7 @@ def ABVMC(
     
     if warmup_options['nblocks'] > 0:
         print('Running warmup')
-        # Reused keywords
-        # common_keywords = ['verbose', 'client', 'npartitions']
-        # for kw in common_keywords:
-        #     import pdb; pdb.set_trace()
-
-        #     warmup_options[kw] = vmc_kws[kw]
-        try: 
+        try:
             num_det = wf.num_det
             wf_dtype = wf.dtype
         except:
@@ -181,25 +175,11 @@ def ABVMC(
             for acc_name in warmup_options['accumulators']:
                 warmup_acc[acc_name] = possible_accumulators[acc_name]
             warmup_options['accumulators'] = warmup_acc
-        # from bosonaccumulators import RadialDensityAccumulator
-        # import pdb; pdb.set_trace()
-        # print('Prior to warmup')
-        # rda = RadialDensityAccumulator()
-        # res = rda(configs, wf)
-        # import matplotlib.pyplot as plt
-        # plt.plot(res['r'], res['radial_density'])
-        # plt.show()
-
         _, configs = bosonmc.abvmc(
                 wf,
                 configs,
                 **warmup_options
         )
-        # print('After warmup')
-        # res = rda(configs, wf)
-        # import matplotlib.pyplot as plt
-        # plt.plot(res['r'], res['radial_density'])
-        # plt.show()
     print('Warmup complete')
     print('Running VMC')
     bosonmc.abvmc(wf, configs, accumulators=acc, **vmc_kws)

@@ -116,10 +116,7 @@ def propose_drift_diffusion(wf, configs, tstep, e):
     gradt = limdrift(np.real(grad_e.T), tstep)
     # np.random.seed(1)
     gauss = np.random.normal(scale=np.sqrt(tstep), size=(nconfig, 3))
-    # print(e, gauss[0])
     eposnew = configs.configs[:, e, :] + gauss + gradt
-    # print(e, eposnew[0])
-    # print(e, 'grad', np.sum(grad))
     newepos = configs.make_irreducible(e, eposnew)
     if prof:
         bacc.bdmc_prop_inner_add(
