@@ -233,12 +233,11 @@ def filter_determinants_from_ci(mc, mo_energies, det_emax, include_zeros=True, m
     if print_report:
         print("="*20 + "Filtering determinants start" + "="*20)
         print("Filtering determinants, energy units are in Hartree")
-        
     # Extract all determinants using the same logic as interpret_ci
     ncore = mc.ncore if hasattr(mc, "ncore") else 0
     deters_orig = fci.addons.large_ci(mc.ci, mc.ncas, mc.nelecas, tol=-1)
-    alpha_occ = np.array([binary_to_occ(x[1], ncore)[0] for x in deters_orig])
-    beta_occ = np.array([binary_to_occ(x[2], ncore)[0] for x in deters_orig])
+    alpha_occ = np.array([binary_to_occ(x[1], ncore)[0] for x in deters_orig], dtype=int)
+    beta_occ = np.array([binary_to_occ(x[2], ncore)[0] for x in deters_orig], dtype=int)
 
     # Normalize mo_energies to [mo_up, mo_dn] format (RHF has 1D, use same for both)
     if np.ndim(mo_energies) == 1:
