@@ -533,7 +533,7 @@ class ABQMCEnergyAccumulator:
             'v_mf': v_mf,
             # Eq. 21-22 in doi: 10.1063/5.0155513 is the electronic energy
             # Therefore ii term is added here
-            # V_MF = V_H + V_XC (only supports LDA for now)
+            # V_MF = V_H + V_XC (LDA or PBE local vrho via bosonenergy)
             # E_Corr is the sum of KS eigenvalues 
             "total": ke + ee - (v_mf) + ecorr + ii,
         }
