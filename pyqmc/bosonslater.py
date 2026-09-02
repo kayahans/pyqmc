@@ -186,7 +186,7 @@ def filter_determinants_from_ci(mc, mo_energies, det_emax, include_zeros=True, m
         list: Filtered determinants in format suitable for choose_evaluator_from_pyscf
     """
     from pyscf import fci
-    import pdb; pdb.set_trace()
+
     if print_report:
         print("="*20 + "Filtering determinants start" + "="*20)
         print("Filtering determinants, energy units are in Hartree")
@@ -285,14 +285,14 @@ def filter_determinants_from_ci(mc, mo_energies, det_emax, include_zeros=True, m
 
     # Apply filtering based on det_emax criteria
     option_text = ""
-    if isinstance(det_emax, float):
+    if isinstance(det_emax, (float, np.floating)):
         assert det_emax > 0, "Emax must be positive for energy based determinant filtering"
-        emax = det_emax + ground_state_energy
+        emax = float(det_emax) + ground_state_energy
         emin = np.min(total_energies)
         option_text = "Determinants being filtered with emax + min eigenvalue" + str(emax)
-        if include_zeros:
-            mask = mask | (total_energies-ground_state_energy < 1E-6)
         mask = total_energies <= emax + energy_tol
+        if include_zeros:
+            mask = mask | (total_energies - ground_state_energy < 1E-6)
         filtered_energies = total_energies[mask]
 
     elif isinstance(det_emax, int):

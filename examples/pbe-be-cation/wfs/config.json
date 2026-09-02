@@ -1,0 +1,16 @@
+{
+  "atom": "Be",
+  "spin": 1,
+  "basis_sets": ["ccecp-aug-cc-pvdz"],
+  "ecp": "ccecp",
+  "xc_functional": "pbe,pbe",
+  "ncas": 8,
+  "nelecas": [1, 0],
+  "nroots": 20,
+  "ratio": 2,
+  "n_funcs": {"S": 0, "P": 0, "D": 0},
+  "symm_rks" : false,
+  "charge": 1,
+  "orb_symm": "D2h",
+  "_comment": "Be+ cation with PBE,PBE XC; ECP valence basis (ccecp-aug-cc-pvdz) with ccecp pseudopotential; ncas=8, nelecas=[1,0], ncore=0"
+}

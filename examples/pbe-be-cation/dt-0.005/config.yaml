@@ -1,0 +1,20 @@
+# QMC calculation configuration
+atom_name: "be"
+xc: "PBE,PBE"
+basis_name: "ccecp-aug-cc-pvdz"
+ecp: "ccecp"
+checkfile_dir: "wfs"
+symm_tag: ""
+ncas: 8
+nelecas: [1, 0]
+ion_cusp: False
+na: 1
+nb: 1
+rcut: 5
+det_emax: '0.5,singles'
+vmc_nstep: 5000
+dtwarmup: 0.5
+dmc_eq_dt: 0.02
+dmc_stat_nstep: 100000
+exclude_core: False
+dmc_stat_dt: 0.005
