@@ -334,13 +334,28 @@ def build_mf_potential_tables(
 
 
 def _make_interpolator(axes, values):
+    """Linear interpolator that errors if a coordinate leaves the table domain."""
     return RegularGridInterpolator(
         axes,
         values,
         method="linear",
-        bounds_error=False,
-        fill_value=None,
+        bounds_error=True,
     )
+
+
+def _eval_interpolator(interp, r, meta=None):
+    """Evaluate ``interp`` at coords ``r``; raise a clear OOB error on failure."""
+    try:
+        return np.asarray(interp(r), dtype=float)
+    except ValueError as exc:
+        padding = None if meta is None else meta.get("padding")
+        spacing = None if meta is None else meta.get("spacing")
+        raise ValueError(
+            "Electron coordinate is outside the MF interpolation box "
+            f"(mf_interp_padding={padding}, mf_interp_spacing={spacing}). "
+            "Restart the calculation with a larger mf_interp_padding so all "
+            "walkers remain inside the tabulated grid."
+        ) from exc
 
 
 def attach_mf_interpolators(
@@ -356,6 +371,9 @@ def attach_mf_interpolators(
     Keys written:
       - mf_interp: dict with vj, vxc_up, vxc_dn interpolators and meta
       - use_interpolation_mf: True
+
+    Evaluation raises ``ValueError`` if any electron leaves the padded box;
+    increase ``mf_interp_padding`` and restart.
     """
     if mf_inputs.get("mf_interp") is not None and not force:
         mf_inputs["use_interpolation_mf"] = True
@@ -396,6 +414,11 @@ def attach_mf_interpolators(
             "padding": tables["padding"],
             "shape": tables["vj"].shape,
             "nworkers": tables["nworkers"],
+            "bounds": (
+                (float(tables["x"][0]), float(tables["x"][-1])),
+                (float(tables["y"][0]), float(tables["y"][-1])),
+                (float(tables["z"][0]), float(tables["z"][-1])),
+            ),
         },
     }
     mf_inputs["mf_interp_spacing"] = tables["spacing"]
@@ -405,14 +428,14 @@ def attach_mf_interpolators(
     return mf_inputs
 
 
-def get_vj_interpolated(configs, interp_vj):
+def get_vj_interpolated(configs, interp_vj, meta=None):
     """Sum interpolated Hartree potential over electrons per walker."""
     nconf, nelec, _ = configs.configs.shape
     r = configs.configs.reshape(-1, 3)
-    return np.asarray(interp_vj(r), dtype=float).reshape(nconf, nelec).sum(axis=1)
+    return _eval_interpolator(interp_vj, r, meta=meta).reshape(nconf, nelec).sum(axis=1)
 
 
-def get_vxc_interpolated(configs, nelec, interp_vxc_up, interp_vxc_dn):
+def get_vxc_interpolated(configs, nelec, interp_vxc_up, interp_vxc_dn, meta=None):
     """Sum interpolated spin-selected Vxc over electrons per walker."""
     nconf, nelec_cfg, _ = configs.configs.shape
     nup = nelec[0]
@@ -420,8 +443,8 @@ def get_vxc_interpolated(configs, nelec, interp_vxc_up, interp_vxc_dn):
         raise ValueError("configs electron count inconsistent with mf_inputs['nelec']")
 
     r = configs.configs.reshape(-1, 3)
-    v_up = np.asarray(interp_vxc_up(r), dtype=float).reshape(nconf, nelec_cfg)
-    v_dn = np.asarray(interp_vxc_dn(r), dtype=float).reshape(nconf, nelec_cfg)
+    v_up = _eval_interpolator(interp_vxc_up, r, meta=meta).reshape(nconf, nelec_cfg)
+    v_dn = _eval_interpolator(interp_vxc_dn, r, meta=meta).reshape(nconf, nelec_cfg)
     spin_idx = np.array([int(e >= nup) for e in range(nelec_cfg)])
     parts = [v_dn[:, i] if spin_idx[i] else v_up[:, i] for i in range(nelec_cfg)]
     return np.sum(parts, axis=0)
@@ -453,9 +476,10 @@ def dft_energy(mf_inputs, configs):
             if mf_inputs.get("mf_interp") is None:
                 attach_mf_interpolators(mf_inputs)
             inter = mf_inputs["mf_interp"]
-            vj = get_vj_interpolated(configs, inter["vj"])
+            meta = inter.get("meta")
+            vj = get_vj_interpolated(configs, inter["vj"], meta=meta)
             vxc = get_vxc_interpolated(
-                configs, nup_dn, inter["vxc_up"], inter["vxc_dn"]
+                configs, nup_dn, inter["vxc_up"], inter["vxc_dn"], meta=meta
             )
         else:
             vj = get_vj(configs, mol, dm)

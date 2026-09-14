@@ -20,8 +20,9 @@ from pyqmc.bosonenergy import (
 
 
 # Cartesian table used for agreement tests (Bohr).
+# Padding must cover far_field walkers (~shell + 4 Bohr).
 SPACING = 0.1
-PADDING = 4.0
+PADDING = 8.0
 # Floor so relative error is defined when the reference field is near zero.
 REL_EPS = 1e-3
 
@@ -312,11 +313,14 @@ def _points_away_from_nuclei(mol, n=200, rmin=0.5, box=3.0, seed=0):
 
 
 def _inside_interp_box(mol, coords, padding=PADDING):
-    """Keep only points inside the Cartesian table domain (avoid extrapolation)."""
+    """Keep only points inside the Cartesian table domain."""
     atoms = np.asarray(mol.atom_coords(), dtype=float)
     lo = atoms.min(axis=0) - padding
     hi = atoms.max(axis=0) + padding
-    mask = np.all((coords >= lo) & (coords <= hi), axis=1)
+    # Strict interior: RegularGridInterpolator bounds are inclusive, but
+    # floating-point jitter / radius jitter in ensembles can graze the edge.
+    eps = 1e-9
+    mask = np.all((coords >= lo + eps) & (coords <= hi - eps), axis=1)
     return coords[mask]
 
 
@@ -540,6 +544,18 @@ def test_interpolation_mf_rejects_hf():
     )
     with pytest.raises(ValueError, match="HF"):
         attach_mf_interpolators(mf_inputs)
+
+
+def test_interpolation_mf_raises_outside_padding():
+    """Out-of-box electrons must error so the run can be restarted with more padding."""
+    mol, mf, dm = _run_uks("He 0 0 0", spin=0, charge=0, xc="LDA,VWN")
+    mf_inputs = _mf_inputs(
+        mol, mf, dm, "LDA,VWN", use_interpolation_mf=True, spacing=0.4, padding=2.0
+    )
+    # Atom near origin → box ≈ [-2, 2]; place electron clearly outside.
+    configs = _Configs(np.array([[[10.0, 0.0, 0.0], [-10.0, 0.0, 0.0]]]))
+    with pytest.raises(ValueError, match="mf_interp_padding"):
+        dft_energy(mf_inputs, configs)
 
 
 def test_dft_energy_lazy_builds_interpolators():
