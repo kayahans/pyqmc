@@ -12,7 +12,6 @@ from pyqmc.method import bosondmc
 from pyqmc import wftools
 
 from pyqmc.observables import bosonaccumulators
-from pyqmc.observables import bosonenergy
 
 def ABOPTIMIZE(
     dft_checkfile: str,
@@ -31,10 +30,6 @@ def ABOPTIMIZE(
     opt_options: list|None = None,
     opt_method: str = "linemin",
     use_dft_density = False,
-    use_interpolation_mf = False,
-    mf_interp_spacing = None,
-    mf_interp_padding = None,
-    mf_interp_nworkers = None,
     **linemin_kws,
 ):
     """Auxiliary Boson wavefunction Slater Jastrow optimization
@@ -86,10 +81,6 @@ def ABOPTIMIZE(
         initial_guess_r=initial_guess_r,
         njastrow=njastrow,
         use_dft_density=use_dft_density,
-        use_interpolation_mf=use_interpolation_mf,
-        mf_interp_spacing=mf_interp_spacing,
-        mf_interp_padding=mf_interp_padding,
-        mf_interp_nworkers=mf_interp_nworkers,
     )
     if anchors is None:
         if opt_method == "linemin":
@@ -116,10 +107,6 @@ def ABVMC(
     use_symm = False,
     initial_guess_r = 15.0,
     njastrow = 2,
-    use_interpolation_mf = False,
-    mf_interp_spacing = None,
-    mf_interp_padding = None,
-    mf_interp_nworkers = None,
     **vmc_kws,
 ):
     """Auxiliary Boson VMC recipe
@@ -153,10 +140,6 @@ def ABVMC(
         use_symm=use_symm,
         initial_guess_r=initial_guess_r,
         njastrow=njastrow,
-        use_interpolation_mf=use_interpolation_mf,
-        mf_interp_spacing=mf_interp_spacing,
-        mf_interp_padding=mf_interp_padding,
-        mf_interp_nworkers=mf_interp_nworkers,
     )
     if warmup_options is None:
         warmup_options = dict(nblocks=0, tstep=0.5, accumulators=None)
@@ -218,10 +201,6 @@ def ABDMC(
     use_symm = False,
     initial_guess_r = 15.0,
     use_dft_density = False,
-    use_interpolation_mf = False,
-    mf_interp_spacing = None,
-    mf_interp_padding = None,
-    mf_interp_nworkers = None,
     **dmc_kws,
 ):  
     """Auxiliary Boson DMC recipe
@@ -236,10 +215,6 @@ def ABDMC(
         jastrow_kws (list | None, optional): _description_. Defaults to None.
         slater_kws (list | None, optional): _description_. Defaults to None.
         accumulators (list | None, optional): List of accumulators. Defaults to None.
-        use_interpolation_mf (bool): Tabulate Vj/Vxc on a Cartesian grid and interpolate.
-        mf_interp_spacing (float | None): Grid spacing in Bohr (default 0.15).
-        mf_interp_padding (float | None): Box padding beyond atoms in Bohr (default 5.0).
-        mf_interp_nworkers (int | None): Process-pool size for grid build (default 1).
     """    
     dmc_kws["hdf_file"] = output
     print("Running ABDMC")
@@ -258,10 +233,6 @@ def ABDMC(
         use_dft_density=use_dft_density,
         use_symm=use_symm,
         initial_guess_r=initial_guess_r,
-        use_interpolation_mf=use_interpolation_mf,
-        mf_interp_spacing=mf_interp_spacing,
-        mf_interp_padding=mf_interp_padding,
-        mf_interp_nworkers=mf_interp_nworkers,
     )
     # Extract VMC options from DMC keyword arguments if present, otherwise return None
     vmc_options = dmc_kws.pop('vmc_options', None)
@@ -582,10 +553,6 @@ def initialize_boson_qmc_objects(
     xc = 'LDA,VWN',
     opt_options = None,
     njastrow = 2,
-    use_interpolation_mf = False,
-    mf_interp_spacing = None,
-    mf_interp_padding = None,
-    mf_interp_nworkers = None,
 ):  
     
     target_root=0
@@ -645,28 +612,6 @@ def initialize_boson_qmc_objects(
             mf_inputs['mol'] = mol
         
         print("Loaded mf_inputs from checkfile")
-
-    if use_interpolation_mf:
-        if mf_interp_spacing is not None:
-            mf_inputs["mf_interp_spacing"] = mf_interp_spacing
-        if mf_interp_padding is not None:
-            mf_inputs["mf_interp_padding"] = mf_interp_padding
-        if mf_interp_nworkers is not None:
-            mf_inputs["mf_interp_nworkers"] = mf_interp_nworkers
-        _spacing = mf_inputs.get("mf_interp_spacing", bosonenergy.DEFAULT_MF_INTERP_SPACING)
-        _padding = mf_inputs.get("mf_interp_padding", bosonenergy.DEFAULT_MF_INTERP_PADDING)
-        _nworkers = mf_inputs.get("mf_interp_nworkers", 1)
-        _stats = bosonenergy.mf_interp_grid_stats(
-            mf_inputs["mol"], spacing=_spacing, padding=_padding
-        )
-        print(
-            "Building MF potential interpolators "
-            f"(spacing={_spacing}, padding={_padding}, nworkers={_nworkers}, "
-            f"grid={_stats['shape']}, n_points={_stats['n_points']}, "
-            f"storage≈{bosonenergy.format_bytes(_stats['nbytes'])} "
-            f"for {_stats['n_arrays']}×{_stats['dtype'].name})"
-        )
-        bosonenergy.attach_mf_interpolators(mf_inputs)
     
     if jastrow_kws == None:
         jastrow_kws = dict()
