@@ -469,6 +469,12 @@ class ABQMCEnergyAccumulator:
                 del kwargs['mf_inputs']
             else:
                 raise ValueError("mf_inputs is not in mf_inputs or kwargs")
+        evaluate_mf_with = kwargs.pop(
+            "evaluate_mf_with", self.mf_inputs.get("evaluate_mf_with", "numba")
+        )
+        bosonenergy.prepare_mf_evaluator(
+            self.mf_inputs, evaluate_mf_with=evaluate_mf_with
+        )
         if hasattr(self.mol, "a"):
             self.coulomb = ewald.Ewald(self.mol, **kwargs)
         else:

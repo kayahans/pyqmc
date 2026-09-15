@@ -30,6 +30,7 @@ def ABOPTIMIZE(
     opt_options: list|None = None,
     opt_method: str = "linemin",
     use_dft_density = False,
+    evaluate_mf_with: str = "numba",
     **linemin_kws,
 ):
     """Auxiliary Boson wavefunction Slater Jastrow optimization
@@ -43,6 +44,7 @@ def ABOPTIMIZE(
         jastrow_kws (list | None, optional): _description_. Defaults to None.
         slater_kws (list | None, optional): _description_. Defaults to None.
         opt_method (str, optional): Optimization method to use. Options are "linemin". Defaults to "linemin".
+        evaluate_mf_with (str, optional): MF AO/ρ backend ("numba" or "pyscf"). Defaults to "numba".
 
     Raises:
         RuntimeError: _description_
@@ -78,6 +80,7 @@ def ABOPTIMIZE(
         opt_options=opt_options,
         xc=xc,
         use_symm=use_symm,
+        evaluate_mf_with=evaluate_mf_with,
         initial_guess_r=initial_guess_r,
         njastrow=njastrow,
         use_dft_density=use_dft_density,
@@ -107,6 +110,7 @@ def ABVMC(
     use_symm = False,
     initial_guess_r = 15.0,
     njastrow = 2,
+    evaluate_mf_with: str = "numba",
     **vmc_kws,
 ):
     """Auxiliary Boson VMC recipe
@@ -121,6 +125,7 @@ def ABVMC(
         jastrow_kws (list | None, optional): _description_. Defaults to None.
         slater_kws (list | None, optional): _description_. Defaults to None.
         accumulators (list | None, optional): List of accumulators. Defaults to None.
+        evaluate_mf_with (str, optional): MF AO/ρ backend ("numba" or "pyscf"). Defaults to "numba".
     """
     vmc_kws["hdf_file"] = output
     print("Running ABVMC")
@@ -140,6 +145,7 @@ def ABVMC(
         use_symm=use_symm,
         initial_guess_r=initial_guess_r,
         njastrow=njastrow,
+        evaluate_mf_with=evaluate_mf_with,
     )
     if warmup_options is None:
         warmup_options = dict(nblocks=0, tstep=0.5, accumulators=None)
@@ -201,6 +207,7 @@ def ABDMC(
     use_symm = False,
     initial_guess_r = 15.0,
     use_dft_density = False,
+    evaluate_mf_with: str = "numba",
     **dmc_kws,
 ):  
     """Auxiliary Boson DMC recipe
@@ -215,6 +222,7 @@ def ABDMC(
         jastrow_kws (list | None, optional): _description_. Defaults to None.
         slater_kws (list | None, optional): _description_. Defaults to None.
         accumulators (list | None, optional): List of accumulators. Defaults to None.
+        evaluate_mf_with (str, optional): MF AO/ρ backend ("numba" or "pyscf"). Defaults to "numba".
     """    
     dmc_kws["hdf_file"] = output
     print("Running ABDMC")
@@ -233,6 +241,7 @@ def ABDMC(
         use_dft_density=use_dft_density,
         use_symm=use_symm,
         initial_guess_r=initial_guess_r,
+        evaluate_mf_with=evaluate_mf_with,
     )
     # Extract VMC options from DMC keyword arguments if present, otherwise return None
     vmc_options = dmc_kws.pop('vmc_options', None)
@@ -553,6 +562,7 @@ def initialize_boson_qmc_objects(
     xc = 'LDA,VWN',
     opt_options = None,
     njastrow = 2,
+    evaluate_mf_with = "numba",
 ):  
     
     target_root=0
@@ -569,7 +579,8 @@ def initialize_boson_qmc_objects(
             mc.ci = mc.ci[target_root]
     
     # Try to load mf_inputs from checkfile first (new format)
-    mf_inputs = pyscftools.load_mf_inputs_from_hdf5(dft_checkfile, mol=mol)
+    load_mf = getattr(pyscftools, "load_mf_inputs_from_hdf5", None)
+    mf_inputs = load_mf(dft_checkfile, mol=mol) if load_mf is not None else None
     
     if mf_inputs is None:
         # Fall back to old method: construct mf_inputs from PySCF objects
@@ -612,6 +623,9 @@ def initialize_boson_qmc_objects(
             mf_inputs['mol'] = mol
         
         print("Loaded mf_inputs from checkfile")
+
+    from pyqmc.observables import bosonenergy
+    bosonenergy.prepare_mf_evaluator(mf_inputs, evaluate_mf_with=evaluate_mf_with)
     
     if jastrow_kws == None:
         jastrow_kws = dict()

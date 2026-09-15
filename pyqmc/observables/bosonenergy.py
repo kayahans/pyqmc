@@ -7,14 +7,17 @@ For GGA (PBE), it is the local spin density potential only; the GGA
 not included. This matches the ABVMC formulation in Eq. 21 of
 doi: 10.1063/5.0155513.
 
-Vj and Vxc are evaluated exactly at walker coordinates via PySCF
-``numint`` (AO / ρ / vrho) and ``mol.intor("int1e_grids")`` (Hartree).
+AO → ρ → vrho can use ``evaluate_mf_with="numba"`` (packed
+``AtomicOrbitalEvaluator`` + explicit density) or ``"pyscf"``
+(``numint`` oracle / fallback). Hartree uses ``mol.intor("int1e_grids")``
+until a custom Vj kernel is wired in.
 """
 
 import numpy as np
 from pyscf.dft import libxc, numint
 
 SUPPORTED_XC = ("LDA,VWN", "PBE,PBE", "HF")
+SUPPORTED_EVALUATE_MF = ("pyscf", "numba")
 
 # PySCF xctype and AO derivative order for each XC string.
 XC_KIND = {
@@ -30,23 +33,148 @@ def _normalize_xc(xc):
     return xc
 
 
-def eval_vrho(mol, dm, xc, coords, spin=1):
+def _normalize_evaluate_mf(evaluate_mf_with):
+    if evaluate_mf_with not in SUPPORTED_EVALUATE_MF:
+        raise ValueError(
+            f"evaluate_mf_with={evaluate_mf_with!r} not recognized; "
+            f"must be one of {SUPPORTED_EVALUATE_MF}"
+        )
+    return evaluate_mf_with
+
+
+def prepare_mf_evaluator(mf_inputs, evaluate_mf_with="numba"):
+    """Attach MF AO backend choice (and Numba pack) to ``mf_inputs``.
+
+    Packs the basis once via ``AtomicOrbitalEvaluator`` when
+    ``evaluate_mf_with="numba"``. Idempotent if already prepared with the
+    same backend.
+    """
+    evaluate_mf_with = _normalize_evaluate_mf(evaluate_mf_with)
+    prev = mf_inputs.get("evaluate_mf_with")
+    if prev == evaluate_mf_with and (
+        evaluate_mf_with == "pyscf" or mf_inputs.get("ao_evaluator") is not None
+    ):
+        return mf_inputs
+
+    mf_inputs["evaluate_mf_with"] = evaluate_mf_with
+    if evaluate_mf_with == "numba":
+        from pyqmc.wf.numba.gto import AtomicOrbitalEvaluator
+
+        mol = mf_inputs["mol"]
+        mf_inputs["ao_evaluator"] = AtomicOrbitalEvaluator(mol)
+    else:
+        mf_inputs.pop("ao_evaluator", None)
+    return mf_inputs
+
+
+def _mf_backend(mf_inputs=None, evaluate_mf_with=None, ao_evaluator=None):
+    if evaluate_mf_with is None:
+        evaluate_mf_with = (
+            mf_inputs.get("evaluate_mf_with", "numba") if mf_inputs else "numba"
+        )
+    evaluate_mf_with = _normalize_evaluate_mf(evaluate_mf_with)
+    if ao_evaluator is None and mf_inputs is not None:
+        ao_evaluator = mf_inputs.get("ao_evaluator")
+    if evaluate_mf_with == "numba" and ao_evaluator is None:
+        mol = mf_inputs["mol"] if mf_inputs is not None else None
+        if mol is None:
+            raise ValueError(
+                "numba MF path requires ao_evaluator or mf_inputs['mol']; "
+                "call prepare_mf_evaluator(mf_inputs) first"
+            )
+        from pyqmc.wf.numba.gto import AtomicOrbitalEvaluator
+
+        ao_evaluator = AtomicOrbitalEvaluator(mol)
+        if mf_inputs is not None:
+            mf_inputs["ao_evaluator"] = ao_evaluator
+            mf_inputs["evaluate_mf_with"] = "numba"
+    return evaluate_mf_with, ao_evaluator
+
+
+def eval_ao(mol, coords, deriv=0, evaluate_mf_with="numba", ao_evaluator=None):
+    """Evaluate AOs at ``coords`` (N, 3).
+
+    Returns the same layout as ``pyscf.dft.numint.eval_ao``:
+    ``(N, nao)`` for ``deriv=0``, ``(4, N, nao)`` for ``deriv=1``.
+    """
+    evaluate_mf_with = _normalize_evaluate_mf(evaluate_mf_with)
+    if evaluate_mf_with == "pyscf":
+        return numint.eval_ao(mol, coords, deriv=deriv)
+
+    if ao_evaluator is None:
+        from pyqmc.wf.numba.gto import AtomicOrbitalEvaluator
+
+        ao_evaluator = AtomicOrbitalEvaluator(mol)
+    if deriv == 0:
+        return ao_evaluator.eval_gto("GTOval_sph", coords)
+    if deriv == 1:
+        return ao_evaluator.eval_gto("GTOval_sph_deriv1", coords)
+    raise ValueError(f"deriv={deriv} not supported; expected 0 or 1")
+
+
+def eval_rho_from_ao(ao, dm, xctype="LDA"):
+    """Electron density from AO values (hermitian DM, matches ``numint.eval_rho``).
+
+    LDA / HF: ``ao`` is ``(N, nao)``, returns ``(N,)``.
+    GGA: ``ao`` is ``(4, N, nao)``, returns ``(4, N)`` with ``ρ`` and ``∇ρ``.
+    """
+    xctype = xctype.upper()
+    if xctype in ("LDA", "HF"):
+        c0 = ao @ dm
+        return np.einsum("pi,pi->p", ao, c0)
+    if xctype == "GGA":
+        rho = np.empty((4, ao.shape[1]), dtype=ao.dtype)
+        c0 = ao[0] @ dm
+        rho[0] = np.einsum("pi,pi->p", ao[0], c0)
+        for i in range(1, 4):
+            # *2 for hermitian DM: ∇ρ = 2 Re(χ† D ∇χ)
+            rho[i] = 2.0 * np.einsum("pi,pi->p", ao[i], c0)
+        return rho
+    raise ValueError(f"Unsupported xctype={xctype!r}; expected LDA, HF, or GGA")
+
+
+def eval_vrho(
+    mol,
+    dm,
+    xc,
+    coords,
+    spin=1,
+    evaluate_mf_with=None,
+    ao_evaluator=None,
+    mf_inputs=None,
+):
     """Local spin-resolved vrho from libxc at ``coords``."""
     xc = _normalize_xc(xc)
     if xc == "HF":
         raise ValueError("HF has no libxc vrho")
 
+    evaluate_mf_with, ao_evaluator = _mf_backend(
+        mf_inputs, evaluate_mf_with, ao_evaluator
+    )
     xctype, deriv = XC_KIND[xc]
-    ao = numint.eval_ao(mol, coords, deriv=deriv)
-    rho_up = numint.eval_rho(mol, ao, dm[0], xctype=xctype)
-    rho_dn = numint.eval_rho(mol, ao, dm[1], xctype=xctype)
+
+    if evaluate_mf_with == "pyscf":
+        ao = numint.eval_ao(mol, coords, deriv=deriv)
+        rho_up = numint.eval_rho(mol, ao, dm[0], xctype=xctype)
+        rho_dn = numint.eval_rho(mol, ao, dm[1], xctype=xctype)
+    else:
+        ao = eval_ao(
+            mol,
+            coords,
+            deriv=deriv,
+            evaluate_mf_with="numba",
+            ao_evaluator=ao_evaluator,
+        )
+        rho_up = eval_rho_from_ao(ao, dm[0], xctype=xctype)
+        rho_dn = eval_rho_from_ao(ao, dm[1], xctype=xctype)
+
     vrho = np.asarray(libxc.eval_xc(xc, (rho_up, rho_dn), spin=spin)[1][0])
     if vrho.ndim == 1:
         vrho = np.stack([vrho, vrho], axis=1)
     return vrho
 
 
-def get_vxc(configs, mol, dm, nelec, xc):
+def get_vxc(configs, mol, dm, nelec, xc, evaluate_mf_with=None, ao_evaluator=None, mf_inputs=None):
     """Sum libxc vrho over electrons for each walker configuration."""
     nconf, nelec_cfg, _ = configs.configs.shape
     nup = nelec[0]
@@ -54,7 +182,16 @@ def get_vxc(configs, mol, dm, nelec, xc):
         raise ValueError("configs electron count inconsistent with mf_inputs['nelec']")
 
     coords = configs.configs.reshape(-1, 3)
-    vrho = eval_vrho(mol, dm, xc, coords, spin=1)
+    vrho = eval_vrho(
+        mol,
+        dm,
+        xc,
+        coords,
+        spin=1,
+        evaluate_mf_with=evaluate_mf_with,
+        ao_evaluator=ao_evaluator,
+        mf_inputs=mf_inputs,
+    )
     vrho = vrho.reshape(nconf, nelec_cfg, 2)
 
     spin_idx = np.array([int(e >= nup) for e in range(nelec_cfg)])
@@ -86,10 +223,20 @@ def dft_energy(mf_inputs, configs):
     mo_occ = mf_inputs["mo_occ"]
     mol = mf_inputs["mol"]
     dm = mf_inputs["dm"]
+    evaluate_mf_with, ao_evaluator = _mf_backend(mf_inputs)
 
     if xc != "HF":
         vj = get_vj(configs, mol, dm)
-        vxc = get_vxc(configs, mol, dm, nup_dn, xc)
+        vxc = get_vxc(
+            configs,
+            mol,
+            dm,
+            nup_dn,
+            xc,
+            evaluate_mf_with=evaluate_mf_with,
+            ao_evaluator=ao_evaluator,
+            mf_inputs=mf_inputs,
+        )
         ecorr = np.sum(mo_energy * mo_occ)
         v_mf = vj + vxc
         saved_results = {"vj": vj, "vxc": vxc}
@@ -99,7 +246,13 @@ def dft_energy(mf_inputs, configs):
         V_eff_ao = mf_inputs["veff"]
         for e in range(nelec):
             s = int(e >= nup_dn[0])
-            ao_value = numint.eval_ao(mol, configs.configs[:, e, :])
+            ao_value = eval_ao(
+                mol,
+                configs.configs[:, e, :],
+                deriv=0,
+                evaluate_mf_with=evaluate_mf_with,
+                ao_evaluator=ao_evaluator,
+            )
             v_mf = np.einsum("gp, pq, gq -> g", ao_value, V_eff_ao[s], ao_value)
         saved_results = {}
 
