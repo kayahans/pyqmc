@@ -1,0 +1,819 @@
+======================================================================
+Atom DFT Calculation with Diffuse Basis
+======================================================================
+Atom: B
+Base basis: ['ccecp-aug-cc-pvdz', 'ccecp-aug-cc-pvtz', 'ccecp-aug-cc-pvqz']
+ECP: ccecp
+XC functional: lda,vwn
+Diffuse functions: S=0, P=0, D=0
+Ratio: 2
+======================================================================
+
+Generating diffuse basis...
+Generating diffuse basis functions:
+
+Building molecule...
+Using ECP: ccecp
+Molecule created: nao=22, nelec=2
+
+Running UKS calculation...
+
+
+******** <class 'pyscf.dft.uks_symm.SymAdaptedUKS'> ********
+method = SymAdaptedUKS
+initial guess = minao
+damping factor = 0
+level_shift factor = 0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+diis_start_cycle = 1
+diis_space = 8
+diis_damp = 0
+SCF conv_tol = 1e-09
+SCF conv_tol_grad = None
+SCF max_cycles = 50
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = /tmp/tmpjb4bksrd
+max_memory 4000 MB (current use 135 MB)
+number electrons alpha = 1  beta = 1
+XC library pyscf.dft.libxc version 7.0.0
+    S. Lehtola, C. Steigemann, M. J.T. Oliveira, and M. A.L. Marques.,  SoftwareX 7, 1–5 (2018)
+XC functionals = lda,vwn
+    P. A. M. Dirac.,  Math. Proc. Cambridge Philos. Soc. 26, 376 (1930)
+    F. Bloch.,  Z. Phys. 57, 545 (1929)
+    S. H. Vosko, L. Wilk, and M. Nusair.,  Can. J. Phys. 58, 1200 (1980)
+small_rho_cutoff = 1e-07
+Set gradient conv threshold to 3.16228e-05
+init E= -2.55910275377709
+alpha HOMO (Ag) = -0.335965425875861  LUMO (B1u) = -0.123394907295628
+beta  HOMO (Ag) = -0.335965425875861  LUMO (B2u) = -0.123394907295628
+cycle= 1 E= -2.24461331679905  delta_E= 0.314  |g|= 0.11  |ddm|= 0.409
+alpha HOMO (Ag) = -0.744288827725303  LUMO (B3u) = -0.518221843911741
+beta  HOMO (Ag) = -0.744288827725303  LUMO (B2u) = -0.518221843911741
+cycle= 2 E= -2.25975260071846  delta_E= -0.0151  |g|= 0.00904  |ddm|= 0.874
+alpha HOMO (Ag) = -0.714289030365783  LUMO (B2u) = -0.487434036304182
+beta  HOMO (Ag) = -0.714289030365783  LUMO (B3u) = -0.487434036304182
+cycle= 3 E= -2.25984356778863  delta_E= -9.1e-05  |g|= 0.000147  |ddm|= 0.0841
+alpha HOMO (Ag) = -0.714031383343882  LUMO (B3u) = -0.487184866490129
+beta  HOMO (Ag) = -0.714031383343882  LUMO (B3u) = -0.487184866490129
+cycle= 4 E= -2.25984359110881  delta_E= -2.33e-08  |g|= 6.04e-07  |ddm|= 0.00142
+alpha HOMO (Ag) = -0.714032173427564  LUMO (B2u) = -0.48718561932703
+beta  HOMO (Ag) = -0.714032173427564  LUMO (B2u) = -0.487185619327031
+cycle= 5 E= -2.25984359110926  delta_E= -4.52e-13  |g|= 2.77e-10  |ddm|= 5.09e-06
+alpha HOMO (Ag) = -0.714032174564468  LUMO (B2u) = -0.487185620458575
+beta  HOMO (Ag) = -0.714032174564468  LUMO (B2u) = -0.487185620458575
+Extra cycle  E= -2.25984359110926  delta_E= 8.88e-16  |g|= 1.92e-11  |ddm|= 2.13e-09
+converged SCF energy = -2.25984359110926  <S^2> = -4.4408921e-16  2S+1 = 1
+UKS energy: -2.259844 Ha
+Selected orbitals: 22 out of 22
+Orbitals_indices: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21]
+Selected orbitals: 22 out of 22
+Orbitals_indices: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21]
+
+Labeling orbitals:
+  Spin Indicator  Idx       Energy     <r²>^½    Occ    Label
+------------------------------------------------------------
+     α selected    0    -0.714032       1.99   1.00       1s
+     α selected    1    -0.487186       2.09   0.00       2p
+     α selected    2    -0.487186       2.09   0.00       2p
+     α selected    3    -0.487186       2.09   0.00       2p
+     α selected    4    -0.147638       5.79   0.00       2s
+     α selected    5    -0.107120       5.98   0.00       3p
+     α selected    6    -0.107120       5.98   0.00       3p
+     α selected    7    -0.107120       5.98   0.00       3p
+     α selected    8     0.005943       3.49   0.00       3d
+     α selected    9     0.005943       3.49   0.00       3d
+     α selected   10     0.005943       3.49   0.00       3d
+     α selected   11     0.005943       3.49   0.00       3d
+     α selected   12     0.005943       3.49   0.00       3d
+     α selected   13     0.090741       5.69   0.00       4p
+     α selected   14     0.090741       5.69   0.00       4p
+     α selected   15     0.090741       5.69   0.00       4p
+     α selected   16     0.317919       5.15   0.00       3s
+     α selected   17     0.651917       2.90   0.00       4d
+     α selected   18     0.651917       2.90   0.00       4d
+     α selected   19     0.651917       2.90   0.00       4d
+     α selected   20     0.651917       2.90   0.00       4d
+     α selected   21     0.651917       2.90   0.00       4d
+
+Beta orbitals:
+     β selected    0    -0.714032       1.99   1.00       1s
+     β selected    1    -0.487186       2.09   0.00       2p
+     β selected    2    -0.487186       2.09   0.00       2p
+     β selected    3    -0.487186       2.09   0.00       2p
+     β selected    4    -0.147638       5.79   0.00       2s
+     β selected    5    -0.107120       5.98   0.00       3p
+     β selected    6    -0.107120       5.98   0.00       3p
+     β selected    7    -0.107120       5.98   0.00       3p
+     β selected    8     0.005943       3.49   0.00       3d
+     β selected    9     0.005943       3.49   0.00       3d
+     β selected   10     0.005943       3.49   0.00       3d
+     β selected   11     0.005943       3.49   0.00       3d
+     β selected   12     0.005943       3.49   0.00       3d
+     β selected   13     0.090741       5.69   0.00       4p
+     β selected   14     0.090741       5.69   0.00       4p
+     β selected   15     0.090741       5.69   0.00       4p
+     β selected   16     0.317919       5.15   0.00       3s
+     β selected   17     0.651917       2.90   0.00       4d
+     β selected   18     0.651917       2.90   0.00       4d
+     β selected   19     0.651917       2.90   0.00       4d
+     β selected   20     0.651917       2.90   0.00       4d
+     β selected   21     0.651917       2.90   0.00       4d
+Warning: ncas=8 but selected 22 alpha and 22 beta orbitals
+Trimming to first 8 orbitals
+Final ncas: 8
+Number of determinants: 64
+Total number of electrons in Mean Field method (numerical integration): 2.0000000000000004
+Available output from CI file: <KeysViewHDF5 ['ci', 'fci', 'mf_mo_energy', 'mo_coeff', 'mo_occ', 'ncas', 'ncore', 'nelecas']>
+CI vector shape: (64,)
+CI vector norm: 1.000000
+CI file created: b_ci_atom_basis_ccecp-aug-cc-pvdz_diffuse_S0P0D0.hdf5
+Computing CASCI energies from MO energies (ncas=8, nelecas=(np.int64(1), np.int64(1)), ncore=0)...
+CAS state plot saved to: b_cas_states_basis_ccecp-aug-cc-pvdz_diffuse_S0P0D0.png
+Total states computed: 64
+States plotted: 50
+
+Generating diffuse basis...
+Generating diffuse basis functions:
+
+Building molecule...
+Using ECP: ccecp
+Molecule created: nao=45, nelec=2
+
+Running UKS calculation...
+
+
+******** <class 'pyscf.dft.uks_symm.SymAdaptedUKS'> ********
+method = SymAdaptedUKS
+initial guess = minao
+damping factor = 0
+level_shift factor = 0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+diis_start_cycle = 1
+diis_space = 8
+diis_damp = 0
+SCF conv_tol = 1e-09
+SCF conv_tol_grad = None
+SCF max_cycles = 50
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = /tmp/tmpk_0vwdy2
+max_memory 4000 MB (current use 220 MB)
+number electrons alpha = 1  beta = 1
+XC library pyscf.dft.libxc version 7.0.0
+    S. Lehtola, C. Steigemann, M. J.T. Oliveira, and M. A.L. Marques.,  SoftwareX 7, 1–5 (2018)
+XC functionals = lda,vwn
+    P. A. M. Dirac.,  Math. Proc. Cambridge Philos. Soc. 26, 376 (1930)
+    F. Bloch.,  Z. Phys. 57, 545 (1929)
+    S. H. Vosko, L. Wilk, and M. Nusair.,  Can. J. Phys. 58, 1200 (1980)
+small_rho_cutoff = 1e-07
+Set gradient conv threshold to 3.16228e-05
+init E= -2.55910275377709
+alpha HOMO (Ag) = -0.335982449233524  LUMO (B1u) = -0.123407423820082
+beta  HOMO (Ag) = -0.335982449233524  LUMO (B1u) = -0.123407423820082
+cycle= 1 E= -2.2438977885172  delta_E= 0.315  |g|= 0.118  |ddm|= 0.409
+alpha HOMO (Ag) = -0.746823069336118  LUMO (B3u) = -0.519259299399294
+beta  HOMO (Ag) = -0.746823069336118  LUMO (B3u) = -0.519259299399294
+cycle= 2 E= -2.26168455729061  delta_E= -0.0178  |g|= 0.02  |ddm|= 0.846
+alpha HOMO (Ag) = -0.70966734877459  LUMO (B1u) = -0.482030746049597
+beta  HOMO (Ag) = -0.709667348774592  LUMO (B1u) = -0.482030746049597
+cycle= 3 E= -2.26203817792726  delta_E= -0.000354  |g|= 0.000372  |ddm|= 0.115
+alpha HOMO (Ag) = -0.70893155696966  LUMO (B3u) = -0.481289694202775
+beta  HOMO (Ag) = -0.708931556969659  LUMO (B3u) = -0.481289694202775
+cycle= 4 E= -2.26203829301865  delta_E= -1.15e-07  |g|= 1.11e-06  |ddm|= 0.00226
+alpha HOMO (Ag) = -0.708932340800682  LUMO (B3u) = -0.481290352267136
+beta  HOMO (Ag) = -0.708932340800681  LUMO (B3u) = -0.481290352267136
+cycle= 5 E= -2.26203829302056  delta_E= -1.91e-12  |g|= 1.33e-08  |ddm|= 6.5e-06
+alpha HOMO (Ag) = -0.708932362509202  LUMO (B1u) = -0.481290372733545
+beta  HOMO (Ag) = -0.708932362509203  LUMO (B2u) = -0.481290372733544
+Extra cycle  E= -2.26203829302056  delta_E= -1.33e-15  |g|= 2.13e-09  |ddm|= 1.08e-07
+converged SCF energy = -2.26203829302056  <S^2> = 8.8817842e-16  2S+1 = 1
+UKS energy: -2.262038 Ha
+Selected orbitals: 31 out of 45
+Orbitals_indices: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 29, 30, 31, 32, 33, 34, 35, 36, 44]
+Selected orbitals: 31 out of 45
+Orbitals_indices: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 29, 30, 31, 32, 33, 34, 35, 36, 44]
+
+Labeling orbitals:
+  Spin Indicator  Idx       Energy     <r²>^½    Occ    Label
+------------------------------------------------------------
+     α selected    0    -0.708932       1.96   1.00       1s
+     α selected    1    -0.481290       2.10   0.00       2p
+     α selected    2    -0.481290       2.10   0.00       2p
+     α selected    3    -0.481290       2.10   0.00       2p
+     α selected    4    -0.153171       5.39   0.00       2s
+     α selected    5    -0.107620       6.10   0.00       3p
+     α selected    6    -0.107620       6.10   0.00       3p
+     α selected    7    -0.107620       6.10   0.00       3p
+     α selected    8    -0.049574       4.38   0.00       3d
+     α selected    9    -0.049574       4.38   0.00       3d
+     α selected   10    -0.049574       4.38   0.00       3d
+     α selected   11    -0.049574       4.38   0.00       3d
+     α selected   12    -0.049574       4.38   0.00       3d
+     α selected   13     0.068964       6.11   0.00       4p
+     α selected   14     0.068964       6.11   0.00       4p
+     α selected   15     0.068964       6.11   0.00       4p
+     α selected   16     0.181418       4.70   0.00       3s
+     α selected   17     0.296161       3.91   0.00       4d
+     α selected   18     0.296161       3.91   0.00       4d
+     α selected   19     0.296161       3.91   0.00       4d
+     α selected   20     0.296161       3.91   0.00       4d
+     α selected   21     0.296161       3.91   0.00       4d
+         α excluded   22     0.370892       3.53   0.00       4f
+         α excluded   23     0.370892       3.53   0.00       4f
+         α excluded   24     0.370892       3.53   0.00       4f
+         α excluded   25     0.370892       3.53   0.00       4f
+         α excluded   26     0.370892       3.53   0.00       4f
+         α excluded   27     0.370892       3.53   0.00       4f
+         α excluded   28     0.370892       3.53   0.00       4f
+     α selected   29     0.938173       3.03   0.00       5p
+     α selected   30     0.938173       3.03   0.00       5p
+     α selected   31     0.938173       3.03   0.00       5p
+     α selected   32     1.588864       2.31   0.00       5d
+     α selected   33     1.588864       2.31   0.00       5d
+     α selected   34     1.588864       2.31   0.00       5d
+     α selected   35     1.588864       2.31   0.00       5d
+     α selected   36     1.588864       2.31   0.00       5d
+         α excluded   37     1.655045       2.45   0.00       5f
+         α excluded   38     1.655045       2.45   0.00       5f
+         α excluded   39     1.655045       2.45   0.00       5f
+         α excluded   40     1.655045       2.45   0.00       5f
+         α excluded   41     1.655045       2.45   0.00       5f
+         α excluded   42     1.655045       2.45   0.00       5f
+         α excluded   43     1.655045       2.45   0.00       5f
+     α selected   44     3.965616       2.30   0.00       4s
+
+Beta orbitals:
+     β selected    0    -0.708932       1.96   1.00       1s
+     β selected    1    -0.481290       2.10   0.00       2p
+     β selected    2    -0.481290       2.10   0.00       2p
+     β selected    3    -0.481290       2.10   0.00       2p
+     β selected    4    -0.153171       5.39   0.00       2s
+     β selected    5    -0.107620       6.10   0.00       3p
+     β selected    6    -0.107620       6.10   0.00       3p
+     β selected    7    -0.107620       6.10   0.00       3p
+     β selected    8    -0.049574       4.38   0.00       3d
+     β selected    9    -0.049574       4.38   0.00       3d
+     β selected   10    -0.049574       4.38   0.00       3d
+     β selected   11    -0.049574       4.38   0.00       3d
+     β selected   12    -0.049574       4.38   0.00       3d
+     β selected   13     0.068964       6.11   0.00       4p
+     β selected   14     0.068964       6.11   0.00       4p
+     β selected   15     0.068964       6.11   0.00       4p
+     β selected   16     0.181418       4.70   0.00       3s
+     β selected   17     0.296161       3.91   0.00       4d
+     β selected   18     0.296161       3.91   0.00       4d
+     β selected   19     0.296161       3.91   0.00       4d
+     β selected   20     0.296161       3.91   0.00       4d
+     β selected   21     0.296161       3.91   0.00       4d
+         β excluded   22     0.370892       3.53   0.00       4f
+         β excluded   23     0.370892       3.53   0.00       4f
+         β excluded   24     0.370892       3.53   0.00       4f
+         β excluded   25     0.370892       3.53   0.00       4f
+         β excluded   26     0.370892       3.53   0.00       4f
+         β excluded   27     0.370892       3.53   0.00       4f
+         β excluded   28     0.370892       3.53   0.00       4f
+     β selected   29     0.938173       3.03   0.00       5p
+     β selected   30     0.938173       3.03   0.00       5p
+     β selected   31     0.938173       3.03   0.00       5p
+     β selected   32     1.588864       2.31   0.00       5d
+     β selected   33     1.588864       2.31   0.00       5d
+     β selected   34     1.588864       2.31   0.00       5d
+     β selected   35     1.588864       2.31   0.00       5d
+     β selected   36     1.588864       2.31   0.00       5d
+         β excluded   37     1.655045       2.45   0.00       5f
+         β excluded   38     1.655045       2.45   0.00       5f
+         β excluded   39     1.655045       2.45   0.00       5f
+         β excluded   40     1.655045       2.45   0.00       5f
+         β excluded   41     1.655045       2.45   0.00       5f
+         β excluded   42     1.655045       2.45   0.00       5f
+         β excluded   43     1.655045       2.45   0.00       5f
+     β selected   44     3.965616       2.30   0.00       4s
+Warning: ncas=8 but selected 31 alpha and 31 beta orbitals
+Trimming to first 8 orbitals
+Final ncas: 8
+Number of determinants: 64
+Total number of electrons in Mean Field method (numerical integration): 1.9999999999999991
+Available output from CI file: <KeysViewHDF5 ['ci', 'fci', 'mf_mo_energy', 'mo_coeff', 'mo_occ', 'ncas', 'ncore', 'nelecas']>
+CI vector shape: (64,)
+CI vector norm: 1.000000
+CI file created: b_ci_atom_basis_ccecp-aug-cc-pvtz_diffuse_S0P0D0.hdf5
+Computing CASCI energies from MO energies (ncas=8, nelecas=(np.int64(1), np.int64(1)), ncore=0)...
+CAS state plot saved to: b_cas_states_basis_ccecp-aug-cc-pvtz_diffuse_S0P0D0.png
+Total states computed: 64
+States plotted: 50
+
+Generating diffuse basis...
+Generating diffuse basis functions:
+
+Building molecule...
+Using ECP: ccecp
+Molecule created: nao=79, nelec=2
+
+Running UKS calculation...
+
+
+******** <class 'pyscf.dft.uks_symm.SymAdaptedUKS'> ********
+method = SymAdaptedUKS
+initial guess = minao
+damping factor = 0
+level_shift factor = 0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+diis_start_cycle = 1
+diis_space = 8
+diis_damp = 0
+SCF conv_tol = 1e-09
+SCF conv_tol_grad = None
+SCF max_cycles = 50
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = /tmp/tmp_cdc1vyi
+max_memory 4000 MB (current use 395 MB)
+number electrons alpha = 1  beta = 1
+XC library pyscf.dft.libxc version 7.0.0
+    S. Lehtola, C. Steigemann, M. J.T. Oliveira, and M. A.L. Marques.,  SoftwareX 7, 1–5 (2018)
+XC functionals = lda,vwn
+    P. A. M. Dirac.,  Math. Proc. Cambridge Philos. Soc. 26, 376 (1930)
+    F. Bloch.,  Z. Phys. 57, 545 (1929)
+    S. H. Vosko, L. Wilk, and M. Nusair.,  Can. J. Phys. 58, 1200 (1980)
+small_rho_cutoff = 1e-07
+Set gradient conv threshold to 3.16228e-05
+init E= -2.55910275377708
+alpha HOMO (Ag) = -0.33598138553651  LUMO (B2u) = -0.123408167094996
+beta  HOMO (Ag) = -0.33598138553651  LUMO (B2u) = -0.123408167094996
+cycle= 1 E= -2.24392039180421  delta_E= 0.315  |g|= 0.119  |ddm|= 0.41
+alpha HOMO (Ag) = -0.746857657400528  LUMO (B1u) = -0.519318039186155
+beta  HOMO (Ag) = -0.746857657400528  LUMO (B3u) = -0.519318039186154
+cycle= 2 E= -2.26185977045783  delta_E= -0.0179  |g|= 0.0202  |ddm|= 0.727
+alpha HOMO (Ag) = -0.709723290651696  LUMO (B1u) = -0.482053269256219
+beta  HOMO (Ag) = -0.709723290651696  LUMO (B3u) = -0.482053269256219
+cycle= 3 E= -2.26221011397981  delta_E= -0.00035  |g|= 0.000441  |ddm|= 0.155
+alpha HOMO (Ag) = -0.708862967810489  LUMO (B1u) = -0.481182561490918
+beta  HOMO (Ag) = -0.708862967810489  LUMO (B2u) = -0.481182561490918
+cycle= 4 E= -2.26221024798261  delta_E= -1.34e-07  |g|= 3.31e-06  |ddm|= 0.00464
+alpha HOMO (Ag) = -0.708863977818293  LUMO (B1u) = -0.48118323870369
+beta  HOMO (Ag) = -0.708863977818293  LUMO (B2u) = -0.48118323870369
+cycle= 5 E= -2.26221024799509  delta_E= -1.25e-11  |g|= 1.25e-08  |ddm|= 3.94e-05
+alpha HOMO (Ag) = -0.708863996069901  LUMO (B1u) = -0.481183256357189
+beta  HOMO (Ag) = -0.708863996069901  LUMO (B3u) = -0.481183256357189
+Extra cycle  E= -2.26221024799509  delta_E= 3.55e-15  |g|= 1.56e-09  |ddm|= 1.12e-07
+converged SCF energy = -2.26221024799509  <S^2> = 0  2S+1 = 1
+UKS energy: -2.262210 Ha
+Selected orbitals: 40 out of 79
+Orbitals_indices: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 29, 30, 31, 32, 33, 34, 35, 36, 53, 54, 55, 56, 57, 58, 59, 60, 61, 78]
+Selected orbitals: 40 out of 79
+Orbitals_indices: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 29, 30, 31, 32, 33, 34, 35, 36, 53, 54, 55, 56, 57, 58, 59, 60, 61, 78]
+
+Labeling orbitals:
+  Spin Indicator  Idx       Energy     <r²>^½    Occ    Label
+------------------------------------------------------------
+     α selected    0    -0.708864       1.96   1.00       1s
+     α selected    1    -0.481183       2.09   0.00       2p
+     α selected    2    -0.481183       2.09   0.00       2p
+     α selected    3    -0.481183       2.09   0.00       2p
+     α selected    4    -0.154596       5.46   0.00       2s
+     α selected    5    -0.109651       6.42   0.00       3p
+     α selected    6    -0.109651       6.42   0.00       3p
+     α selected    7    -0.109651       6.42   0.00       3p
+     α selected    8    -0.065082       5.00   0.00       3d
+     α selected    9    -0.065082       5.00   0.00       3d
+     α selected   10    -0.065082       5.00   0.00       3d
+     α selected   11    -0.065082       5.00   0.00       3d
+     α selected   12    -0.065082       5.00   0.00       3d
+     α selected   13     0.024733       7.12   0.00       4p
+     α selected   14     0.024733       7.12   0.00       4p
+     α selected   15     0.024733       7.12   0.00       4p
+     α selected   16     0.082145       5.55   0.00       3s
+     α selected   17     0.163925       4.80   0.00       4d
+     α selected   18     0.163925       4.80   0.00       4d
+     α selected   19     0.163925       4.80   0.00       4d
+     α selected   20     0.163925       4.80   0.00       4d
+     α selected   21     0.163925       4.80   0.00       4d
+         α excluded   22     0.204792       4.34   0.00       4f
+         α excluded   23     0.204792       4.34   0.00       4f
+         α excluded   24     0.204792       4.34   0.00       4f
+         α excluded   25     0.204792       4.34   0.00       4f
+         α excluded   26     0.204792       4.34   0.00       4f
+         α excluded   27     0.204792       4.34   0.00       4f
+         α excluded   28     0.204792       4.34   0.00       4f
+     α selected   29     0.549148       4.02   0.00       5p
+     α selected   30     0.549148       4.02   0.00       5p
+     α selected   31     0.549148       4.02   0.00       5p
+     α selected   32     0.901614       3.14   0.00       5d
+     α selected   33     0.901614       3.14   0.00       5d
+     α selected   34     0.901614       3.14   0.00       5d
+     α selected   35     0.901614       3.14   0.00       5d
+     α selected   36     0.901614       3.14   0.00       5d
+         α excluded   37     0.993505       3.21   0.00       5g
+         α excluded   38     0.993505       3.21   0.00       5g
+         α excluded   39     0.993505       3.21   0.00       5g
+         α excluded   40     0.993505       3.21   0.00       5g
+         α excluded   41     0.993505       3.21   0.00       5g
+         α excluded   42     0.993505       3.21   0.00       5g
+         α excluded   43     0.993505       3.21   0.00       5g
+         α excluded   44     0.993505       3.21   0.00       5g
+         α excluded   45     0.993505       3.21   0.00       5g
+         α excluded   46     0.993639       3.12   0.00       5f
+         α excluded   47     0.993639       3.12   0.00       5f
+         α excluded   48     0.993639       3.12   0.00       5f
+         α excluded   49     0.993639       3.12   0.00       5f
+         α excluded   50     0.993639       3.12   0.00       5f
+         α excluded   51     0.993639       3.12   0.00       5f
+         α excluded   52     0.993639       3.12   0.00       5f
+     α selected   53     1.156333       2.91   0.00       4s
+     α selected   54     2.465112       2.45   0.00       6p
+     α selected   55     2.465112       2.45   0.00       6p
+     α selected   56     2.465112       2.45   0.00       6p
+     α selected   57     3.298875       1.86   0.00       6d
+     α selected   58     3.298875       1.86   0.00       6d
+     α selected   59     3.298875       1.86   0.00       6d
+     α selected   60     3.298875       1.86   0.00       6d
+     α selected   61     3.298875       1.86   0.00       6d
+         α excluded   62     3.375524       1.96   0.00       6f
+         α excluded   63     3.375524       1.96   0.00       6f
+         α excluded   64     3.375524       1.96   0.00       6f
+         α excluded   65     3.375524       1.96   0.00       6f
+         α excluded   66     3.375524       1.96   0.00       6f
+         α excluded   67     3.375524       1.96   0.00       6f
+         α excluded   68     3.375524       1.96   0.00       6f
+         α excluded   69     3.447831       2.11   0.00       6g
+         α excluded   70     3.447831       2.11   0.00       6g
+         α excluded   71     3.447831       2.11   0.00       6g
+         α excluded   72     3.447831       2.11   0.00       6g
+         α excluded   73     3.447831       2.11   0.00       6g
+         α excluded   74     3.447831       2.11   0.00       6g
+         α excluded   75     3.447831       2.11   0.00       6g
+         α excluded   76     3.447831       2.11   0.00       6g
+         α excluded   77     3.447831       2.11   0.00       6g
+     α selected   78     8.312081       1.02   0.00       5s
+
+Beta orbitals:
+     β selected    0    -0.708864       1.96   1.00       1s
+     β selected    1    -0.481183       2.09   0.00       2p
+     β selected    2    -0.481183       2.09   0.00       2p
+     β selected    3    -0.481183       2.09   0.00       2p
+     β selected    4    -0.154596       5.46   0.00       2s
+     β selected    5    -0.109651       6.42   0.00       3p
+     β selected    6    -0.109651       6.42   0.00       3p
+     β selected    7    -0.109651       6.42   0.00       3p
+     β selected    8    -0.065082       5.00   0.00       3d
+     β selected    9    -0.065082       5.00   0.00       3d
+     β selected   10    -0.065082       5.00   0.00       3d
+     β selected   11    -0.065082       5.00   0.00       3d
+     β selected   12    -0.065082       5.00   0.00       3d
+     β selected   13     0.024733       7.12   0.00       4p
+     β selected   14     0.024733       7.12   0.00       4p
+     β selected   15     0.024733       7.12   0.00       4p
+     β selected   16     0.082145       5.55   0.00       3s
+     β selected   17     0.163925       4.80   0.00       4d
+     β selected   18     0.163925       4.80   0.00       4d
+     β selected   19     0.163925       4.80   0.00       4d
+     β selected   20     0.163925       4.80   0.00       4d
+     β selected   21     0.163925       4.80   0.00       4d
+         β excluded   22     0.204792       4.34   0.00       4f
+         β excluded   23     0.204792       4.34   0.00       4f
+         β excluded   24     0.204792       4.34   0.00       4f
+         β excluded   25     0.204792       4.34   0.00       4f
+         β excluded   26     0.204792       4.34   0.00       4f
+         β excluded   27     0.204792       4.34   0.00       4f
+         β excluded   28     0.204792       4.34   0.00       4f
+     β selected   29     0.549148       4.02   0.00       5p
+     β selected   30     0.549148       4.02   0.00       5p
+     β selected   31     0.549148       4.02   0.00       5p
+     β selected   32     0.901614       3.14   0.00       5d
+     β selected   33     0.901614       3.14   0.00       5d
+     β selected   34     0.901614       3.14   0.00       5d
+     β selected   35     0.901614       3.14   0.00       5d
+     β selected   36     0.901614       3.14   0.00       5d
+         β excluded   37     0.993505       3.21   0.00       5g
+         β excluded   38     0.993505       3.21   0.00       5g
+         β excluded   39     0.993505       3.21   0.00       5g
+         β excluded   40     0.993505       3.21   0.00       5g
+         β excluded   41     0.993505       3.21   0.00       5g
+         β excluded   42     0.993505       3.21   0.00       5g
+         β excluded   43     0.993505       3.21   0.00       5g
+         β excluded   44     0.993505       3.21   0.00       5g
+         β excluded   45     0.993505       3.21   0.00       5g
+         β excluded   46     0.993639       3.12   0.00       5f
+         β excluded   47     0.993639       3.12   0.00       5f
+         β excluded   48     0.993639       3.12   0.00       5f
+         β excluded   49     0.993639       3.12   0.00       5f
+         β excluded   50     0.993639       3.12   0.00       5f
+         β excluded   51     0.993639       3.12   0.00       5f
+         β excluded   52     0.993639       3.12   0.00       5f
+     β selected   53     1.156333       2.91   0.00       4s
+     β selected   54     2.465112       2.45   0.00       6p
+     β selected   55     2.465112       2.45   0.00       6p
+     β selected   56     2.465112       2.45   0.00       6p
+     β selected   57     3.298875       1.86   0.00       6d
+     β selected   58     3.298875       1.86   0.00       6d
+     β selected   59     3.298875       1.86   0.00       6d
+     β selected   60     3.298875       1.86   0.00       6d
+     β selected   61     3.298875       1.86   0.00       6d
+         β excluded   62     3.375524       1.96   0.00       6f
+         β excluded   63     3.375524       1.96   0.00       6f
+         β excluded   64     3.375524       1.96   0.00       6f
+         β excluded   65     3.375524       1.96   0.00       6f
+         β excluded   66     3.375524       1.96   0.00       6f
+         β excluded   67     3.375524       1.96   0.00       6f
+         β excluded   68     3.375524       1.96   0.00       6f
+         β excluded   69     3.447831       2.11   0.00       6g
+         β excluded   70     3.447831       2.11   0.00       6g
+         β excluded   71     3.447831       2.11   0.00       6g
+         β excluded   72     3.447831       2.11   0.00       6g
+         β excluded   73     3.447831       2.11   0.00       6g
+         β excluded   74     3.447831       2.11   0.00       6g
+         β excluded   75     3.447831       2.11   0.00       6g
+         β excluded   76     3.447831       2.11   0.00       6g
+         β excluded   77     3.447831       2.11   0.00       6g
+     β selected   78     8.312081       1.02   0.00       5s
+Warning: ncas=8 but selected 40 alpha and 40 beta orbitals
+Trimming to first 8 orbitals
+Final ncas: 8
+Number of determinants: 64
+Total number of electrons in Mean Field method (numerical integration): 1.9999999999999996
+Available output from CI file: <KeysViewHDF5 ['ci', 'fci', 'mf_mo_energy', 'mo_coeff', 'mo_occ', 'ncas', 'ncore', 'nelecas']>
+CI vector shape: (64,)
+CI vector norm: 1.000000
+CI file created: b_ci_atom_basis_ccecp-aug-cc-pvqz_diffuse_S0P0D0.hdf5
+Computing CASCI energies from MO energies (ncas=8, nelecas=(np.int64(1), np.int64(1)), ncore=0)...
+CAS state plot saved to: b_cas_states_basis_ccecp-aug-cc-pvqz_diffuse_S0P0D0.png
+Total states computed: 64
+States plotted: 50
+
+======================================================================
+Kinetic Energy Comparison
+======================================================================
+MO #  ccecp-aug-cc-pvdz (α) ccecp-aug-cc-pvdz (β)ccecp-aug-cc-pvtz (α) ccecp-aug-cc-pvtz (β)ccecp-aug-cc-pvqz (α) ccecp-aug-cc-pvqz (β)
+------------------------------------------------------------------------------------------------------------------------------
+1                 0.343649            0.343649            0.345861            0.345861            0.344952            0.344952
+2                 0.940309            0.940309            0.942938            0.942938            0.941198            0.941198
+3                 0.940309            0.940309            0.942938            0.942938            0.941198            0.941198
+4                 0.940309            0.940309            0.942938            0.942938            0.941198            0.941198
+5                 0.134663            0.134663            0.170319            0.170319            0.165451            0.165451
+6                 0.261450            0.261450            0.254440            0.254440            0.231613            0.231613
+7                 0.261450            0.261450            0.254440            0.254440            0.231613            0.231613
+8                 0.261450            0.261450            0.254440            0.254440            0.231613            0.231613
+9                 0.503561            0.503561            0.330952            0.330952            0.262761            0.262761
+10                0.503561            0.503561            0.330952            0.330952            0.262761            0.262761
+11                0.503561            0.503561            0.330952            0.330952            0.262761            0.262761
+12                0.503561            0.503561            0.330952            0.330952            0.262761            0.262761
+13                0.503561            0.503561            0.330952            0.330952            0.262761            0.262761
+14                0.799690            0.799690            0.608493            0.608493            0.455713            0.455713
+15                0.799690            0.799690            0.608493            0.608493            0.455713            0.455713
+16                0.799690            0.799690            0.608493            0.608493            0.455713            0.455713
+17                0.813847            0.813847            0.770301            0.770301            0.498238            0.498238
+18                1.515212            1.515212            0.896865            0.896865            0.633561            0.633561
+19                1.515212            1.515212            0.896865            0.896865            0.633561            0.633561
+20                1.515212            1.515212            0.896865            0.896865            0.633561            0.633561
+21                1.515212            1.515212            0.896865            0.896865            0.633561            0.633561
+22                1.515212            1.515212            0.896865            0.896865            0.633561            0.633561
+23                     N/A                 N/A            0.821098            0.821098            0.541519            0.541519
+24                     N/A                 N/A            0.821098            0.821098            0.541519            0.541519
+25                     N/A                 N/A            0.821098            0.821098            0.541519            0.541519
+26                     N/A                 N/A            0.821098            0.821098            0.541519            0.541519
+27                     N/A                 N/A            0.821098            0.821098            0.541519            0.541519
+28                     N/A                 N/A            0.821098            0.821098            0.541519            0.541519
+29                     N/A                 N/A            0.821098            0.821098            0.541519            0.541519
+30                     N/A                 N/A            2.937799            2.937799            1.632426            1.632426
+31                     N/A                 N/A            2.937799            2.937799            1.632426            1.632426
+32                     N/A                 N/A            2.937799            2.937799            1.632426            1.632426
+33                     N/A                 N/A            2.947710            2.947710            1.806585            1.806585
+34                     N/A                 N/A            2.947710            2.947710            1.806585            1.806585
+35                     N/A                 N/A            2.947710            2.947710            1.806585            1.806585
+36                     N/A                 N/A            2.947710            2.947710            1.806585            1.806585
+37                     N/A                 N/A            2.947710            2.947710            1.806585            1.806585
+38                     N/A                 N/A            2.567102            2.567102            1.493137            1.493137
+39                     N/A                 N/A            2.567102            2.567102            1.493137            1.493137
+40                     N/A                 N/A            2.567102            2.567102            1.493137            1.493137
+41                     N/A                 N/A            2.567102            2.567102            1.493137            1.493137
+42                     N/A                 N/A            2.567102            2.567102            1.493137            1.493137
+43                     N/A                 N/A            2.567102            2.567102            1.493137            1.493137
+44                     N/A                 N/A            2.567102            2.567102            1.493137            1.493137
+45                     N/A                 N/A            2.926734            2.926734            1.493137            1.493137
+46                     N/A                 N/A                 N/A                 N/A            1.493137            1.493137
+47                     N/A                 N/A                 N/A                 N/A            1.638398            1.638398
+48                     N/A                 N/A                 N/A                 N/A            1.638398            1.638398
+49                     N/A                 N/A                 N/A                 N/A            1.638398            1.638398
+50                     N/A                 N/A                 N/A                 N/A            1.638398            1.638398
+51                     N/A                 N/A                 N/A                 N/A            1.638398            1.638398
+52                     N/A                 N/A                 N/A                 N/A            1.638398            1.638398
+53                     N/A                 N/A                 N/A                 N/A            1.638398            1.638398
+54                     N/A                 N/A                 N/A                 N/A            1.915922            1.915922
+55                     N/A                 N/A                 N/A                 N/A            5.403993            5.403993
+56                     N/A                 N/A                 N/A                 N/A            5.403993            5.403993
+57                     N/A                 N/A                 N/A                 N/A            5.403993            5.403993
+58                     N/A                 N/A                 N/A                 N/A            5.231948            5.231948
+59                     N/A                 N/A                 N/A                 N/A            5.231948            5.231948
+60                     N/A                 N/A                 N/A                 N/A            5.231948            5.231948
+61                     N/A                 N/A                 N/A                 N/A            5.231948            5.231948
+62                     N/A                 N/A                 N/A                 N/A            5.231948            5.231948
+63                     N/A                 N/A                 N/A                 N/A            4.728170            4.728170
+64                     N/A                 N/A                 N/A                 N/A            4.728170            4.728170
+65                     N/A                 N/A                 N/A                 N/A            4.728170            4.728170
+66                     N/A                 N/A                 N/A                 N/A            4.728170            4.728170
+67                     N/A                 N/A                 N/A                 N/A            4.728170            4.728170
+68                     N/A                 N/A                 N/A                 N/A            4.728170            4.728170
+69                     N/A                 N/A                 N/A                 N/A            4.728170            4.728170
+70                     N/A                 N/A                 N/A                 N/A            4.469191            4.469191
+71                     N/A                 N/A                 N/A                 N/A            4.469191            4.469191
+72                     N/A                 N/A                 N/A                 N/A            4.469191            4.469191
+73                     N/A                 N/A                 N/A                 N/A            4.469191            4.469191
+74                     N/A                 N/A                 N/A                 N/A            4.469191            4.469191
+75                     N/A                 N/A                 N/A                 N/A            4.469191            4.469191
+76                     N/A                 N/A                 N/A                 N/A            4.469191            4.469191
+77                     N/A                 N/A                 N/A                 N/A            4.469191            4.469191
+78                     N/A                 N/A                 N/A                 N/A            4.469191            4.469191
+79                     N/A                 N/A                 N/A                 N/A            5.992384            5.992384
+======================================================================
+
+======================================================================
+MO Energies Comparison
+======================================================================
+MO #  ccecp-aug-cc-pvdz (α) ccecp-aug-cc-pvdz (β)ccecp-aug-cc-pvtz (α) ccecp-aug-cc-pvtz (β)ccecp-aug-cc-pvqz (α) ccecp-aug-cc-pvqz (β)
+------------------------------------------------------------------------------------------------------------------------------
+1                -0.714032           -0.714032           -0.708932           -0.708932           -0.708864           -0.708864
+2                -0.487186           -0.487186           -0.481290           -0.481290           -0.481183           -0.481183
+3                -0.487186           -0.487186           -0.481290           -0.481290           -0.481183           -0.481183
+4                -0.487186           -0.487186           -0.481290           -0.481290           -0.481183           -0.481183
+5                -0.147638           -0.147638           -0.153171           -0.153171           -0.154596           -0.154596
+6                -0.107120           -0.107120           -0.107620           -0.107620           -0.109651           -0.109651
+7                -0.107120           -0.107120           -0.107620           -0.107620           -0.109651           -0.109651
+8                -0.107120           -0.107120           -0.107620           -0.107620           -0.109651           -0.109651
+9                 0.005943            0.005943           -0.049574           -0.049574           -0.065082           -0.065082
+10                0.005943            0.005943           -0.049574           -0.049574           -0.065082           -0.065082
+11                0.005943            0.005943           -0.049574           -0.049574           -0.065082           -0.065082
+12                0.005943            0.005943           -0.049574           -0.049574           -0.065082           -0.065082
+13                0.005943            0.005943           -0.049574           -0.049574           -0.065082           -0.065082
+14                0.090741            0.090741            0.068964            0.068964            0.024733            0.024733
+15                0.090741            0.090741            0.068964            0.068964            0.024733            0.024733
+16                0.090741            0.090741            0.068964            0.068964            0.024733            0.024733
+17                0.317919            0.317919            0.181418            0.181418            0.082145            0.082145
+18                0.651917            0.651917            0.296161            0.296161            0.163925            0.163925
+19                0.651917            0.651917            0.296161            0.296161            0.163925            0.163925
+20                0.651917            0.651917            0.296161            0.296161            0.163925            0.163925
+21                0.651917            0.651917            0.296161            0.296161            0.163925            0.163925
+22                0.651917            0.651917            0.296161            0.296161            0.163925            0.163925
+23                     N/A                 N/A            0.370892            0.370892            0.204792            0.204792
+24                     N/A                 N/A            0.370892            0.370892            0.204792            0.204792
+25                     N/A                 N/A            0.370892            0.370892            0.204792            0.204792
+26                     N/A                 N/A            0.370892            0.370892            0.204792            0.204792
+27                     N/A                 N/A            0.370892            0.370892            0.204792            0.204792
+28                     N/A                 N/A            0.370892            0.370892            0.204792            0.204792
+29                     N/A                 N/A            0.370892            0.370892            0.204792            0.204792
+30                     N/A                 N/A            0.938173            0.938173            0.549148            0.549148
+31                     N/A                 N/A            0.938173            0.938173            0.549148            0.549148
+32                     N/A                 N/A            0.938173            0.938173            0.549148            0.549148
+33                     N/A                 N/A            1.588864            1.588864            0.901614            0.901614
+34                     N/A                 N/A            1.588864            1.588864            0.901614            0.901614
+35                     N/A                 N/A            1.588864            1.588864            0.901614            0.901614
+36                     N/A                 N/A            1.588864            1.588864            0.901614            0.901614
+37                     N/A                 N/A            1.588864            1.588864            0.901614            0.901614
+38                     N/A                 N/A            1.655045            1.655045            0.993505            0.993505
+39                     N/A                 N/A            1.655045            1.655045            0.993505            0.993505
+40                     N/A                 N/A            1.655045            1.655045            0.993505            0.993505
+41                     N/A                 N/A            1.655045            1.655045            0.993505            0.993505
+42                     N/A                 N/A            1.655045            1.655045            0.993505            0.993505
+43                     N/A                 N/A            1.655045            1.655045            0.993505            0.993505
+44                     N/A                 N/A            1.655045            1.655045            0.993505            0.993505
+45                     N/A                 N/A            3.965616            3.965616            0.993505            0.993505
+46                     N/A                 N/A                 N/A                 N/A            0.993505            0.993505
+47                     N/A                 N/A                 N/A                 N/A            0.993639            0.993639
+48                     N/A                 N/A                 N/A                 N/A            0.993639            0.993639
+49                     N/A                 N/A                 N/A                 N/A            0.993639            0.993639
+50                     N/A                 N/A                 N/A                 N/A            0.993639            0.993639
+51                     N/A                 N/A                 N/A                 N/A            0.993639            0.993639
+52                     N/A                 N/A                 N/A                 N/A            0.993639            0.993639
+53                     N/A                 N/A                 N/A                 N/A            0.993639            0.993639
+54                     N/A                 N/A                 N/A                 N/A            1.156333            1.156333
+55                     N/A                 N/A                 N/A                 N/A            2.465112            2.465112
+56                     N/A                 N/A                 N/A                 N/A            2.465112            2.465112
+57                     N/A                 N/A                 N/A                 N/A            2.465112            2.465112
+58                     N/A                 N/A                 N/A                 N/A            3.298875            3.298875
+59                     N/A                 N/A                 N/A                 N/A            3.298875            3.298875
+60                     N/A                 N/A                 N/A                 N/A            3.298875            3.298875
+61                     N/A                 N/A                 N/A                 N/A            3.298875            3.298875
+62                     N/A                 N/A                 N/A                 N/A            3.298875            3.298875
+63                     N/A                 N/A                 N/A                 N/A            3.375524            3.375524
+64                     N/A                 N/A                 N/A                 N/A            3.375524            3.375524
+65                     N/A                 N/A                 N/A                 N/A            3.375524            3.375524
+66                     N/A                 N/A                 N/A                 N/A            3.375524            3.375524
+67                     N/A                 N/A                 N/A                 N/A            3.375524            3.375524
+68                     N/A                 N/A                 N/A                 N/A            3.375524            3.375524
+69                     N/A                 N/A                 N/A                 N/A            3.375524            3.375524
+70                     N/A                 N/A                 N/A                 N/A            3.447831            3.447831
+71                     N/A                 N/A                 N/A                 N/A            3.447831            3.447831
+72                     N/A                 N/A                 N/A                 N/A            3.447831            3.447831
+73                     N/A                 N/A                 N/A                 N/A            3.447831            3.447831
+74                     N/A                 N/A                 N/A                 N/A            3.447831            3.447831
+75                     N/A                 N/A                 N/A                 N/A            3.447831            3.447831
+76                     N/A                 N/A                 N/A                 N/A            3.447831            3.447831
+77                     N/A                 N/A                 N/A                 N/A            3.447831            3.447831
+78                     N/A                 N/A                 N/A                 N/A            3.447831            3.447831
+79                     N/A                 N/A                 N/A                 N/A            8.312081            8.312081
+======================================================================
+
+======================================================================
+<r²>^½ Values Comparison
+======================================================================
+MO #  ccecp-aug-cc-pvdz (α) ccecp-aug-cc-pvdz (β)ccecp-aug-cc-pvtz (α) ccecp-aug-cc-pvtz (β)ccecp-aug-cc-pvqz (α) ccecp-aug-cc-pvqz (β)
+------------------------------------------------------------------------------------------------------------------------------
+1                 1.985556            1.985556            1.964502            1.964502            1.961360            1.961360
+2                 2.085112            2.085112            2.095617            2.095617            2.094008            2.094008
+3                 2.085112            2.085112            2.095617            2.095617            2.094008            2.094008
+4                 2.085112            2.085112            2.095617            2.095617            2.094008            2.094008
+5                 5.793630            5.793630            5.391145            5.391145            5.459351            5.459351
+6                 5.983605            5.983605            6.097304            6.097304            6.422789            6.422789
+7                 5.983605            5.983605            6.097304            6.097304            6.422789            6.422789
+8                 5.983605            5.983605            6.097304            6.097304            6.422789            6.422789
+9                 3.489256            3.489256            4.377332            4.377332            4.995057            4.995057
+10                3.489256            3.489256            4.377332            4.377332            4.995057            4.995057
+11                3.489256            3.489256            4.377332            4.377332            4.995057            4.995057
+12                3.489256            3.489256            4.377332            4.377332            4.995057            4.995057
+13                3.489256            3.489256            4.377332            4.377332            4.995057            4.995057
+14                5.690284            5.690284            6.113750            6.113750            7.118415            7.118415
+15                5.690284            5.690284            6.113750            6.113750            7.118415            7.118415
+16                5.690284            5.690284            6.113750            6.113750            7.118415            7.118415
+17                5.148858            5.148858            4.702325            4.702325            5.552374            5.552374
+18                2.904999            2.904999            3.914540            3.914540            4.803332            4.803332
+19                2.904999            2.904999            3.914540            3.914540            4.803332            4.803332
+20                2.904999            2.904999            3.914540            3.914540            4.803332            4.803332
+21                2.904999            2.904999            3.914540            3.914540            4.803332            4.803332
+22                2.904999            2.904999            3.914540            3.914540            4.803332            4.803332
+23                     N/A                 N/A            3.528154            3.528154            4.343107            4.343107
+24                     N/A                 N/A            3.528154            3.528154            4.343107            4.343107
+25                     N/A                 N/A            3.528154            3.528154            4.343107            4.343107
+26                     N/A                 N/A            3.528154            3.528154            4.343107            4.343107
+27                     N/A                 N/A            3.528154            3.528154            4.343107            4.343107
+28                     N/A                 N/A            3.528154            3.528154            4.343107            4.343107
+29                     N/A                 N/A            3.528154            3.528154            4.343107            4.343107
+30                     N/A                 N/A            3.034179            3.034179            4.018119            4.018119
+31                     N/A                 N/A            3.034179            3.034179            4.018119            4.018119
+32                     N/A                 N/A            3.034179            3.034179            4.018119            4.018119
+33                     N/A                 N/A            2.310763            2.310763            3.141774            3.141774
+34                     N/A                 N/A            2.310763            2.310763            3.141774            3.141774
+35                     N/A                 N/A            2.310763            2.310763            3.141774            3.141774
+36                     N/A                 N/A            2.310763            2.310763            3.141774            3.141774
+37                     N/A                 N/A            2.310763            2.310763            3.141774            3.141774
+38                     N/A                 N/A            2.453767            2.453767            3.208445            3.208445
+39                     N/A                 N/A            2.453767            2.453767            3.208445            3.208445
+40                     N/A                 N/A            2.453767            2.453767            3.208445            3.208445
+41                     N/A                 N/A            2.453767            2.453767            3.208445            3.208445
+42                     N/A                 N/A            2.453767            2.453767            3.208445            3.208445
+43                     N/A                 N/A            2.453767            2.453767            3.208445            3.208445
+44                     N/A                 N/A            2.453767            2.453767            3.208445            3.208445
+45                     N/A                 N/A            2.301717            2.301717            3.208445            3.208445
+46                     N/A                 N/A                 N/A                 N/A            3.208445            3.208445
+47                     N/A                 N/A                 N/A                 N/A            3.124528            3.124528
+48                     N/A                 N/A                 N/A                 N/A            3.124528            3.124528
+49                     N/A                 N/A                 N/A                 N/A            3.124528            3.124528
+50                     N/A                 N/A                 N/A                 N/A            3.124528            3.124528
+51                     N/A                 N/A                 N/A                 N/A            3.124528            3.124528
+52                     N/A                 N/A                 N/A                 N/A            3.124528            3.124528
+53                     N/A                 N/A                 N/A                 N/A            3.124528            3.124528
+54                     N/A                 N/A                 N/A                 N/A            2.905040            2.905040
+55                     N/A                 N/A                 N/A                 N/A            2.454377            2.454377
+56                     N/A                 N/A                 N/A                 N/A            2.454377            2.454377
+57                     N/A                 N/A                 N/A                 N/A            2.454377            2.454377
+58                     N/A                 N/A                 N/A                 N/A            1.857525            1.857525
+59                     N/A                 N/A                 N/A                 N/A            1.857525            1.857525
+60                     N/A                 N/A                 N/A                 N/A            1.857525            1.857525
+61                     N/A                 N/A                 N/A                 N/A            1.857525            1.857525
+62                     N/A                 N/A                 N/A                 N/A            1.857525            1.857525
+63                     N/A                 N/A                 N/A                 N/A            1.956669            1.956669
+64                     N/A                 N/A                 N/A                 N/A            1.956669            1.956669
+65                     N/A                 N/A                 N/A                 N/A            1.956669            1.956669
+66                     N/A                 N/A                 N/A                 N/A            1.956669            1.956669
+67                     N/A                 N/A                 N/A                 N/A            1.956669            1.956669
+68                     N/A                 N/A                 N/A                 N/A            1.956669            1.956669
+69                     N/A                 N/A                 N/A                 N/A            1.956669            1.956669
+70                     N/A                 N/A                 N/A                 N/A            2.111745            2.111745
+71                     N/A                 N/A                 N/A                 N/A            2.111745            2.111745
+72                     N/A                 N/A                 N/A                 N/A            2.111745            2.111745
+73                     N/A                 N/A                 N/A                 N/A            2.111745            2.111745
+74                     N/A                 N/A                 N/A                 N/A            2.111745            2.111745
+75                     N/A                 N/A                 N/A                 N/A            2.111745            2.111745
+76                     N/A                 N/A                 N/A                 N/A            2.111745            2.111745
+77                     N/A                 N/A                 N/A                 N/A            2.111745            2.111745
+78                     N/A                 N/A                 N/A                 N/A            2.111745            2.111745
+79                     N/A                 N/A                 N/A                 N/A            1.022053            1.022053
+======================================================================
+
+======================================================================
+Example: Loading saved data
+======================================================================
+
+To reconstruct molecule:
+  from run_atom_diffuse import load_molecule_from_h5
+  mol = load_molecule_from_h5('li_atom_diffuse_S4P8D11.h5')
+
+To get basis generation parameters:
+  from run_atom_diffuse import load_basis_params_from_h5
+  params = load_basis_params_from_h5('li_atom_diffuse_S4P8D11.h5')
+  # Then regenerate: generate_diffuse_basis('Li', **params)
+
+To plot MO energies from saved file:
+  from run_atom_diffuse import load_mo_energies_from_h5, plot_mo_energies
+  data = load_mo_energies_from_h5('li_atom_diffuse_S4P8D11.h5')
+  plot_mo_energies(data['mo_energy_alpha'], data['mo_energy_beta'],
+                   data['mo_occ_alpha'], data['mo_occ_beta'])

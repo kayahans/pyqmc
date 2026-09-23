@@ -1,0 +1,16 @@
+{
+  "atom": "B",
+  "spin": 0,
+  "basis_sets": ["ccecp-aug-cc-pvdz", "ccecp-aug-cc-pvtz", "ccecp-aug-cc-pvqz"],
+  "ecp": "ccecp",
+  "xc_functional": "lda,vwn",
+  "ncas": 8,
+  "nelecas": [1, 1],
+  "nroots": 20,
+  "ratio": 2,
+  "n_funcs": {"S": 0, "P": 0, "D": 0},
+  "symm_rks" : false,
+  "charge": 1,
+  "orb_symm": "D2h",
+  "_comment": "ECP valence basis (aug-cc-pVDZ-PP) with matching cc-pVDZ-PP pseudopotential; 4 valence electrons, ncore=0"
+}
