@@ -192,10 +192,19 @@ def filter_determinants_from_ci(mc, mo_energies, det_emax, include_zeros=True, m
         print("Filtering determinants, energy units are in Hartree")
         
     # Extract all determinants using the same logic as interpret_ci
+    # UKS/UCASCI may store ncore as (ncore_a, ncore_b)
     ncore = mc.ncore if hasattr(mc, "ncore") else 0
+    if hasattr(ncore, "__len__"):
+        ncore_a, ncore_b = int(ncore[0]), int(ncore[1])
+    else:
+        ncore_a = ncore_b = int(ncore)
     deters_orig = fci.addons.large_ci(mc.ci, mc.ncas, mc.nelecas, tol=-1)
-    alpha_occ = np.array([binary_to_occ(x[1], ncore)[0] for x in deters_orig], dtype=int)
-    beta_occ = np.array([binary_to_occ(x[2], ncore)[0] for x in deters_orig], dtype=int)
+    alpha_occ = np.array(
+        [binary_to_occ(x[1], ncore_a)[0] for x in deters_orig], dtype=int
+    )
+    beta_occ = np.array(
+        [binary_to_occ(x[2], ncore_b)[0] for x in deters_orig], dtype=int
+    )
 
 
     # Normalize mo_energies to [mo_up, mo_dn] format (RHF has 1D, use same for both)
@@ -573,6 +582,14 @@ class BosonWF:
         """
         self.tol = -1 if tol is None else tol
         self._mol = mol
+        if mol.cart:
+            self._gtoval = "GTOval_cart"
+            self._gtoval_deriv1 = "GTOval_cart_deriv1"
+            self._gtoval_deriv2 = "GTOval_cart_deriv2"
+        else:
+            self._gtoval = "GTOval_sph"
+            self._gtoval_deriv1 = "GTOval_sph_deriv1"
+            self._gtoval_deriv2 = "GTOval_sph_deriv2"
         if hasattr(mc, "nelecas"):
             # In case nelecas overrode the information from the molecule object.
             ncore = mc.ncore
@@ -609,7 +626,7 @@ class BosonWF:
             self._det_map,
             self.orbitals,
         ) = pyqmc.pyscftools.orbital_evaluator_from_pyscf(
-            mol, mf, mc, twist=twist, determinants=filtered_determinants, tol=self.tol, ncore=ncore
+            mol, mf, mc, twist=twist, determinants=filtered_determinants, tol=self.tol
         )
 
         self.det_info_file = 'det_info.hdf5'
@@ -777,7 +794,7 @@ class BosonWF:
         r"""This computes the value from scratch. Returns the logarithm of the wave function as
         (phase,logdet). If the wf is real, phase will be +/- 1."""
         nconf, nelec, ndim = configs.configs.shape
-        aos = self.orbitals.aos("GTOval_sph", configs)
+        aos = self.orbitals.aos(self._gtoval, configs)
         self._aovals = aos.reshape(-1, nconf, nelec, aos.shape[-1])
         self._dets = []
         self._inverse = []
@@ -822,7 +839,7 @@ class BosonWF:
 
         eeff = e - s * self._nelec[0]
         if saved_values is None:
-            ao = self.orbitals.aos("GTOval_sph", epos, mask)
+            ao = self.orbitals.aos(self._gtoval, epos, mask)
             self._aovals[:, mask, e, :] = ao
             mo = self.orbitals.mos(ao, s)
         else:
@@ -860,7 +877,7 @@ class BosonWF:
     def value_configs(self, configs):
         r"""Returns the value of the bosonic wavefunction for a given configuration"""
         nconf, nelec, ndim = configs.configs.shape
-        aos = self.orbitals.aos("GTOval_sph", configs)
+        aos = self.orbitals.aos(self._gtoval, configs)
         aovals = aos.reshape(-1, nconf, nelec, aos.shape[-1])
         dets = []
         for s in [0, 1]:
@@ -930,7 +947,7 @@ class BosonWF:
         #= \frac{\sum{\Phi_n^2 * \nabla ln(\Phi_n)}}{\Phi_B^2}
         #= \frac{\sum{exp(2*ln(\Phi_n)) * \nabla ln(\Phi_n)}}{exp(2*ln(\Phi_B))}
         s = int(e >= self._nelec[0])
-        aograd = self.orbitals.aos("GTOval_sph_deriv1", epos)
+        aograd = self.orbitals.aos(self._gtoval_deriv1, epos)
         mograd = self.orbitals.mos(aograd, s)
         mograd_vals = mograd[:, :, self._det_occup[s]]
         jacobi = gpu.cp.einsum(
@@ -1058,7 +1075,7 @@ class BosonWF:
         Returns array of shape (nconfigs, 3) and (nconfigs,)"""
 
         s = int(e >= self._nelec[0])
-        aograd = self.orbitals.aos("GTOval_sph_deriv1", epos)
+        aograd = self.orbitals.aos(self._gtoval_deriv1, epos)
         mograd = self.orbitals.mos(aograd, s)
         mograd_vals = mograd[:, :, self._det_occup[s]]
         jacobi = gpu.cp.einsum(
@@ -1125,7 +1142,7 @@ class BosonWF:
         """
 
         s = int(e >= self._nelec[0])
-        aograd = self.orbitals.aos("GTOval_sph_deriv1", epos)
+        aograd = self.orbitals.aos(self._gtoval_deriv1, epos)
         mograd = self.orbitals.mos(aograd, s)
         mograd_vals = mograd[:, :, self._det_occup[s]]
 
@@ -1227,9 +1244,9 @@ class BosonWF:
             laplacian: [# of determinants, nconfigs]
         """
         s = int(e >= self._nelec[0])
-        ao = self.orbitals.aos("GTOval_sph_deriv2", epos)
+        ao = self.orbitals.aos(self._gtoval_deriv2, epos)
         ao_val = ao[:, 0, :, :]
-        ao_lap = gpu.cp.sum(ao[:, [4, 7, 9], :, :], axis=1)
+        ao_lap = ao[:, 4, :, :]  # orbitals.aos already returns compact [val,∇,∇²]
         mo_lap_vals = gpu.cp.stack(
             [self.orbitals.mos(x, s)[..., self._det_occup[s]] for x in [ao_val, ao_lap]]
         )
@@ -1314,14 +1331,14 @@ class BosonWF:
         """
 
         s = int(e >= self._nelec[0])
-        ao = self.orbitals.aos("GTOval_sph_deriv2", epos)
+        ao = self.orbitals.aos(self._gtoval_deriv2, epos)
 
         ao_val = ao[:, 0, :, :]
         ao_grad = ao[:, 0:4, :, :]
         mo_grad = self.orbitals.mos(ao_grad, s)
         mo_grad_vals = mo_grad[:, :, self._det_occup[s]]
 
-        ao_lap = gpu.cp.sum(ao[:, [4, 7, 9], :, :], axis=1)
+        ao_lap = ao[:, 4, :, :]  # orbitals.aos already returns compact [val,∇,∇²]
         mo_lap_vals = gpu.cp.stack(
             [self.orbitals.mos(x, s)[..., self._det_occup[s]] for x in [ao_val, ao_lap]]
         )

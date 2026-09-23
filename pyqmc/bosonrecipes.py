@@ -308,7 +308,7 @@ def calculate_density_on_grid(mf, coords, weights, frozen=1, ncas=6, nelecas=(4,
         mf: Mean field object from PySCF
         coords: Grid coordinates (n_points, 3)
         weights: Integration weights (n_points,)
-        frozen: Number of frozen (core) orbitals
+        frozen: Number of frozen (core) orbitals (int, or (ncore_a, ncore_b) for UKS)
         ncas: Number of active space orbitals
         nelecas: Number of active electrons (n_alpha, n_beta)
         ecut: Energy cutoff for determinant selection (if None, use all)
@@ -323,30 +323,53 @@ def calculate_density_on_grid(mf, coords, weights, frozen=1, ncas=6, nelecas=(4,
     print(f"  Active space: NCAS={ncas}, NELECAS={nelecas}")
     if ecut is not None:
         print(f"  Energy cutoff: {ecut} Hartree")
+
+    # UKS CAS stores ncore as (ncore_a, ncore_b)
+    if hasattr(frozen, "__len__"):
+        frozen_a, frozen_b = int(frozen[0]), int(frozen[1])
+    else:
+        frozen_a = frozen_b = int(frozen)
     
-    # Get molecular orbital coefficients
-    mo_coeff = mf.mo_coeff  # Shape: (2, n_ao, n_mo) for UHF/UKS
-    n_mo_needed = frozen + ncas
-    mo_coeff_up = mo_coeff[0][:, :n_mo_needed]  # Only orbitals we need
-    mo_coeff_dn = mo_coeff[1][:, :n_mo_needed]
+    # Get molecular orbital coefficients.
+    # UKS: list/tuple of 2 arrays, or ndarray shape (2, nao, nmo)
+    # RKS: 2D ndarray (nao, nmo)
+    mo_coeff = mf.mo_coeff
+    if isinstance(mo_coeff, (list, tuple)):
+        mo_a, mo_b = mo_coeff[0], mo_coeff[1]
+    elif getattr(mo_coeff, "ndim", 0) == 3:
+        mo_a, mo_b = mo_coeff[0], mo_coeff[1]
+    else:
+        mo_a = mo_b = mo_coeff
+    n_mo_needed_a = frozen_a + int(ncas)
+    n_mo_needed_b = frozen_b + int(ncas)
+    mo_coeff_up = mo_a[:, :n_mo_needed_a]
+    mo_coeff_dn = mo_b[:, :n_mo_needed_b]
     
     # Generate determinants
-    up_orbs = dn_orbs = np.arange(ncas) + frozen
-    up_det = list(combinations(up_orbs, nelecas[0]))
-    dn_det = list(combinations(dn_orbs, nelecas[1]))
+    up_orbs = np.arange(ncas) + frozen_a
+    dn_orbs = np.arange(ncas) + frozen_b
+    up_det = list(combinations(up_orbs, int(nelecas[0])))
+    dn_det = list(combinations(dn_orbs, int(nelecas[1])))
     
     # Include frozen orbitals in determinants
-    frozen_array = list(range(frozen))
-    up_det = [np.array(frozen_array + list(x)) for x in up_det]
-    dn_det = [np.array(frozen_array + list(x)) for x in dn_det]
+    frozen_up = list(range(frozen_a))
+    frozen_dn = list(range(frozen_b))
+    up_det = [np.array(frozen_up + list(x)) for x in up_det]
+    dn_det = [np.array(frozen_dn + list(x)) for x in dn_det]
     
     # Apply energy cutoff if specified
     if ecut is not None:
         mo_energy = mf.mo_energy
+        if isinstance(mo_energy, (list, tuple)):
+            ene_a, ene_b = mo_energy[0], mo_energy[1]
+        elif getattr(mo_energy, "ndim", 0) == 2:
+            ene_a, ene_b = mo_energy[0], mo_energy[1]
+        else:
+            ene_a = ene_b = mo_energy
         up_det_arr = np.array(up_det)
         dn_det_arr = np.array(dn_det)
-        up_energies = np.sum(mo_energy[0][up_det_arr], axis=1)
-        dn_energies = np.sum(mo_energy[1][dn_det_arr], axis=1)
+        up_energies = np.sum(ene_a[up_det_arr], axis=1)
+        dn_energies = np.sum(ene_b[dn_det_arr], axis=1)
         det_mf_energies = up_energies[:, np.newaxis] + dn_energies[np.newaxis, :]
         det_mf_energies -= np.min(det_mf_energies)
         mask = np.argwhere(det_mf_energies < ecut)
@@ -364,8 +387,8 @@ def calculate_density_on_grid(mf, coords, weights, frozen=1, ncas=6, nelecas=(4,
 
     # Orbital weights: density = sum_i (count_i/n_det) * |phi_i|^2
     # Avoids huge (n_points, n_det, n_elec) intermediate
-    orb_weights_up = np.zeros(n_mo_needed)
-    orb_weights_dn = np.zeros(n_mo_needed)
+    orb_weights_up = np.zeros(n_mo_needed_a)
+    orb_weights_dn = np.zeros(n_mo_needed_b)
     for up, dn in zip(up_det_filtered, dn_det_filtered):
         for i in up:
             orb_weights_up[i] += 1
