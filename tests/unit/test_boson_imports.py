@@ -12,6 +12,12 @@ def test_boson_recipe_imports():
     assert callable(ABVMC) and callable(ABDMC) and callable(ABOPTIMIZE)
     assert hasattr(bosonenergy, "dft_energy")
     assert hasattr(mf_hartree, "HartreePotentialEvaluator")
+    from pyqmc.observables import mf_grid_interp, mf_ri_hartree
+
+    assert hasattr(mf_grid_interp, "GridMFPotentialEvaluator")
+    assert hasattr(mf_ri_hartree, "RIHartreePotentialEvaluator")
+    assert "grid" in bosonenergy.SUPPORTED_EVALUATE_MF
+    assert "ri" in bosonenergy.SUPPORTED_EVALUATE_MF
     assert hasattr(bosonslater, "BosonWF")
     assert hasattr(bosonaccumulators, "ABQMCEnergyAccumulator")
     assert hasattr(bosonmc, "abvmc")

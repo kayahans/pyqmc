@@ -4,6 +4,9 @@ Implements the McMurchie–Davidson electrostatic potential of a GTO density,
 matching ``mol.intor("int1e_grids")`` contracted with the density matrix.
 Cartesian MD integrals are transformed to PySCF's spherical AO order via
 ``mol.cart2sph_coeff()``.
+
+Hermite sources are packed once; evaluation uses Numba (Boys + R recurrence
++ source contraction) rather than SciPy / Python loops per source.
 """
 
 from __future__ import annotations
@@ -13,7 +16,6 @@ import math
 import numpy as np
 from numba import njit
 from pyscf.gto.mole import gto_norm
-from scipy.special import gamma, gammainc
 
 
 def _cart_angles(l: int):
@@ -40,24 +42,55 @@ def _normalize_contraction(l, exps, ctr):
     return c
 
 
-def boys_array(nmax: int, T: float | np.ndarray) -> np.ndarray:
-    """Boys F_n(T) for n = 0 … nmax.
+@njit(cache=True, fastmath=True)
+def _boys_fill(nmax, T, Fn):
+    """Fill ``Fn[0:nmax+1]`` with Boys F_n(T).
 
-    Uses F_n(T) = (1/2) T^{-(n+1/2)} γ(n+1/2, T).
+    Near zero: F_n(0) = 1/(2n+1).
+    Small T: Taylor series for F_nmax + downward recurrence
+    ``(2n+1) F_n = 2 T F_{n+1} + exp(-T)``.
+    Larger T: F_0 via erf + upward recurrence (more stable than the series).
+    """
+    if T < 1e-8:
+        for n in range(nmax + 1):
+            Fn[n] = 1.0 / (2 * n + 1)
+        return
+    et = math.exp(-T)
+    # Upward from erf is accurate once T is not tiny relative to nmax.
+    t_switch = 2.0 + 0.25 * nmax
+    if T >= t_switch:
+        sqrtT = math.sqrt(T)
+        Fn[0] = 0.5 * math.sqrt(math.pi) / sqrtT * math.erf(sqrtT)
+        for n in range(nmax):
+            Fn[n + 1] = ((n + 0.5) * Fn[n] - 0.5 * et) / T
+        return
+    # F_nmax via Taylor: sum_k (-T)^k / (k! (2 nmax + 2k + 1))
+    n = nmax
+    term = 1.0 / (2 * n + 1)
+    total = term
+    for k in range(1, 300):
+        term *= (-T) / k * (2 * n + 2 * k - 1) / (2 * n + 2 * k + 1)
+        total += term
+        if abs(term) < 1e-18 * (abs(total) + 1e-300):
+            break
+    Fn[nmax] = total
+    for n in range(nmax - 1, -1, -1):
+        Fn[n] = (2.0 * T * Fn[n + 1] + et) / (2 * n + 1)
+
+
+def boys_array(nmax: int, T: float | np.ndarray) -> np.ndarray:
+    """Boys F_n(T) for n = 0 … nmax (Numba series + downward recurrence).
+
     ``T`` may be scalar or array; returns shape ``(nmax+1,)`` or ``(nmax+1, nT)``.
     """
     T = np.asarray(T, dtype=np.float64)
     scalar = T.ndim == 0
     T = np.atleast_1d(T)
     out = np.empty((nmax + 1, T.size), dtype=np.float64)
-    small = T < 1e-12
-    large = ~small
-    for n in range(nmax + 1):
-        out[n, small] = 1.0 / (2 * n + 1)
-        if np.any(large):
-            # gammainc is regularized lower incomplete γ(s,x)/Γ(s)
-            s = n + 0.5
-            out[n, large] = 0.5 * np.power(T[large], -s) * gamma(s) * gammainc(s, T[large])
+    buf = np.empty(nmax + 1, dtype=np.float64)
+    for i in range(T.size):
+        _boys_fill(nmax, float(T[i]), buf)
+        out[:, i] = buf
     if scalar:
         return out[:, 0]
     return out
@@ -101,38 +134,106 @@ def _make_E(imax, jmax, Ax, Bx, alpha, beta, E):
     return p, Px
 
 
-def _R0_batch(tmax, umax, vmax, pexp, P, coords):
-    """Hermite Coulomb R_{tuv}^{(0)} at many points. Returns (npts, tmax+1, umax+1, vmax+1)."""
+@njit(cache=True, fastmath=True)
+def _add_source_contrib(coords, Px, Py, Pz, pexp, H, tmax, umax, vmax, acc):
+    """Accumulate Hermite source contribution into ``acc`` (npts,)."""
     npts = coords.shape[0]
     nmax = tmax + umax + vmax
-    RPC = P[None, :] - coords  # (npts, 3)
-    T = pexp * np.einsum("pi,pi->p", RPC, RPC)
-    Fn = boys_array(nmax, T)  # (nmax+1, npts)
-    R = np.zeros((nmax + 1, npts, tmax + 1, umax + 1, vmax + 1), dtype=np.float64)
-    for n in range(nmax + 1):
-        R[n, :, 0, 0, 0] = ((-2.0 * pexp) ** n) * (2.0 * np.pi / pexp) * Fn[n]
-    for t in range(tmax):
-        for n in range(nmax - t):
-            val = RPC[:, 0] * R[n + 1, :, t, 0, 0]
-            if t > 0:
-                val = val + t * R[n + 1, :, t - 1, 0, 0]
-            R[n, :, t + 1, 0, 0] = val
-    for u in range(umax):
-        for t in range(tmax + 1):
-            for n in range(nmax - t - u):
-                val = RPC[:, 1] * R[n + 1, :, t, u, 0]
-                if u > 0:
-                    val = val + u * R[n + 1, :, t, u - 1, 0]
-                R[n, :, t, u + 1, 0] = val
-    for v in range(vmax):
+    Fn = np.empty(nmax + 1, dtype=np.float64)
+    # R[n, t, u, v] workspace reused per point
+    R = np.empty((nmax + 1, tmax + 1, umax + 1, vmax + 1), dtype=np.float64)
+    two_pi_over_p = 2.0 * math.pi / pexp
+    for ip in range(npts):
+        rx = Px - coords[ip, 0]
+        ry = Py - coords[ip, 1]
+        rz = Pz - coords[ip, 2]
+        T = pexp * (rx * rx + ry * ry + rz * rz)
+        _boys_fill(nmax, T, Fn)
+        m2p = 1.0
+        for n in range(nmax + 1):
+            R[n, 0, 0, 0] = m2p * two_pi_over_p * Fn[n]
+            m2p *= -2.0 * pexp
+        for t in range(tmax):
+            for n in range(nmax - t):
+                val = rx * R[n + 1, t, 0, 0]
+                if t > 0:
+                    val = val + t * R[n + 1, t - 1, 0, 0]
+                R[n, t + 1, 0, 0] = val
+        for u in range(umax):
+            for t in range(tmax + 1):
+                for n in range(nmax - t - u):
+                    val = ry * R[n + 1, t, u, 0]
+                    if u > 0:
+                        val = val + u * R[n + 1, t, u - 1, 0]
+                    R[n, t, u + 1, 0] = val
+        for v in range(vmax):
+            for t in range(tmax + 1):
+                for u in range(umax + 1):
+                    for n in range(nmax - t - u - v):
+                        val = rz * R[n + 1, t, u, v]
+                        if v > 0:
+                            val = val + v * R[n + 1, t, u, v - 1]
+                        R[n, t, u, v + 1] = val
+        s = 0.0
         for t in range(tmax + 1):
             for u in range(umax + 1):
-                for n in range(nmax - t - u - v):
-                    val = RPC[:, 2] * R[n + 1, :, t, u, v]
-                    if v > 0:
-                        val = val + v * R[n + 1, :, t, u, v - 1]
-                    R[n, :, t, u, v + 1] = val
-    return R[0]
+                for v in range(vmax + 1):
+                    s += H[t, u, v] * R[0, t, u, v]
+        acc[ip] += s
+
+
+@njit(cache=True, fastmath=True)
+def _eval_vh_packed(coords, P, pexp, tmaxs, umaxs, vmaxs, H, out):
+    """V_H from packed Hermite sources into ``out`` (npts,)."""
+    ns = P.shape[0]
+    for i in range(ns):
+        _add_source_contrib(
+            coords,
+            P[i, 0],
+            P[i, 1],
+            P[i, 2],
+            pexp[i],
+            H[i],
+            int(tmaxs[i]),
+            int(umaxs[i]),
+            int(vmaxs[i]),
+            out,
+        )
+
+
+def pack_hermite_sources(sources):
+    """Flatten list-of-dict Hermite sources into contiguous Numba arrays.
+
+    Returns ``None`` if ``sources`` is empty, else a dict with keys
+    ``P, pexp, tmaxs, umaxs, vmaxs, H``.
+    """
+    if not sources:
+        return None
+    ns = len(sources)
+    tmax_g = max(int(s["tmax"]) for s in sources)
+    umax_g = max(int(s["umax"]) for s in sources)
+    vmax_g = max(int(s["vmax"]) for s in sources)
+    P = np.empty((ns, 3), dtype=np.float64)
+    pexp = np.empty(ns, dtype=np.float64)
+    tmaxs = np.empty(ns, dtype=np.int64)
+    umaxs = np.empty(ns, dtype=np.int64)
+    vmaxs = np.empty(ns, dtype=np.int64)
+    H = np.zeros((ns, tmax_g + 1, umax_g + 1, vmax_g + 1), dtype=np.float64)
+    for i, s in enumerate(sources):
+        P[i] = s["P"]
+        pexp[i] = s["pexp"]
+        tmaxs[i] = s["tmax"]
+        umaxs[i] = s["umax"]
+        vmaxs[i] = s["vmax"]
+        H[i, : s["tmax"] + 1, : s["umax"] + 1, : s["vmax"] + 1] = s["H"]
+    return {
+        "P": P,
+        "pexp": pexp,
+        "tmaxs": tmaxs,
+        "umaxs": umaxs,
+        "vmaxs": vmaxs,
+        "H": H,
+    }
 
 
 def pack_basis_hartree(mol):
@@ -251,25 +352,30 @@ def density_to_hermite(dm, pack, dm_cutoff=1e-16, hermite_cutoff=1e-16):
     return sources
 
 
-def eval_vh_from_hermite(coords, sources, chunk_size=256):
-    """Evaluate V_H at ``coords`` (N, 3) from Hermite sources."""
+def eval_vh_from_hermite(coords, sources, chunk_size=256, packed=None):
+    """Evaluate V_H at ``coords`` (N, 3) from Hermite sources.
+
+    ``sources`` is a list of dicts from ``density_to_hermite``, or pass
+    ``packed`` from ``pack_hermite_sources`` to skip re-packing.
+    """
     coords = np.asarray(coords, dtype=np.float64).reshape(-1, 3)
     out = np.zeros(coords.shape[0], dtype=np.float64)
-    if not sources:
+    if packed is None:
+        if not sources:
+            return out
+        packed = pack_hermite_sources(sources)
+    if packed is None:
         return out
+    P = packed["P"]
+    pexp = packed["pexp"]
+    tmaxs = packed["tmaxs"]
+    umaxs = packed["umaxs"]
+    vmaxs = packed["vmaxs"]
+    H = packed["H"]
     for i0 in range(0, coords.shape[0], chunk_size):
         chunk = coords[i0 : i0 + chunk_size]
         acc = np.zeros(chunk.shape[0], dtype=np.float64)
-        for src in sources:
-            R = _R0_batch(
-                src["tmax"],
-                src["umax"],
-                src["vmax"],
-                src["pexp"],
-                src["P"],
-                chunk,
-            )
-            acc += np.einsum("tuv,ptuv->p", src["H"], R)
+        _eval_vh_packed(chunk, P, pexp, tmaxs, umaxs, vmaxs, H, acc)
         out[i0 : i0 + chunk_size] = acc
     return out
 
@@ -306,9 +412,27 @@ class HartreePotentialEvaluator:
         self.pack = pack_basis_hartree(mol)
         self.dm = np.asarray(dm, dtype=np.float64)
         self.sources = density_to_hermite(self.dm, self.pack)
+        self.packed = pack_hermite_sources(self.sources)
         self.chunk_size = chunk_size
+        # Warm Numba kernels once so the first walker batch is not penalized.
+        if self.packed is not None:
+            warm = np.zeros((1, 3), dtype=np.float64)
+            acc = np.zeros(1, dtype=np.float64)
+            _eval_vh_packed(
+                warm,
+                self.packed["P"][:1],
+                self.packed["pexp"][:1],
+                self.packed["tmaxs"][:1],
+                self.packed["umaxs"][:1],
+                self.packed["vmaxs"][:1],
+                self.packed["H"][:1],
+                acc,
+            )
 
     def __call__(self, coords):
         return eval_vh_from_hermite(
-            coords, self.sources, chunk_size=self.chunk_size
+            coords,
+            self.sources,
+            chunk_size=self.chunk_size,
+            packed=self.packed,
         )
