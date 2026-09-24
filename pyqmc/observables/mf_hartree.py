@@ -13,7 +13,7 @@ import math
 import numpy as np
 from numba import njit
 from pyscf.gto.mole import gto_norm
-from scipy.special import factorial2, gamma, gammainc
+from scipy.special import gamma, gammainc
 
 
 def _cart_angles(l: int):
@@ -25,30 +25,19 @@ def _cart_angles(l: int):
     return out
 
 
-def _raw_ovlp_component(a, b, lx, ly, lz):
-    """Same-center unnormalized Cartesian GTO overlap for one component."""
-    p = a + b
-
-    def one(k):
-        df = 1 if k == 0 else int(factorial2(2 * k - 1, exact=True))
-        return df / (2**k) * np.sqrt(np.pi) / p ** (k + 0.5)
-
-    return one(lx) * one(ly) * one(lz)
-
-
 def _normalize_contraction(l, exps, ctr):
-    """Primitive coeffs including ``gto_norm`` and contraction renormalization."""
+    """Primitive coeffs matching libcint / ``eval_gto`` radial scaling.
+
+    Start from PySCF ``gto_norm(l, exps) * ctr``. Libcint then multiplies s/p
+    by the real spherical-harmonic factor ``sqrt((2l+1)/(4π))``; for d/f/g
+    and higher that factor is already absorbed, so use bare ``gto_norm``.
+    """
     exps = np.asarray(exps, dtype=np.float64)
     ctr = np.asarray(ctr, dtype=np.float64)
-    ns = np.atleast_1d(np.asarray(gto_norm(l, exps), dtype=np.float64))
-    ang = _cart_angles(l)[0]
-    nprim = len(exps)
-    raw_S = np.empty((nprim, nprim), dtype=np.float64)
-    for i in range(nprim):
-        for j in range(nprim):
-            raw_S[i, j] = _raw_ovlp_component(exps[i], exps[j], *ang)
-    cs = ctr * ns
-    return cs / np.sqrt(cs @ raw_S @ cs)
+    c = ctr * np.atleast_1d(np.asarray(gto_norm(l, exps), dtype=np.float64))
+    if l < 2:
+        c = c * np.sqrt((2 * l + 1) / (4.0 * np.pi))
+    return c
 
 
 def boys_array(nmax: int, T: float | np.ndarray) -> np.ndarray:
