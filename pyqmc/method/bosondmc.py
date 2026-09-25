@@ -498,21 +498,43 @@ def branch(configs, weights, nconfig_out=None):
     )
 
 
-def snapshot_schedule(nblocks, n_snapshots, blockoffset=0):
-    """Equidistant block indices for population snapshots.
+def population_snapshots_count(hdf_file):
+    """Number of population snapshots already stored in ``hdf_file``."""
+    if hdf_file is None or not os.path.isfile(hdf_file):
+        return 0
+    with h5py.File(hdf_file, "r") as hdf:
+        if "population_snapshots" not in hdf:
+            return 0
+        return int(hdf["population_snapshots"].attrs.get("n_written", 0))
 
-    For ``nblocks=100``, ``n_snapshots=10`` returns ``{9, 19, ..., 99}``
-    (0-based; same as 10, 20, ..., 100 in 1-based counting).
+
+def snapshot_schedule(nblocks, n_snapshots, blockoffset=0, n_already=0):
+    """Equidistant block indices for the next population snapshots to write.
+
+    Fresh eq (``n_already=0``, ``blockoffset=0``): for ``nblocks=100``,
+    ``n_snapshots=10`` → ``{9, 19, ..., 99}`` (0-based).
+
+    Restart: if ``n_snapshots=10`` and ``n_already=2``, schedule ``10 - 2``
+    snapshots equidistant over ``[blockoffset, nblocks - 1]`` (remaining eq
+    blocks only, even if ``nblocks`` or ``blockoffset`` changed).
     """
     if n_snapshots is None:
         return set()
     n_snapshots = int(n_snapshots)
-    if n_snapshots <= 0 or nblocks <= blockoffset:
+    n_already = int(n_already)
+    if n_snapshots <= 0 or nblocks <= 0:
         return set()
-    first = max(int(blockoffset), int(nblocks) // n_snapshots - 1)
-    if first >= nblocks:
-        first = nblocks - 1
-    blocks = np.linspace(first, nblocks - 1, n_snapshots, dtype=int)
+    remaining = n_snapshots - n_already
+    if remaining <= 0 or nblocks <= blockoffset:
+        return set()
+    blockoffset = int(blockoffset)
+    if n_already == 0 and blockoffset == 0:
+        first = max(0, int(nblocks) // n_snapshots - 1)
+        if first >= nblocks:
+            first = nblocks - 1
+        blocks = np.linspace(first, nblocks - 1, remaining, dtype=int)
+    else:
+        blocks = np.linspace(blockoffset, nblocks - 1, remaining, dtype=int)
     return set(int(b) for b in np.unique(blocks))
 
 
@@ -540,7 +562,11 @@ def write_population_snapshot(
             g.attrs["n_written"] = 0
         else:
             g = hdf["population_snapshots"]
-        i = int(g.attrs["n_written"])
+        i = int(g.attrs.get("n_written", 0))
+        if i > 0:
+            existing = {int(g["block"][j]) for j in range(i)}
+            if int(block) in existing:
+                return
         if i >= n_slots:
             logging.warning(
                 "population_snapshots already has %s entries; skipping block %s",
@@ -777,8 +803,16 @@ def rundmc(
         if verbose:
             print("eref start", eref, "esigma", esigma)
 
+    n_already = (
+        population_snapshots_count(hdf_file)
+        if population_snapshots is not None
+        else 0
+    )
     snap_blocks = snapshot_schedule(
-        nblocks, population_snapshots, blockoffset=blockoffset
+        nblocks,
+        population_snapshots,
+        blockoffset=blockoffset,
+        n_already=n_already,
     )
     n_snap_slots = (
         int(population_snapshots) if population_snapshots is not None else 0

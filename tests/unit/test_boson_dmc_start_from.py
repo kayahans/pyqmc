@@ -16,6 +16,14 @@ def test_snapshot_schedule_equidistant():
     assert bosondmc.snapshot_schedule(100, 10) == set(range(9, 100, 10))
     assert bosondmc.snapshot_schedule(4, 2) == {1, 3}
     assert bosondmc.snapshot_schedule(10, None) == set()
+    # Restart: 2 saved, 8 remaining over blocks 50..99
+    restart = bosondmc.snapshot_schedule(
+        100, 10, blockoffset=50, n_already=2
+    )
+    assert len(restart) == 8
+    assert min(restart) >= 50
+    assert max(restart) == 99
+    assert bosondmc.snapshot_schedule(100, 10, n_already=10) == set()
 
 
 def test_branch_nconfig_out():
