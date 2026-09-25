@@ -15,6 +15,22 @@ AO density matrix).
 
 Vxc is *not* density-fitted here; callers should keep using AO → ρ → libxc
 (``numba`` / ``pyscf``) for the exchange–correlation piece.
+
+Accuracy vs exact ``int1e_grids`` (empirical, ccECP + ccecp-cc-pvdz)
+--------------------------------------------------------------------
+RI never matches pyscf to machine precision; the residual is the DF fit error.
+
+* **Largest absolute errors** are typically **near nuclei** (r ≲ 0.3 Bohr),
+  where |V_H| is also largest. Relative errors there are often still ~1e-5–1e-4.
+* **Far field** (r ≳ 2 Bohr) is usually quieter in absolute Ha.
+* **Open d-shell / TM** (Fe, Sc) show the biggest residuals with the default
+  aux (~1e-3–1e-2 Ha near the nucleus with ``make_auxbasis``).
+* **Aux basis choice matters and is system-dependent**:
+  ``make_auxbasis`` is a good default for light atoms; ``autoaux`` often
+  tightens light atoms and Fe; ``def2-universal-jkfit`` can help bare Sc/Fe
+  but can *worsen* He/Ne/ScH. Always check vs pyscf for the target molecule.
+* For ABVMC, the relevant figure is often **summed |ΔV_H| over electrons per
+  walker** (≈1e-5 He, ≈1e-4 Ne, ≈1e-3 Fe with default aux on typical samples).
 """
 
 from __future__ import annotations
@@ -23,12 +39,36 @@ import numpy as np
 from pyscf import df, gto
 from pyscf.gto.mole import fakemol_for_charges
 
+# String aliases accepted by ``resolve_auxbasis`` / config ``mf_ri_auxbasis``.
+AUXBASIS_ALIASES = ("make_auxbasis", "autoaux", "autoabs", "aug_etb")
+
 
 def _as_total_dm(dm):
     dm = np.asarray(dm, dtype=np.float64)
     if dm.ndim == 3:
         return dm[0] + dm[1]
     return dm
+
+
+def resolve_auxbasis(mol, auxbasis=None):
+    """Resolve ``auxbasis`` for DF fitting.
+
+    ``None`` / ``\"make_auxbasis\"`` → ``pyscf.df.make_auxbasis(mol)``.
+    ``\"autoaux\"`` / ``\"autoabs\"`` / ``\"aug_etb\"`` → matching PySCF generators.
+    Any other value is passed through to ``df.make_auxmol`` (named basis string
+    or basis dict).
+    """
+    if auxbasis is None or auxbasis == "make_auxbasis":
+        return df.addons.make_auxbasis(mol)
+    if isinstance(auxbasis, str):
+        key = auxbasis.strip().lower().replace("-", "_")
+        if key == "autoaux":
+            return df.autoaux(mol)
+        if key == "autoabs":
+            return df.autoabs(mol)
+        if key in ("aug_etb", "augetb"):
+            return df.aug_etb(mol)
+    return auxbasis
 
 
 def _invert_j2c(j2c, thresh=1e-10):
@@ -41,11 +81,10 @@ def _invert_j2c(j2c, thresh=1e-10):
 def fit_ri_coefficients(mol, dm, auxbasis=None, j2c_thresh=1e-10):
     """Return ``(auxmol, c_aux)`` for ρ ≈ Σ_P c_P ξ_P.
 
-    ``auxbasis=None`` uses ``pyscf.df.addons.make_auxbasis(mol)``.
+    See ``resolve_auxbasis`` for accepted ``auxbasis`` values.
     """
     dm_total = _as_total_dm(dm)
-    if auxbasis is None:
-        auxbasis = df.addons.make_auxbasis(mol)
+    auxbasis = resolve_auxbasis(mol, auxbasis)
     auxmol = df.addons.make_auxmol(mol, auxbasis)
     eri3c = df.incore.aux_e2(mol, auxmol, intor="int3c2e", aosym="s1")
     j2c = auxmol.intor("int2c2e", hermi=1)
@@ -77,7 +116,7 @@ class RIHartreePotentialEvaluator:
         dm,
         auxbasis=None,
         chunk_size=256,
-        j2c_thresh=1e-12,
+        j2c_thresh=1e-10,
     ):
         self.mol = mol
         self.dm_total = _as_total_dm(dm)

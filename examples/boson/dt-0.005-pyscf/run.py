@@ -380,10 +380,20 @@ if __name__ == "__main__":
         "det_emax": det_emax,
         "evaluate_mf_with": evaluate_mf_with,
     }
+    n_eq = dmc_equilibrium["nconfig"]
+    n_stat = dmc_statistics["nconfig"]
+    if n_stat % n_eq != 0:
+        raise ValueError(
+            f"dmc_stat_nconfig ({n_stat}) must be a multiple of eq nconfig ({n_eq}) "
+            "for population_snapshots assembly"
+        )
+    abdmc_params_eq["population_snapshots"] = n_stat // n_eq
 
     abdmc_params = copy.deepcopy(abdmc_params_eq)
+    abdmc_params.pop("population_snapshots", None)
+    abdmc_params.pop("vmc_options", None)
     abdmc_params["accumulators"] = ["abc_dmc_excitations"]
-    abdmc_params["vmc_options"]["hdf_file"] = abvmc_eq_checkfile
+    abdmc_params["start_from"] = abvmc_eq_checkfile
     abdmc_params["nconfig"] = dmc_statistics["nconfig"]
     abdmc_params["nblocks"] = dmc_statistics["nblocks"]
     abdmc_params["tstep"] = dmc_statistics["tstep"]
