@@ -223,7 +223,14 @@ def ABDMC(
         slater_kws (list | None, optional): _description_. Defaults to None.
         accumulators (list | None, optional): List of accumulators. Defaults to None.
         evaluate_mf_with (str, optional): MF AO/ρ backend ("numba" or "pyscf"). Defaults to "numba".
-    """    
+
+    Extra ``**dmc_kws`` are forwarded to ``bosondmc.rundmc``, including:
+
+    * ``population_snapshots``: save K equidistant post-branch populations during
+      equilibrium for a later stats run.
+    * ``start_from``: assemble walkers from an eq HDF5 ``population_snapshots``
+      group, reset block indexing to 0, and skip VMC warmup.
+    """
     dmc_kws["hdf_file"] = output
     print("Running ABDMC")
     wf, configs, acc = initialize_boson_qmc_objects(

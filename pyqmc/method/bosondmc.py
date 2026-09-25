@@ -455,39 +455,144 @@ def dmc_propagate_parallel(wf, configs, weights, client, npartitions, *args, **k
     return block_avg, configs, weights
 
 
-def branch(configs, weights):
+def branch(configs, weights, nconfig_out=None):
     """
     Perform branching on a set of walkers using the 'stochastic comb'
 
-    Walkers are resampled with probability proportional to the weights, and the new weights are all set to be equal to the average weight.
+    Walkers are resampled with probability proportional to the weights, and the
+    new weights are all set to be equal to the average weight.
 
     :parameter configs: (nconfig,nelec,3) walker coordinates
     :parameter weights: (nconfig,) walker weights
+    :parameter nconfig_out: optional output population size (default: same as input)
     :returns: resampled walker configurations and weights all equal to average weight
     """
-
-    nconfig = configs.configs.shape[0]
+    weights = np.asarray(weights, dtype=np.float64).ravel()
+    nconfig_in = configs.configs.shape[0]
+    if nconfig_out is None:
+        nconfig_out = nconfig_in
+    nconfig_out = int(nconfig_out)
     if np.any(weights > 2.0):
         logging.warning("Some weights are larger than 2")
     probability = np.cumsum(weights)
-    wtot = probability[-1]
+    wtot = float(probability[-1])
+    if wtot <= 0:
+        raise ValueError("branch: total weight must be positive")
 
     base = np.random.rand() * wtot
     newinds = np.searchsorted(
-        probability, (base + np.linspace(0, wtot, nconfig, endpoint=False)) % wtot
+        probability,
+        (base + np.linspace(0, wtot, nconfig_out, endpoint=False)) % wtot,
     )
     unique, counts = np.unique(newinds, return_counts=True)
 
     configs.resample(newinds)
-    weights.fill(wtot / nconfig)
+    weights = np.full(nconfig_out, wtot / nconfig_out, dtype=np.float64)
     return (
         configs,
         weights,
         {
             "max branches": np.max(counts),
-            "Number of walkers killed": nconfig - unique.shape[0],
+            "Number of walkers killed": nconfig_in - unique.shape[0],
         },
     )
+
+
+def snapshot_schedule(nblocks, n_snapshots, blockoffset=0):
+    """Equidistant block indices for population snapshots.
+
+    For ``nblocks=100``, ``n_snapshots=10`` returns ``{9, 19, ..., 99}``
+    (0-based; same as 10, 20, ..., 100 in 1-based counting).
+    """
+    if n_snapshots is None:
+        return set()
+    n_snapshots = int(n_snapshots)
+    if n_snapshots <= 0 or nblocks <= blockoffset:
+        return set()
+    first = max(int(blockoffset), int(nblocks) // n_snapshots - 1)
+    if first >= nblocks:
+        first = nblocks - 1
+    blocks = np.linspace(first, nblocks - 1, n_snapshots, dtype=int)
+    return set(int(b) for b in np.unique(blocks))
+
+
+def write_population_snapshot(
+    hdf_file, n_slots, block, configs, weights, e_trial, e_est, esigma
+):
+    """Append one post-branch population into ``population_snapshots/``."""
+    if hdf_file is None:
+        return
+    weights = np.asarray(weights, dtype=np.float64).ravel()
+    with h5py.File(hdf_file, "a") as hdf:
+        if "population_snapshots" not in hdf:
+            g = hdf.create_group("population_snapshots")
+            nwalk, nelec, _ = configs.configs.shape
+            g.create_dataset("block", shape=(n_slots,), dtype=np.int64, fillvalue=-1)
+            g.create_dataset(
+                "configs",
+                shape=(n_slots, nwalk, nelec, 3),
+                dtype=configs.configs.dtype,
+            )
+            g.create_dataset("weights", shape=(n_slots, nwalk), dtype=np.float64)
+            g.create_dataset("e_trial", shape=(n_slots,), dtype=np.float64)
+            g.create_dataset("e_est", shape=(n_slots,), dtype=np.float64)
+            g.create_dataset("esigma", shape=(n_slots,), dtype=np.float64)
+            g.attrs["n_written"] = 0
+        else:
+            g = hdf["population_snapshots"]
+        i = int(g.attrs["n_written"])
+        if i >= n_slots:
+            logging.warning(
+                "population_snapshots already has %s entries; skipping block %s",
+                n_slots,
+                block,
+            )
+            return
+        g["block"][i] = int(block)
+        g["configs"][i] = configs.configs
+        g["weights"][i] = weights
+        g["e_trial"][i] = float(e_trial)
+        g["e_est"][i] = float(e_est)
+        g["esigma"][i] = float(esigma)
+        g.attrs["n_written"] = i + 1
+
+
+def assemble_population_from_snapshots(hdf_path, configs, nconfig_out=None):
+    """Concat equidistant eq snapshots, equalize time-slice weight, comb to size.
+
+    Returns ``(configs, weights, e_trial, e_est, esigma)``.
+    """
+    with h5py.File(hdf_path, "r") as hdf:
+        if "population_snapshots" not in hdf:
+            raise ValueError(
+                f"start_from={hdf_path!r} has no population_snapshots group; "
+                "re-run equilibrium with population_snapshots=K"
+            )
+        g = hdf["population_snapshots"]
+        n_written = int(g.attrs.get("n_written", g["block"].shape[0]))
+        if n_written <= 0:
+            raise ValueError(f"population_snapshots in {hdf_path!r} is empty")
+        snap_configs = np.asarray(g["configs"][:n_written])
+        snap_weights = np.asarray(g["weights"][:n_written], dtype=np.float64)
+        e_trial = float(g["e_trial"][n_written - 1])
+        e_est = float(g["e_est"][n_written - 1])
+        esigma = float(g["esigma"][n_written - 1])
+
+    k, n_eq = snap_weights.shape
+    w_parts = []
+    for s in range(k):
+        ws = snap_weights[s].copy()
+        ssum = float(np.sum(ws))
+        if ssum <= 0:
+            raise ValueError(f"snapshot {s} has non-positive total weight")
+        ws *= (1.0 / k) / ssum
+        w_parts.append(ws)
+    weights = np.concatenate(w_parts)
+    configs.configs = snap_configs.reshape(k * n_eq, *snap_configs.shape[2:]).copy()
+    if nconfig_out is None:
+        nconfig_out = k * n_eq
+    configs, weights, _info = branch(configs, weights, nconfig_out=nconfig_out)
+    return configs, weights, e_trial, e_est, esigma
 
 
 def dmc_file(hdf_file, data, attr, configs, weights):
@@ -536,6 +641,8 @@ def rundmc(
     verbose=False,
     hdf_file=None,
     continue_from=None,
+    start_from=None,
+    population_snapshots=None,
     client=None,
     npartitions=None,
     ekey=("energy", "total"),
@@ -556,17 +663,18 @@ def rundmc(
     :type configs: PyQMC configs object
     :parameter weights: (nconfig,) - initial weights to start calculation, defaults to uniform.
     :parameter float tstep: Time step for move proposals. Introduces time step error.
-    :parameter int nblocks: number of DMC blocks to run; branching is performed at the end of each block. If a calculation is continued (either from continue_from or from using the same hdf_file as a previous call), nblocks includes the blocks from previous calls; i.e., nblocks is the total number of blocks run over all the calls to rundmc.
+    :parameter int nblocks: number of DMC blocks to run; branching is performed at the end of each block. If a calculation is continued (either from continue_from or from using the same hdf_file as a previous call), nblocks includes the blocks from previous calls; i.e., nblocks is the total number of blocks run over all the calls to rundmc. For ``start_from``, ``nblocks`` is the number of blocks in this run only (indexing starts at 0).
     :parameter int nsteps_per_block: number of steps to take between branching; branching is performed at the end of each block
     :parameter int blockoffset: If continuing a run, what to start the block numbering at. The calculation will stop when the block number reaches nblocks.
     :parameter accumulators: A dictionary of functor objects that take in (coords,wf) and return a dictionary of quantities to be averaged. np.mean(quantity,axis=0) should give the average over configurations. If none, a default energy accumulator will be used.
     :parameter boolean verbose: Print out step information
-    :parameter str hdf_file: Hdf_file to store vmc output.
-    :parameter str continue_from: Hdf_file to continue vmc calculation from.
+    :parameter str hdf_file: Hdf_file to store dmc output.
+    :parameter str continue_from: Hdf_file to continue dmc calculation from (same-run restart; block indexing continues).
+    :parameter str start_from: Equilibrium DMC HDF5 with ``population_snapshots``; assemble walkers, reset block index to 0, skip VMC. Mutually exclusive with ``continue_from``.
+    :parameter int population_snapshots: If set, save this many equidistant post-branch populations into ``population_snapshots/`` for a later ``start_from`` stats run.
     :parameter client: an object with submit() functions that return futures
     :parameter int npartitions: the number of workers to submit at a time
     :parameter ekey: tuple of strings; energy is needed for DMC weights. Access total energy by accumulators[ekey[0]](configs, wf)[ekey[1]
-    :parameter int vmc_warmup: If starting a run, how many VMC warmup blocks to run
     :parameter int branchcut_start: Used in computing weights. Recommended for "experts only".
     :parameter float feedback: Feedback strength for controlling normalization. Recommended for "experts only".
     :returns: (df,coords,weights)
@@ -588,19 +696,42 @@ def rundmc(
         logging.warning("rundmc kwarg `stepoffset` is deprecated. Use `blockoffset` and `nsteps_per_block` instead. Overriding blockoffset if given.")
         blockoffset = stepoffset // nsteps_per_block
 
+    if start_from is not None and continue_from is not None:
+        raise ValueError("start_from and continue_from are mutually exclusive")
+
     # Don't continue onto a file that's already there.
-    if continue_from is not None and hdf_file is not None and os.path.isfile(hdf_file):
+    if (
+        (continue_from is not None or start_from is not None)
+        and hdf_file is not None
+        and os.path.isfile(hdf_file)
+    ):
         raise RuntimeError(
-            f"continue_from is set but hdf_file={hdf_file} already exists! Delete or rename {hdf_file} and try again."
+            f"continue_from/start_from is set but hdf_file={hdf_file} already exists! "
+            f"Delete or rename {hdf_file} and try again."
         )
 
-    # Restart if hdf_file is there
-    if continue_from is None and hdf_file is not None and os.path.isfile(hdf_file):
+    # Restart if hdf_file is there (not used with start_from)
+    if (
+        continue_from is None
+        and start_from is None
+        and hdf_file is not None
+        and os.path.isfile(hdf_file)
+    ):
         continue_from = hdf_file
 
-    # Now we should be sure that there is a file
-    # to continue from, if given.
-    if continue_from is not None:
+    if start_from is not None:
+        nconfig_out = configs.configs.shape[0]
+        configs, weights, e_trial, e_est, esigma = assemble_population_from_snapshots(
+            start_from, configs, nconfig_out=nconfig_out
+        )
+        blockoffset = 0
+        if verbose:
+            print(
+                f"Starting from population_snapshots in {start_from} "
+                f"({configs.configs.shape[0]} walkers); block indexing resets to 0"
+            )
+        wf.recompute(configs)
+    elif continue_from is not None:
         with h5py.File(continue_from, "r") as hdf:
             if "block" not in hdf.keys() and "step" in hdf.keys() :
                 logging.warning("Warning: found deprecated key `step` in the restart file. In future versions, `block` key will be expected. All data from this run will be indexed by the key `block`.")
@@ -645,6 +776,13 @@ def rundmc(
         esigma = np.std(en)
         if verbose:
             print("eref start", eref, "esigma", esigma)
+
+    snap_blocks = snapshot_schedule(
+        nblocks, population_snapshots, blockoffset=blockoffset
+    )
+    n_snap_slots = (
+        int(population_snapshots) if population_snapshots is not None else 0
+    )
     nconfig = configs.configs.shape[0]
     if weights is None:
         weights = np.ones(nconfig)
@@ -705,6 +843,20 @@ def rundmc(
             _bacc_mod().bdmc_profile_add_hdf(time.perf_counter() - t_h0)
         else:
             dmc_file(hdf_file, df_, {}, configs, weights)
+
+        if block in snap_blocks:
+            write_population_snapshot(
+                hdf_file,
+                n_snap_slots,
+                block,
+                configs,
+                weights,
+                e_trial,
+                e_est,
+                esigma,
+            )
+            if verbose:
+                print(f"Saved population snapshot at block {block}")
 
         e_est = estimate_energy(hdf_file, df, ekey)
         e_trial = e_est - feedback * np.log(np.mean(weights)).real
