@@ -890,7 +890,13 @@ def rundmc(
                 esigma,
             )
             if verbose:
-                print(f"Saved population snapshot at block {block}")
+                n_filled = block + 1
+                n_remaining = n_snap_slots - n_filled
+                print(
+                    f"Saved population snapshot at block {block} "
+                    f"({n_filled} filled, {n_remaining} remaining out of {n_snap_slots})"
+                )
+           
 
         e_est = estimate_energy(hdf_file, df, ekey)
         e_trial = e_est - feedback * np.log(np.mean(weights)).real
