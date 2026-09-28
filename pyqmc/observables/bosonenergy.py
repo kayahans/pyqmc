@@ -424,11 +424,63 @@ def dft_energy(mf_inputs, configs):
     return v_mf, ecorr, saved_results
 
 
+# Filled by ABCDMC (same electron loop already has ∇log Φ_B and jastrow grads)
+# and consumed by boson_kinetic so stats DMC does not recompute them.
+_BOSON_KINETIC_CACHE_ATTR = "_pyqmc_boson_kinetic_cache"
+
+
+def set_boson_kinetic_cache(wf, lap_j, drift_b, grad2, configs=None):
+    """Stash kinetic pieces on ``wf`` for the next ``boson_kinetic`` call."""
+    configs_id = id(configs.configs) if configs is not None else None
+    setattr(
+        wf,
+        _BOSON_KINETIC_CACHE_ATTR,
+        (configs_id, lap_j, drift_b, grad2),
+    )
+
+
+def take_boson_kinetic_cache(wf, configs=None):
+    """Pop kinetic cache from ``wf`` if present and configs match; else ``None``."""
+    cache = getattr(wf, _BOSON_KINETIC_CACHE_ATTR, None)
+    if cache is None:
+        return None
+    configs_id, lap_j, drift_b, grad2 = cache
+    if (
+        configs is not None
+        and configs_id is not None
+        and configs_id != id(configs.configs)
+    ):
+        delattr(wf, _BOSON_KINETIC_CACHE_ATTR)
+        return None
+    delattr(wf, _BOSON_KINETIC_CACHE_ATTR)
+    return lap_j, drift_b, grad2
+
+
+def clear_boson_kinetic_cache(wf):
+    if getattr(wf, _BOSON_KINETIC_CACHE_ATTR, None) is not None:
+        delattr(wf, _BOSON_KINETIC_CACHE_ATTR)
+
+
+def accumulate_boson_kinetic_electron(lap_j, drift_b, grad2, grad_je, lap_je, grad_b):
+    """Add one-electron kinetic contributions (shared by ``boson_kinetic`` / ABCDMC)."""
+    lap_j += -0.5 * (lap_je.real + np.sum(grad_je.real**2, axis=0))
+    drift_b -= np.einsum("di,di->i", grad_je, grad_b)
+    grad = grad_je + grad_b
+    grad2 += np.sum(np.abs(grad) ** 2, axis=0)
+
+
 def boson_kinetic(configs, wf):
     """
     Returns the jastrow laplacian (lap_j) and the bosonic drift (drift_b) terms
     in Eq. 21 in doi: 10.1063/5.0155513.
+
+    If ABCDMC has just run and called ``set_boson_kinetic_cache``, those values
+    are returned and the cache is cleared (avoids a second AO / jastrow pass).
     """
+    cached = take_boson_kinetic_cache(wf, configs)
+    if cached is not None:
+        return cached
+
     nconf, nelec, _ = configs.configs.shape
 
     has_jastrow = True
@@ -454,10 +506,10 @@ def boson_kinetic(configs, wf):
     grad2 = np.zeros(nconf)
     if has_jastrow:
         for e in range(nelec):
-            grad_je, lap_je = jastrow_wf.gradient_laplacian(e, configs.electron(e))
-            lap_j += -0.5 * (lap_je.real + np.sum(grad_je.real**2, axis=0))
-            grad_b = boson_wf.gradient(e, configs.electron(e))
-            drift_b -= np.einsum("di,di->i", grad_je, grad_b)
-            grad = np.sum([grad_je, grad_b], axis=0)
-            grad2 += np.sum(np.abs(grad) ** 2, axis=0)
+            epos = configs.electron(e)
+            grad_je, lap_je = jastrow_wf.gradient_laplacian(e, epos)
+            grad_b = boson_wf.gradient(e, epos)
+            accumulate_boson_kinetic_electron(
+                lap_j, drift_b, grad2, grad_je, lap_je, grad_b
+            )
     return lap_j, drift_b, grad2

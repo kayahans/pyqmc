@@ -947,6 +947,11 @@ class ABCDMCMatrixAccumulator:
         
         delta = self._delta
         delta.fill(0.0)
+        # Kinetic terms (Eq. 21) use the same ∇log Φ_B and jastrow grads; stash for
+        # boson_kinetic when dmc_propagate runs ABCDMC before the energy accumulator.
+        lap_j = np.zeros(self.nconf)
+        drift_b = np.zeros(self.nconf)
+        grad2 = np.zeros(self.nconf)
         for e in range(self.nelec):
             # Get position of electron e
             epos_s = configs.electron(e)
@@ -970,9 +975,13 @@ class ABCDMCMatrixAccumulator:
                 te = self._prof_add("elec_lap_b", te)
             if do:
                 te = time.perf_counter()
-            grad_j = jastrow_wf.gradient(e, epos_s)
+            # gradient_laplacian: need lap for kinetic reuse; grad alone for delta
+            grad_j, lap_je = jastrow_wf.gradient_laplacian(e, epos_s)
             if do:
                 te = self._prof_add("elec_jastrow", te)
+            bosonenergy.accumulate_boson_kinetic_electron(
+                lap_j, drift_b, grad2, grad_j, lap_je, loggrad_b
+            )
 
             if do:
                 te = time.perf_counter()
@@ -1001,6 +1010,8 @@ class ABCDMCMatrixAccumulator:
                 delta += self._buf_delta
             if do:
                 self._prof_add("delta_numba" if (NUMBA_AVAILABLE and symm_mask is not None) else "delta_einsum", te)
+
+        bosonenergy.set_boson_kinetic_cache(wf, lap_j, drift_b, grad2, configs=configs)
             
         results = {'delta': delta,
                    'ovlp': ovlp_ij}

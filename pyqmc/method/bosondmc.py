@@ -311,6 +311,30 @@ def dmc_propagate(
         v2old = v2.copy()
         if b is not None:
             t_inner = _bacc_mod().bdmc_prop_inner_mark("state_copy_eloc_v2", t_inner)
+
+        # When ABCDMC is present, run it first so it can stash kinetic intermediates
+        # (∇log Φ_B + jastrow grad/lap) for boson_kinetic inside the energy accumulator.
+        abcdmc_key = None
+        abcdmc_dat = None
+        try:
+            _bk = _bacc_mod()
+            abcdmc_key = (
+                _bk.ABCDMC_ACC_KEY if _bk.ABCDMC_ACC_KEY in accumulators else None
+            )
+        except Exception:
+            abcdmc_key = None
+        if abcdmc_key is not None:
+            from pyqmc.observables import bosonenergy as _ben
+
+            _ben.clear_boson_kinetic_cache(wf)
+            if b is not None:
+                t0a = time.perf_counter()
+            abcdmc_dat = accumulators[abcdmc_key](configs, wf)
+            if b is not None:
+                t_abcdmc = time.perf_counter() - t0a
+                b.bdmc_profile_add_abcdmc(t_abcdmc)
+                t_inner = time.perf_counter()
+
         energydat = accumulators[ekey[0]](configs, wf)
         if b is not None:
             t_inner = _bacc_mod().bdmc_prop_inner_mark("energy_accumulator", t_inner)
@@ -342,11 +366,8 @@ def dmc_propagate(
         for k, accumulator in accumulators.items():
             if k == ekey[0]:
                 dat = energydat
-            elif b is not None and k == b.ABCDMC_ACC_KEY:
-                t0a = time.perf_counter()
-                dat = accumulator(configs, wf)
-                t_abcdmc = time.perf_counter() - t0a
-                b.bdmc_profile_add_abcdmc(t_abcdmc)
+            elif abcdmc_key is not None and k == abcdmc_key:
+                dat = abcdmc_dat
             else:
                 dat = accumulator(configs, wf)
             for m, res in dat.items():
@@ -356,7 +377,7 @@ def dmc_propagate(
         if b is not None:
             _bacc_mod().bdmc_prop_inner_add(
                 "accumulators_avg_loop_excl_ABCDMC",
-                time.perf_counter() - t_accum_loop - t_abcdmc,
+                time.perf_counter() - t_accum_loop,
             )
         avg["weight"] = wavg
         avg["acceptance"] = np.mean(prob_acceptance)
