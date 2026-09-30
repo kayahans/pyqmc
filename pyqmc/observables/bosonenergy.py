@@ -14,10 +14,30 @@ DFT grid + scattered interpolation; see ``mf_grid_interp``), or ``"ri"``
 (density-fitted Hartree via ``mf_ri_hartree``; Vxc still AO → ρ → libxc).
 """
 
+import time
+
 import numpy as np
 from pyscf.dft import libxc, numint
 
+from pyqmc.method import boson_profile_config as _bprof
 from pyqmc.observables import mf_hartree
+
+# Nested timers under dft_energy (printed by bosonaccumulators profile report).
+_dft_prof_secs = {}
+
+
+def dft_prof_add(key, dt):
+    if not _bprof.is_enabled() or dt <= 0.0:
+        return
+    _dft_prof_secs[key] = _dft_prof_secs.get(key, 0.0) + dt
+
+
+def dft_prof_clear():
+    _dft_prof_secs.clear()
+
+
+def dft_prof_snapshot():
+    return dict(_dft_prof_secs)
 
 SUPPORTED_XC = ("LDA,VWN", "PBE,PBE", "HF")
 SUPPORTED_EVALUATE_MF = ("pyscf", "numba", "grid", "ri")
@@ -267,11 +287,19 @@ def eval_vrho(
         return grid_mf_evaluator.eval_vxc_points(coords)
 
     xctype, deriv = XC_KIND[xc]
+    do_prof = _bprof.is_enabled()
+    t0 = time.perf_counter() if do_prof else None
 
     if evaluate_mf_with == "pyscf":
         ao = numint.eval_ao(mol, coords, deriv=deriv)
+        if do_prof:
+            dft_prof_add("vxc_eval_ao", time.perf_counter() - t0)
+            t0 = time.perf_counter()
         rho_up = numint.eval_rho(mol, ao, dm[0], xctype=xctype)
         rho_dn = numint.eval_rho(mol, ao, dm[1], xctype=xctype)
+        if do_prof:
+            dft_prof_add("vxc_eval_rho", time.perf_counter() - t0)
+            t0 = time.perf_counter()
     else:
         # numba and ri share the packed AO → ρ path for Vxc
         ao = eval_ao(
@@ -281,12 +309,20 @@ def eval_vrho(
             evaluate_mf_with="numba",
             ao_evaluator=ao_evaluator,
         )
+        if do_prof:
+            dft_prof_add("vxc_eval_ao", time.perf_counter() - t0)
+            t0 = time.perf_counter()
         rho_up = eval_rho_from_ao(ao, dm[0], xctype=xctype)
         rho_dn = eval_rho_from_ao(ao, dm[1], xctype=xctype)
+        if do_prof:
+            dft_prof_add("vxc_eval_rho", time.perf_counter() - t0)
+            t0 = time.perf_counter()
 
     vrho = np.asarray(libxc.eval_xc(xc, (rho_up, rho_dn), spin=spin)[1][0])
     if vrho.ndim == 1:
         vrho = np.stack([vrho, vrho], axis=1)
+    if do_prof:
+        dft_prof_add("vxc_libxc", time.perf_counter() - t0)
     return vrho
 
 
@@ -314,10 +350,15 @@ def get_vxc(configs, mol, dm, nelec, xc, evaluate_mf_with=None, ao_evaluator=Non
         ao_evaluator=ao_evaluator,
         mf_inputs=mf_inputs,
     )
+    do_prof = _bprof.is_enabled()
+    t0 = time.perf_counter() if do_prof else None
     vrho = vrho.reshape(nconf, nelec_cfg, 2)
 
     spin_idx = np.array([int(e >= nup) for e in range(nelec_cfg)])
-    return np.sum([vrho[:, i, spin_idx[i]] for i in range(nelec_cfg)], axis=0)
+    out = np.sum([vrho[:, i, spin_idx[i]] for i in range(nelec_cfg)], axis=0)
+    if do_prof:
+        dft_prof_add("vxc_sum", time.perf_counter() - t0)
+    return out
 
 
 def get_vj(
@@ -378,8 +419,10 @@ def dft_energy(mf_inputs, configs):
     mol = mf_inputs["mol"]
     dm = mf_inputs["dm"]
     evaluate_mf_with, ao_evaluator, vj_evaluator, _ = _mf_backend(mf_inputs)
+    do_prof = _bprof.is_enabled()
 
     if xc != "HF":
+        t0 = time.perf_counter() if do_prof else None
         vj = get_vj(
             configs,
             mol,
@@ -388,6 +431,9 @@ def dft_energy(mf_inputs, configs):
             vj_evaluator=vj_evaluator,
             mf_inputs=mf_inputs,
         )
+        if do_prof:
+            dft_prof_add("dft_vj", time.perf_counter() - t0)
+            t0 = time.perf_counter()
         vxc = get_vxc(
             configs,
             mol,
@@ -398,10 +444,13 @@ def dft_energy(mf_inputs, configs):
             ao_evaluator=ao_evaluator,
             mf_inputs=mf_inputs,
         )
+        if do_prof:
+            dft_prof_add("dft_vxc", time.perf_counter() - t0)
         ecorr = np.sum(mo_energy * mo_occ)
         v_mf = vj + vxc
         saved_results = {"vj": vj, "vxc": vxc}
     else:
+        t0 = time.perf_counter() if do_prof else None
         v_mf = np.zeros(nconf)
         ecorr = np.sum(mo_energy * mo_occ)
         V_eff_ao = mf_inputs["veff"]
@@ -419,6 +468,8 @@ def dft_energy(mf_inputs, configs):
                 ao_evaluator=ao_evaluator,
             )
             v_mf = np.einsum("gp, pq, gq -> g", ao_value, V_eff_ao[s], ao_value)
+        if do_prof:
+            dft_prof_add("dft_hf_veff", time.perf_counter() - t0)
         saved_results = {}
 
     return v_mf, ecorr, saved_results

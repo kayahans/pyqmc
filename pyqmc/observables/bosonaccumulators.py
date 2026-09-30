@@ -192,6 +192,45 @@ def bdmc_profile_format_report(accumulators):
                 lines.append(
                     f"    {k:22s} {esecs[k]:8.4f}s  {p:5.1f}%  {_profile_bar(p)}"
                 )
+    dft_secs = bosonenergy.dft_prof_snapshot()
+    if dft_secs:
+        top_keys = ("dft_vj", "dft_vxc", "dft_hf_veff")
+        top = {k: dft_secs[k] for k in top_keys if k in dft_secs}
+        vxc_keys = ("vxc_eval_ao", "vxc_eval_rho", "vxc_libxc", "vxc_sum")
+        vxc_sub = {k: dft_secs[k] for k in vxc_keys if k in dft_secs}
+        other = {
+            k: v
+            for k, v in dft_secs.items()
+            if k not in top and k not in vxc_sub
+        }
+        top_sum = sum(top.values()) + sum(other.values())
+        if top_sum > 0:
+            lines.append(
+                "  inside dft_energy (percents vs sum of dft_vj/dft_vxc[/dft_hf]):"
+            )
+            display_top = dict(top)
+            display_top.update(other)
+            for k in sorted(display_top, key=lambda x: -display_top[x]):
+                p = 100.0 * display_top[k] / top_sum
+                lines.append(
+                    f"    {k:22s} {display_top[k]:8.4f}s  {p:5.1f}%  {_profile_bar(p)}"
+                )
+        vxc_parent = dft_secs.get("dft_vxc", 0.0)
+        vxc_inner = sum(vxc_sub.values())
+        if vxc_inner > 0 and vxc_parent > 0:
+            lines.append(
+                "  inside dft_vxc (percents vs dft_vxc; "
+                "sums to ~100% if fully covered):"
+            )
+            display_vxc = dict(vxc_sub)
+            unacc = vxc_parent - vxc_inner
+            if unacc > 1e-9:
+                display_vxc["_unaccounted"] = unacc
+            for k in sorted(display_vxc, key=lambda x: -display_vxc[x]):
+                p = 100.0 * display_vxc[k] / vxc_parent
+                lines.append(
+                    f"    {k:22s} {display_vxc[k]:8.4f}s  {p:5.1f}%  {_profile_bar(p)}"
+                )
     acc = accumulators.get(ABCDMC_ACC_KEY) if accumulators else None
     if acc is not None and hasattr(acc, "_prof_secs"):
         secs = acc._prof_secs
@@ -226,6 +265,7 @@ def bdmc_profile_end_step(accumulators):
     en_acc = accumulators.get(ABQMC_ENERGY_ACC_KEY) if accumulators else None
     if en_acc is not None and hasattr(en_acc, "_prof_secs"):
         en_acc._prof_secs.clear()
+    bosonenergy.dft_prof_clear()
 
 
 try:
