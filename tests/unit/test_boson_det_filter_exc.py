@@ -87,3 +87,27 @@ def test_count_excitations_many_dets_matches_ref():
         [_count_excitations_ref(o, ground, deg) for o in occ], dtype=np.int64
     )
     assert np.array_equal(got, ref)
+
+
+def test_filter_determinants_string_path_matches_large_ci():
+    """String-table occupations must match large_ci + binary_to_occ (tol=-1)."""
+    from pyscf import gto, scf, mcscf, fci
+    from pyqmc.wf.determinant_tools import binary_to_occ
+    from pyqmc.wf.bosonslater import filter_determinants_from_ci
+
+    mol = gto.M(atom="Li 0 0 0; H 0 0 1.6", basis="sto-3g", verbose=0)
+    mf = scf.RHF(mol).run()
+    mc = mcscf.CASCI(mf, 2, 2)
+    mc.kernel()
+    ncore = mc.ncore
+    deters = fci.addons.large_ci(mc.ci, mc.ncas, mc.nelecas, tol=-1)
+
+    for emax in (0.5, "doubles", "1.0,doubles"):
+        dets, saved = filter_determinants_from_ci(
+            mc, mf.mo_energy, emax, print_report=False, use_symm=False
+        )
+        for i, (w, (a, b)) in enumerate(dets):
+            ind = int(saved["sorted_mask_indices"][i])
+            assert abs(float(w) - float(deters[ind][0])) < 1e-12
+            assert a == binary_to_occ(deters[ind][1], ncore)[0]
+            assert b == binary_to_occ(deters[ind][2], ncore)[0]

@@ -1,4 +1,3 @@
-from pyqmc.wf.determinant_tools import binary_to_occ
 import numpy as np
 import pandas as pd
 import pyqmc.gpu as gpu
@@ -227,6 +226,32 @@ def _compute_det_prod_filter(mol, mf, symm_data, occupations):
     return det_prod[:, None] == det_prod[None, :]
 
 
+def _cas_string_occupations(ncas, nelec_cas, ncore, nstrings):
+    """
+    Occupations for all CAS FCI strings of one spin, with core orbitals prepended.
+
+    Returns
+    -------
+    occ : (nstrings, ncore + nelec_cas) int64
+        Orbital indices including frozen core (same layout as binary_to_occ).
+    """
+    from pyscf.fci import cistring
+
+    if nstrings == 0:
+        return np.zeros((0, int(ncore) + int(nelec_cas)), dtype=np.int64)
+    addrs = np.arange(nstrings, dtype=np.int64)
+    strs = cistring.addrs2str(ncas, nelec_cas, addrs)
+    occ_cas = cistring._strs2occslst(np.asarray(strs, dtype=np.int64), ncas).astype(
+        np.int64
+    )
+    if ncore:
+        core = np.arange(ncore, dtype=np.int64)
+        return np.hstack(
+            [np.broadcast_to(core, (nstrings, ncore)), occ_cas + ncore]
+        )
+    return occ_cas
+
+
 def filter_determinants_from_ci(mc, mo_energies, det_emax, include_zeros=True, mol=None, mf=None, use_symm=False, energy_tol = 1e-3, print_report = True):
     """
     Filter determinants from a CI object based on energy criteria before processing.
@@ -240,34 +265,41 @@ def filter_determinants_from_ci(mc, mo_energies, det_emax, include_zeros=True, m
 
     Returns:
         list: Filtered determinants in format suitable for orbital_evaluator_from_pyscf
-    """
-    from pyscf import fci
 
+    Notes:
+        Dense CAS CI only. Alpha/beta string occupations are decoded once (na+nb)
+        and pair energies/excitations are broadcast; full N_det occupation lists are
+        never built. Flat indices match ``large_ci(..., tol=-1)`` C-order.
+    """
     if print_report:
         print("="*20 + "Filtering determinants start" + "="*20)
         print("Filtering determinants, energy units are in Hartree")
-        
-    # Extract all determinants using the same logic as interpret_ci
-    # UKS/UCASCI may store ncore as (ncore_a, ncore_b)
+
+    ci = np.asarray(mc.ci)
+    if ci.ndim != 2:
+        raise ValueError(
+            "filter_determinants_from_ci expects a dense 2D CI matrix "
+            f"(got shape {getattr(ci, 'shape', None)})"
+        )
+    na, nb = ci.shape
+    n_dets = na * nb
+
     ncore = mc.ncore if hasattr(mc, "ncore") else 0
     if hasattr(ncore, "__len__"):
         ncore_a, ncore_b = int(ncore[0]), int(ncore[1])
     else:
         ncore_a = ncore_b = int(ncore)
-    deters_orig = fci.addons.large_ci(mc.ci, mc.ncas, mc.nelecas, tol=-1)
-    alpha_occ = np.asarray(
-        [binary_to_occ(x[1], ncore_a)[0] for x in deters_orig], dtype=np.int64
-    )
-    beta_occ = np.asarray(
-        [binary_to_occ(x[2], ncore_b)[0] for x in deters_orig], dtype=np.int64
-    )
-    if alpha_occ.ndim == 1:
-        alpha_occ = alpha_occ.reshape(1, -1)
-    if beta_occ.ndim == 1:
-        beta_occ = beta_occ.reshape(1, -1)
-    n_dets = alpha_occ.shape[0]
 
-    # Normalize mo_energies to [mo_up, mo_dn] format (RHF has 1D, use same for both)
+    nelecas = mc.nelecas
+    if hasattr(nelecas, "__len__"):
+        n_a, n_b = int(nelecas[0]), int(nelecas[1])
+    else:
+        n_a = n_b = int(nelecas) // 2
+
+    # Decode α/β strings once — not all N_det pairs
+    occ_a = _cas_string_occupations(mc.ncas, n_a, ncore_a, na)
+    occ_b = _cas_string_occupations(mc.ncas, n_b, ncore_b, nb)
+
     if np.ndim(mo_energies) == 1:
         mo_energies = [mo_energies, mo_energies]
     mo_up = np.asarray(mo_energies[0], dtype=np.float64)
@@ -275,35 +307,33 @@ def filter_determinants_from_ci(mc, mo_energies, det_emax, include_zeros=True, m
     deg_up = _orbital_degeneracy_group_ids(mo_up)
     deg_dn = _orbital_degeneracy_group_ids(mo_dn)
 
-    alpha_occ_ground = alpha_occ[0]
-    beta_occ_ground = beta_occ[0]
-    up_energies = np.sum(mo_up[alpha_occ], axis=1)
-    dn_energies = np.sum(mo_dn[beta_occ], axis=1)
-    total_energies = up_energies + dn_energies
-    ground_state_energy = total_energies[0]
+    alpha_occ_ground = occ_a[0]
+    beta_occ_ground = occ_b[0]
+    E_a = np.sum(mo_up[occ_a], axis=1)  # (na,)
+    E_b = np.sum(mo_dn[occ_b], axis=1)  # (nb,)
+    total_energies = E_a[:, None] + E_b[None, :]  # (na, nb); never store pair occs
+    ground_state_energy = float(total_energies[0, 0])
     near_ground = total_energies - ground_state_energy < 1e-6
 
-    def excitations_on_mask(candidate_mask):
-        """Vectorized excitation counts; only fill rows in ``candidate_mask``."""
-        up_num = np.zeros(n_dets, dtype=np.int64)
-        dn_num = np.zeros(n_dets, dtype=np.int64)
-        idx = np.flatnonzero(candidate_mask)
-        if idx.size:
-            up_num[idx] = _count_excitations_vectorized(
-                alpha_occ[idx], alpha_occ_ground, deg_up
-            )
-            dn_num[idx] = _count_excitations_vectorized(
-                beta_occ[idx], beta_occ_ground, deg_dn
-            )
-        return up_num, dn_num, up_num + dn_num
+    # Excitation counts on strings; pair total = broadcast sum
+    exc_a_str = _count_excitations_vectorized(occ_a, alpha_occ_ground, deg_up)
+    exc_b_str = _count_excitations_vectorized(occ_b, beta_occ_ground, deg_dn)
+    up_num_exc = exc_a_str[:, None]
+    dn_num_exc = exc_b_str[None, :]
+    tot_exc = up_num_exc + dn_num_exc
+
+    def pair_occ(flat_i):
+        """Occupation arrays for flat C-order index into (na, nb)."""
+        ia = int(flat_i) // nb
+        ib = int(flat_i) % nb
+        return occ_a[ia], occ_b[ib]
 
     # Apply filtering based on det_emax criteria
     option_text = ""
-    up_num_exc = dn_num_exc = tot_exc = None
     if isinstance(det_emax, (float, np.floating)):
         assert det_emax > 0, "Emax must be positive for energy based determinant filtering"
         emax = float(det_emax) + ground_state_energy
-        emin = np.min(total_energies)
+        emin = float(np.min(total_energies))
         option_text = "Determinants being filtered with emax + min eigenvalue" + str(emax)
         mask = total_energies <= emax + energy_tol
         if include_zeros:
@@ -313,18 +343,15 @@ def filter_determinants_from_ci(mc, mo_energies, det_emax, include_zeros=True, m
         assert det_emax > 0 and det_emax <= 100, "Emax must be between 0 and 100 for percentage based determinant filtering"
         percentile = det_emax
         option_text = "Determinants being filtered with percentage " + str(percentile)
-        emax = np.percentile(total_energies, percentile)
-        emin = np.min(total_energies)
+        emax = float(np.percentile(total_energies, percentile))
+        emin = float(np.min(total_energies))
         mask = total_energies <= emax + energy_tol
         if include_zeros:
             mask = mask | near_ground
 
     elif det_emax == 'singles' or det_emax == 'doubles':
-        up_num_exc, dn_num_exc, tot_exc = excitations_on_mask(
-            np.ones(n_dets, dtype=bool)
-        )
-        emax = np.max(total_energies)
-        emin = np.min(total_energies)
+        emax = float(np.max(total_energies))
+        emin = float(np.min(total_energies))
         if det_emax == 'singles':
             mask = tot_exc < 2
         else:
@@ -332,18 +359,18 @@ def filter_determinants_from_ci(mc, mo_energies, det_emax, include_zeros=True, m
         if include_zeros:
             mask = mask | near_ground
         option_text = 'Det excitations' + str(tot_exc[mask])
-        
+
     elif isinstance(det_emax, str) and ',' in det_emax:
         # Parse string of format "energy,criteria" e.g. "1.5,singles"
         # If the float portion has two energies " e.g. "1.0 1.5,singles", than we work inside the range of the two energies
-        
+
         try:
             emax_energy, emax_criteria = det_emax.split(',')
-            try: 
+            try:
                 emin_energy, emax_energy = emax_energy.split(' ')
                 emin_energy = float(emin_energy)
                 emax_energy = float(emax_energy)
-            except:
+            except Exception:
                 emin_energy = 0
                 emax_energy = float(emax_energy)
 
@@ -353,7 +380,7 @@ def filter_determinants_from_ci(mc, mo_energies, det_emax, include_zeros=True, m
                 raise ValueError("Criteria must be singles or doubles")
         except Exception as exc:
             raise ValueError("String format must be 'energy,criteria' where energy is a float and criteria is 'singles' or 'doubles'") from exc
-        
+
         emax = emax_energy + ground_state_energy
         emin = emin_energy + ground_state_energy - 1E-6 # -1E-6 to avoid floating point issues
         energy_mask = (total_energies <= emax + energy_tol) & (
@@ -361,9 +388,6 @@ def filter_determinants_from_ci(mc, mo_energies, det_emax, include_zeros=True, m
         )
 
         if emax_criteria == 'singles' or emax_criteria == 'doubles':
-            # Energy window first; excitation counts only on candidates (+ near-ground)
-            cand = energy_mask | (near_ground if include_zeros else False)
-            up_num_exc, dn_num_exc, tot_exc = excitations_on_mask(cand)
             mask = energy_mask.copy()
             if emax_criteria == 'singles':
                 mask &= tot_exc < 2
@@ -373,11 +397,6 @@ def filter_determinants_from_ci(mc, mo_energies, det_emax, include_zeros=True, m
                 mask |= near_ground
         elif emax_criteria == 'doubles_linked_singles':
             import itertools
-            # Need singles within emax and doubles in the energy window
-            cand = (total_energies <= emax + energy_tol) | energy_mask
-            if include_zeros:
-                cand = cand | near_ground
-            up_num_exc, dn_num_exc, tot_exc = excitations_on_mask(cand)
 
             def single_key_alpha(occ, occ_g):
                 rem = set(occ_g) - set(occ)
@@ -421,32 +440,32 @@ def filter_determinants_from_ci(mc, mo_energies, det_emax, include_zeros=True, m
                     return False
 
                 return False
+
             single_energy_ok = (tot_exc == 1) & (total_energies <= emax + energy_tol)
             allowed_singles = set()
-            for i in np.flatnonzero(single_energy_ok):
-                ua, ub = int(up_num_exc[i]), int(dn_num_exc[i])
+            for ia, ib in zip(*np.nonzero(single_energy_ok)):
+                ua, ub = int(exc_a_str[ia]), int(exc_b_str[ib])
                 if ua == 1 and ub == 0:
-                    k = single_key_alpha(alpha_occ[i], alpha_occ_ground)
+                    k = single_key_alpha(occ_a[ia], alpha_occ_ground)
                 elif ua == 0 and ub == 1:
-                    k = single_key_beta(beta_occ[i], beta_occ_ground)
+                    k = single_key_beta(occ_b[ib], beta_occ_ground)
                 else:
                     continue
                 if k is not None:
                     allowed_singles.add(k)
-            mask = np.zeros(n_dets, dtype=bool)
-            # Only inspect dets that could be kept
+            mask = np.zeros((na, nb), dtype=bool)
             check = energy_mask | single_energy_ok | (near_ground if include_zeros else False)
-            for i in np.flatnonzero(check):
-                te = int(tot_exc[i])
+            for ia, ib in zip(*np.nonzero(check)):
+                te = int(tot_exc[ia, ib])
                 if te == 0:
-                    mask[i] = include_zeros
+                    mask[ia, ib] = include_zeros
                 elif te == 1:
-                    mask[i] = single_energy_ok[i]
-                elif te == 2 and energy_mask[i]:
-                    mask[i] = double_is_product_of_allowed_singles(
-                        alpha_occ[i], beta_occ[i],
+                    mask[ia, ib] = single_energy_ok[ia, ib]
+                elif te == 2 and energy_mask[ia, ib]:
+                    mask[ia, ib] = double_is_product_of_allowed_singles(
+                        occ_a[ia], occ_b[ib],
                         alpha_occ_ground, beta_occ_ground,
-                        int(up_num_exc[i]), int(dn_num_exc[i]), allowed_singles,
+                        int(exc_a_str[ia]), int(exc_b_str[ib]), allowed_singles,
                     )
 
             if print_report:
@@ -458,13 +477,14 @@ def filter_determinants_from_ci(mc, mo_energies, det_emax, include_zeros=True, m
                 )
                 print("  " + "-" * 78)
                 kept = np.flatnonzero(mask)
-                kept = kept[np.argsort(total_energies[kept])]
+                kept = kept[np.argsort(total_energies.ravel()[kept])]
                 for i in kept:
-                    E_i = float(total_energies[i])
+                    ia, ib = divmod(int(i), nb)
+                    E_i = float(total_energies[ia, ib])
                     dE = E_i - ground_state_energy
-                    te = int(tot_exc[i])
-                    ua, ub = int(up_num_exc[i]), int(dn_num_exc[i])
-                    a_i, b_i = alpha_occ[i], beta_occ[i]
+                    te = int(tot_exc[ia, ib])
+                    ua, ub = int(exc_a_str[ia]), int(exc_b_str[ib])
+                    a_i, b_i = occ_a[ia], occ_b[ib]
                     a_rem = [int(x) for x in sorted(set(ag) - set(a_i))]
                     a_add = [int(x) for x in sorted(set(a_i) - set(ag))]
                     b_rem = [int(x) for x in sorted(set(bg) - set(b_i))]
@@ -487,9 +507,9 @@ def filter_determinants_from_ci(mc, mo_energies, det_emax, include_zeros=True, m
     else:
         # No filtering - return all determinants
         option_text = "No filtering"
-        mask = np.ones(n_dets, dtype=bool)
-        emax = np.max(total_energies)
-        emin = np.min(total_energies)
+        mask = np.ones((na, nb), dtype=bool)
+        emax = float(np.max(total_energies))
+        emin = float(np.min(total_energies))
 
     if include_zeros:
         mask = mask | near_ground
@@ -508,24 +528,16 @@ def filter_determinants_from_ci(mc, mo_energies, det_emax, include_zeros=True, m
         print('Min filtered eigenvalue', np.round(np.min(filtered_energies), 3), np.round(np.min(filtered_energies)-ground_state_energy, 3))
         print('Max filtered eigenvalue', np.round(np.max(filtered_energies), 3), np.round(np.max(filtered_energies)-ground_state_energy, 3))
     if np.sum(~mask) > 0:
-        # Find unique eigenvalues and how many times each is repeated
-        # Find unique energies within 1e-3 tolerance
         removed_energies = np.round(total_energies[~mask] - ground_state_energy, 3)
         unique_rel, counts = np.unique(removed_energies, return_counts=True)
-        unique_energies = unique_rel + np.round(ground_state_energy, 3)
-        unique_rel = np.round(unique_energies - ground_state_energy, 3)
         report = ' '.join([f'{e}(×{c})' for e, c in zip(unique_rel, counts)])
         if print_report:
             print('Unique removed eigenvalues (relative to ground, count):', report)
-    
+
     if np.sum(mask) > 0:
-        # Find unique eigenvalues and how many times each is repeated
-        # Find unique energies within 1e-3 tolerance
         unrounded_energies = total_energies[mask]
         rounded_energy = np.round(unrounded_energies - ground_state_energy, 3)
         unique_rel, idx, counts = np.unique(rounded_energy, return_index=True, return_counts=True)
-        # Take representative (unrounded) eigenvalues at each rounded cluster
-        unique_energies = unrounded_energies[idx]
         report = ' '.join([f'{e}(×{c})' for e, c in zip(unique_rel, counts)])
         if print_report:
             print('Unique used eigenvalues (relative to ground, count):', report)
@@ -538,14 +550,17 @@ def filter_determinants_from_ci(mc, mo_energies, det_emax, include_zeros=True, m
     sorted_mask_indices = mask_indices[order]
     sorted_filtered_energies = filtered_energies[order]
 
-    # Build (weight, occupation) list only for kept, energy-sorted dets
-    filtered_determinants = [
-        (
-            deters_orig[int(ind)][0],
-            [alpha_occ[ind].tolist(), beta_occ[ind].tolist()],
+    # Materialize (weight, occupation) only for kept, energy-sorted dets
+    ci_flat = ci.ravel()
+    filtered_determinants = []
+    occupations_kept = []
+    for ind in sorted_mask_indices:
+        a_occ, b_occ = pair_occ(ind)
+        a_list, b_list = a_occ.tolist(), b_occ.tolist()
+        filtered_determinants.append(
+            (ci_flat[int(ind)], [a_list, b_list])
         )
-        for ind in sorted_mask_indices
-    ]
+        occupations_kept.append((a_occ, b_occ))
     saved = {
         "sorted_mask_indices": sorted_mask_indices,
         "sorted_filtered_energies": sorted_filtered_energies,
@@ -554,10 +569,9 @@ def filter_determinants_from_ci(mc, mo_energies, det_emax, include_zeros=True, m
     if use_symm and mol is not None and mf is not None and mol.symmetry:
         try:
             symm_data = BosonWF.symm_utils(mol, mol.groupname)
-            occupations = [
-                (alpha_occ[i], beta_occ[i]) for i in sorted_mask_indices
-            ]
-            det_prod_filter = _compute_det_prod_filter(mol, mf, symm_data, occupations)
+            det_prod_filter = _compute_det_prod_filter(
+                mol, mf, symm_data, occupations_kept
+            )
             saved['det_prod_filter'] = det_prod_filter
         except ValueError as e:
             if "not in available groups" in str(e):
