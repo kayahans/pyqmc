@@ -111,3 +111,30 @@ def test_filter_determinants_string_path_matches_large_ci():
             assert abs(float(w) - float(deters[ind][0])) < 1e-12
             assert a == binary_to_occ(deters[ind][1], ncore)[0]
             assert b == binary_to_occ(deters[ind][2], ncore)[0]
+
+
+def test_filter_determinants_accepts_flat_ci():
+    """HDF5 dumps often store CI as a 1D vector of length na*nb."""
+    from pyscf import gto, scf, mcscf
+    from pyqmc.wf.bosonslater import filter_determinants_from_ci
+
+    mol = gto.M(atom="Li 0 0 0; H 0 0 1.6", basis="sto-3g", verbose=0)
+    mf = scf.RHF(mol).run()
+    mc = mcscf.CASCI(mf, 2, 2)
+    mc.kernel()
+    ci2d = np.asarray(mc.ci).copy()
+    mc.ci = ci2d.ravel()  # flat, as loaded from checkpoint
+    dets_flat, saved_flat = filter_determinants_from_ci(
+        mc, mf.mo_energy, "doubles", print_report=False, use_symm=False
+    )
+    mc.ci = ci2d
+    dets_2d, saved_2d = filter_determinants_from_ci(
+        mc, mf.mo_energy, "doubles", print_report=False, use_symm=False
+    )
+    assert len(dets_flat) == len(dets_2d)
+    assert np.allclose(
+        saved_flat["sorted_filtered_energies"], saved_2d["sorted_filtered_energies"]
+    )
+    for (w1, o1), (w2, o2) in zip(dets_flat, dets_2d):
+        assert abs(float(w1) - float(w2)) < 1e-12
+        assert o1 == o2

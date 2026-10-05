@@ -267,22 +267,17 @@ def filter_determinants_from_ci(mc, mo_energies, det_emax, include_zeros=True, m
         list: Filtered determinants in format suitable for orbital_evaluator_from_pyscf
 
     Notes:
-        Dense CAS CI only. Alpha/beta string occupations are decoded once (na+nb)
-        and pair energies/excitations are broadcast; full N_det occupation lists are
-        never built. Flat indices match ``large_ci(..., tol=-1)`` C-order.
+        Dense CAS CI only (2D or flat 1D of size na*nb). Alpha/beta string
+        occupations are decoded once (na+nb) and pair energies/excitations are
+        broadcast; full N_det occupation lists are never built. Flat indices
+        match ``large_ci(..., tol=-1)`` C-order.
     """
+    from pyscf.fci import cistring
+    from pyscf.fci.addons import _unpack_nelec
+
     if print_report:
         print("="*20 + "Filtering determinants start" + "="*20)
         print("Filtering determinants, energy units are in Hartree")
-
-    ci = np.asarray(mc.ci)
-    if ci.ndim != 2:
-        raise ValueError(
-            "filter_determinants_from_ci expects a dense 2D CI matrix "
-            f"(got shape {getattr(ci, 'shape', None)})"
-        )
-    na, nb = ci.shape
-    n_dets = na * nb
 
     ncore = mc.ncore if hasattr(mc, "ncore") else 0
     if hasattr(ncore, "__len__"):
@@ -290,11 +285,22 @@ def filter_determinants_from_ci(mc, mo_energies, det_emax, include_zeros=True, m
     else:
         ncore_a = ncore_b = int(ncore)
 
-    nelecas = mc.nelecas
-    if hasattr(nelecas, "__len__"):
-        n_a, n_b = int(nelecas[0]), int(nelecas[1])
-    else:
-        n_a = n_b = int(nelecas) // 2
+    n_a, n_b = _unpack_nelec(mc.nelecas)
+    na = cistring.num_strings(mc.ncas, n_a)
+    nb = cistring.num_strings(mc.ncas, n_b)
+    n_dets = na * nb
+
+    ci = np.asarray(mc.ci)
+    if ci.ndim == 3:
+        # Multi-root: use first root (caller usually selects target_root already)
+        ci = ci[0]
+    if ci.size != n_dets:
+        raise ValueError(
+            f"CI size {ci.size} does not match FCI dimension na*nb={na}*{nb}={n_dets} "
+            f"(ncas={mc.ncas}, nelecas=({n_a},{n_b}))"
+        )
+    # Same reshape as pyscf.fci.addons.large_ci (handles flat hdf5 dumps)
+    ci = ci.reshape(na, nb)
 
     # Decode α/β strings once — not all N_det pairs
     occ_a = _cas_string_occupations(mc.ncas, n_a, ncore_a, na)
@@ -625,8 +631,8 @@ class BosonWF:
         self.eval_gto_precision = eval_gto_precision
         
         try:
-            self.num_det = mc.ci.shape[0] * mc.ci.shape[1]
-        except:
+            self.num_det = int(np.asarray(mc.ci).size)
+        except Exception:
             self.num_det = 1
         
         self.myparameters = {}
