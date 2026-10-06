@@ -858,9 +858,9 @@ class ABCDMCMatrixAccumulator:
     2. Matrix elements involving kinetic and potential energy terms
     
     The calculation includes:
-    - Wavefunctions ratios
+    - Wavefunction ratios
     - Gradients and Laplacians of both bosonic and trial wavefunctions
-    - Integration by parts terms for the kinetic energy
+    - Either integration by parts or a pure-diffusion probe for grad(f_B)
     
     
     Methods
@@ -888,22 +888,44 @@ class ABCDMCMatrixAccumulator:
     - Φ_n are the determinant components
     - Ψ_BT is the Slater Jastrow trial wavefunction (eq. 4)
     
-    The matrix elements are computed using:
+    The integration-by-parts matrix elements are computed using:
     1. Gradient terms: ∇Ψ_n = ∇(Φ_n/Φ_B)
     2. Laplacian terms: ∇²(Φ_n/Φ_B)
     3. Integration by parts for the kinetic energy terms
+
+    The diffusion estimator instead evaluates Eq. 16 at a private
+    pure-diffusion endpoint and combines it with the remaining gradient term
+    in Eq. 23.
     """    
-    def __init__(self, mf_inputs, system_params, use_symm=False, **kwargs):
+    def __init__(
+        self,
+        mf_inputs,
+        system_params,
+        use_symm=False,
+        delta_method="ibp",
+        **kwargs,
+    ):
         """
         Args:
             mf_inputs: Mean field inputs
             system_params: Dict with 'dtype' and other system parameters
             use_symm: If True, apply symmetry mask to delta and ovlp when available
+            delta_method: Estimator for the grad(f_B) term. ``"ibp"`` uses
+                integration by parts; ``"diffusion"`` uses the pure-diffusion
+                estimator of Reboredo et al., Eqs. 15--16.
             **kwargs: Additional arguments passed to ABQMCEnergyAccumulator
         """
+        if delta_method not in {"ibp", "diffusion"}:
+            raise ValueError(
+                "delta_method must be either 'ibp' or 'diffusion'; "
+                f"got {delta_method!r}"
+            )
         # self.en_acc = ABQMCEnergyAccumulator(mf_inputs, **kwargs)
         self.use_symm = use_symm
+        self.delta_method = delta_method
         self._symm_mask = None  # Set from boson_wf._det_prod_filter on first call when use_symm
+        self._probe_wf = None
+        self._probe_source_id = None
         self.dtype = system_params['dtype']
         self.memallocated = False
         self.nconf = None #system_params['nconf']
@@ -926,17 +948,112 @@ class ABCDMCMatrixAccumulator:
         self._prof_secs[key] = self._prof_secs.get(key, 0.0) + (time.perf_counter() - t0)
         return time.perf_counter()
 
-    @timer_func
-    def __call__(self, configs, wf, use_symm=None):
-        do = boson_dmc_profile_enabled()
-        if do:
-            bdmc_profile_ensure_banner_once()
-        t0 = time.perf_counter() if do else None
+    def _get_wave_factors(self, wf):
+        boson_wf = None
+        jastrow_wf = None
         for wave in wf.wf_factors:
             if isinstance(wave, self._boson_wf_type):
                 boson_wf = wave
             if isinstance(wave, self._jastrow_wf_type):
-                jastrow_wf = wave        
+                jastrow_wf = wave
+        if boson_wf is None or jastrow_wf is None:
+            raise ValueError(
+                "ABCDMCMatrixAccumulator requires BosonWF and JastrowSpin factors"
+            )
+        return boson_wf, jastrow_wf
+
+    def _accumulate_diffusion_probe(self, delta, configs, wf, tstep, symm_mask):
+        r"""Accumulate the direct diffusion estimator of the grad(f_B) term.
+
+        A private wavefunction is evaluated at the throwaway pure-diffusion
+        endpoint
+
+          R_tilde = R + sqrt(tstep) * eta,
+
+        while the production ``configs`` and ``wf`` remain untouched.  Define
+        the positive-displacement estimator
+
+          D_ln = phi_l^*(R_tilde) [(R_tilde-R)/tstep]
+                 . grad phi_n(R_tilde).
+
+        Differentiating the Gaussian with respect to its integration coordinate
+        gives
+
+          integral phi_l^* grad(f_B) . grad(phi_n) = -average(D_ln).
+
+        Eq. 23 contains the negative of this integral, so ``D_ln`` is added to
+        ``delta``.  This sign is also consistent with the integration-by-parts
+        identity in Eq. 17.  The production configurations and wavefunction are
+        not modified by the probe.
+        """
+        if self._probe_wf is None or self._probe_source_id != id(wf):
+            self._probe_wf = copy.deepcopy(wf)
+            self._probe_source_id = id(wf)
+
+        displacement = np.random.normal(
+            scale=np.sqrt(tstep), size=configs.configs.shape
+        )
+        velocity = displacement / tstep
+        probe_configs = configs.copy()
+        accept_all = np.ones(self.nconf, dtype=bool)
+        for e in range(self.nelec):
+            probe_epos = probe_configs.make_irreducible(
+                e, configs.configs[:, e, :] + displacement[:, e, :]
+            )
+            probe_configs.move(e, probe_epos, accept_all)
+
+        self._probe_wf.recompute(probe_configs)
+        probe_boson_wf, _ = self._get_wave_factors(self._probe_wf)
+
+        probe_boson_value = probe_boson_wf.value()
+        probe_phi_b = probe_boson_value[0] * np.nan_to_num(
+            np.exp(probe_boson_value[1])
+        )
+        probe_phi_n_value = probe_boson_wf.value_dets()
+        probe_phi_n = probe_phi_n_value[0] * np.nan_to_num(
+            np.exp(probe_phi_n_value[1])
+        )
+        probe_psi_n = get_psi_basis(
+            probe_boson_wf, phi_n=probe_phi_n, phi_b=probe_phi_b
+        )
+        probe_psi_n_conj = probe_psi_n.conj()
+
+        grad_psi_n = self._grad_psi_n
+        for e in range(self.nelec):
+            probe_epos = probe_configs.electron(e)
+            loggrad_phi_n, loggrad_b = probe_boson_wf.gradient_dets(
+                e, probe_epos
+            )
+            np.multiply(
+                probe_psi_n[:, np.newaxis, :],
+                loggrad_phi_n - loggrad_b,
+                out=grad_psi_n,
+            )
+            np.einsum(
+                "lc,xc,nxc->cln",
+                probe_psi_n_conj,
+                velocity[:, e, :].T,
+                grad_psi_n,
+                out=self._buf_delta,
+                optimize="optimal",
+            )
+            delta += self._buf_delta
+
+        delta *= symm_mask[np.newaxis, :, :]
+
+    @timer_func
+    def __call__(self, configs, wf, use_symm=None, tstep=None):
+        if self.delta_method == "diffusion" and (
+            tstep is None or not np.isfinite(tstep) or tstep <= 0
+        ):
+            raise ValueError(
+                "A positive finite tstep is required for delta_method='diffusion'"
+            )
+        do = boson_dmc_profile_enabled()
+        if do:
+            bdmc_profile_ensure_banner_once()
+        t0 = time.perf_counter() if do else None
+        boson_wf, jastrow_wf = self._get_wave_factors(wf)
         
         if use_symm is None:
             use_symm = self.use_symm
@@ -997,22 +1114,34 @@ class ABCDMCMatrixAccumulator:
             epos_s = configs.electron(e)
 
             # All the terms that go into delta calculation
-            # lap_phi_n = boson_wf.laplacian_dets(e, epos_s)  # ∇²(Phi_n)/Phi_n
-            # loggrad_phi_n, loggrad_b = boson_wf.gradient_dets(e, epos_s)  #∇log(Phi_n) and ∇log(Psi_B) eq. 4
             if do:
                 te = time.perf_counter()
-            lap_phi_n, loggrad_phi_n, loggrad_b = boson_wf.gradient_laplacian_dets(e, epos_s)  #∇²(Phi_n) and ∇log(Phi_n)
+            if self.delta_method == "ibp":
+                lap_phi_n, loggrad_phi_n, loggrad_b = (
+                    boson_wf.gradient_laplacian_dets(e, epos_s)
+                )
+            else:
+                loggrad_phi_n, loggrad_b = boson_wf.gradient_dets(e, epos_s)
             if do:
-                te = self._prof_add("elec_grad_lap", te)
-            if do:
-                te = time.perf_counter()
-            lap_phi_b = boson_wf.laplacian(e, epos_s, 
-                                           lap_phi_n=lap_phi_n, 
-                                           loggrad_phi_n=loggrad_phi_n, 
-                                           phi_n=phi_n, 
-                                           phi_b=phi_b)      
-            if do:
-                te = self._prof_add("elec_lap_b", te)
+                te = self._prof_add(
+                    "elec_grad_lap"
+                    if self.delta_method == "ibp"
+                    else "elec_grad",
+                    te,
+                )
+            if self.delta_method == "ibp":
+                if do:
+                    te = time.perf_counter()
+                lap_phi_b = boson_wf.laplacian(
+                    e,
+                    epos_s,
+                    lap_phi_n=lap_phi_n,
+                    loggrad_phi_n=loggrad_phi_n,
+                    phi_n=phi_n,
+                    phi_b=phi_b,
+                )
+                if do:
+                    te = self._prof_add("elec_lap_b", te)
             if do:
                 te = time.perf_counter()
             # gradient_laplacian: need lap for kinetic reuse; grad alone for delta
@@ -1025,7 +1154,26 @@ class ABCDMCMatrixAccumulator:
 
             if do:
                 te = time.perf_counter()
-            if NUMBA_AVAILABLE and symm_mask is not None:
+            if self.delta_method == "diffusion":
+                grad_psi_n = self._grad_psi_n
+                np.multiply(
+                    psi_n[:, np.newaxis, :],
+                    loggrad_phi_n - loggrad_b,
+                    out=grad_psi_n,
+                )
+                # Eq. 23, f_B grad(Phi_B Psi_B^T)/(Phi_B Psi_B^T).
+                # JastrowSpin returns grad(log(exp(-J_T))) = -grad(J_T).
+                grad_log_phi_psi_t = 2.0 * loggrad_b + grad_j
+                np.einsum(
+                    "lc,xc,nxc->cln",
+                    psi_n_conj,
+                    grad_log_phi_psi_t,
+                    grad_psi_n,
+                    out=self._buf_delta,
+                    optimize="optimal",
+                )
+                delta += self._buf_delta
+            elif NUMBA_AVAILABLE and symm_mask is not None:
                 _accumulate_delta_dmc_contributions_numba(
                     delta,
                     psi_n_conj,
@@ -1049,9 +1197,24 @@ class ABCDMCMatrixAccumulator:
                 np.einsum('lxc, nxc->cln', grad_psi_n, grad_psi_n, out=self._buf_delta, optimize='optimal')
                 delta += self._buf_delta
             if do:
-                self._prof_add("delta_numba" if (NUMBA_AVAILABLE and symm_mask is not None) else "delta_einsum", te)
+                if self.delta_method == "diffusion":
+                    delta_prof_key = "delta_diffusion_grad"
+                elif NUMBA_AVAILABLE and symm_mask is not None:
+                    delta_prof_key = "delta_numba"
+                else:
+                    delta_prof_key = "delta_einsum"
+                self._prof_add(delta_prof_key, te)
 
         bosonenergy.set_boson_kinetic_cache(wf, lap_j, drift_b, grad2, configs=configs)
+
+        if self.delta_method == "diffusion":
+            if do:
+                te = time.perf_counter()
+            self._accumulate_diffusion_probe(
+                delta, configs, wf, tstep, symm_mask
+            )
+            if do:
+                self._prof_add("delta_diffusion_probe", te)
             
         results = {'delta': delta,
                    'ovlp': ovlp_ij}

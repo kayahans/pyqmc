@@ -329,7 +329,9 @@ def dmc_propagate(
             _ben.clear_boson_kinetic_cache(wf)
             if b is not None:
                 t0a = time.perf_counter()
-            abcdmc_dat = accumulators[abcdmc_key](configs, wf)
+            abcdmc_dat = accumulators[abcdmc_key](
+                configs, wf, tstep=tstep
+            )
             if b is not None:
                 t_abcdmc = time.perf_counter() - t0a
                 b.bdmc_profile_add_abcdmc(t_abcdmc)

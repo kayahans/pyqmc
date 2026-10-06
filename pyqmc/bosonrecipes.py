@@ -208,6 +208,7 @@ def ABDMC(
     initial_guess_r = 15.0,
     use_dft_density = False,
     evaluate_mf_with: str = "numba",
+    delta_method: str = "ibp",
     **dmc_kws,
 ):  
     """Auxiliary Boson DMC recipe
@@ -223,6 +224,8 @@ def ABDMC(
         slater_kws (list | None, optional): _description_. Defaults to None.
         accumulators (list | None, optional): List of accumulators. Defaults to None.
         evaluate_mf_with (str, optional): MF AO/ρ backend ("numba" or "pyscf"). Defaults to "numba".
+        delta_method (str, optional): ABCDMC estimator for the grad(f_B) term:
+            "ibp" (default) or "diffusion".
 
     Extra ``**dmc_kws`` are forwarded to ``bosondmc.rundmc``, including:
 
@@ -249,6 +252,7 @@ def ABDMC(
         use_symm=use_symm,
         initial_guess_r=initial_guess_r,
         evaluate_mf_with=evaluate_mf_with,
+        delta_method=delta_method,
     )
     # Extract VMC options from DMC keyword arguments if present, otherwise return None
     vmc_options = dmc_kws.pop('vmc_options', None)
@@ -593,6 +597,7 @@ def initialize_boson_qmc_objects(
     opt_options = None,
     njastrow = 2,
     evaluate_mf_with = "numba",
+    delta_method = "ibp",
 ):  
     
     target_root=0
@@ -730,7 +735,12 @@ def initialize_boson_qmc_objects(
     acc['energy'] = bosonaccumulators.ABQMCEnergyAccumulator(mf_inputs)
     
     possible_accumulators = {'ab_vmc_excitations':bosonaccumulators.ABVMCMatrixAccumulator(mf_inputs, use_symm=use_symm),
-                             'abc_dmc_excitations':bosonaccumulators.ABCDMCMatrixAccumulator(mf_inputs, system_params, use_symm=use_symm),
+                             'abc_dmc_excitations':bosonaccumulators.ABCDMCMatrixAccumulator(
+                                 mf_inputs,
+                                 system_params,
+                                 use_symm=use_symm,
+                                 delta_method=delta_method,
+                             ),
                              'density':bosonaccumulators.DensityAccumulator(),
                              'radial_density':bosonaccumulators.RadialDensityAccumulator()}
     if accumulators is not None and len(accumulators) > 0:
