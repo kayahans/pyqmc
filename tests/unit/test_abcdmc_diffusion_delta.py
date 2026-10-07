@@ -79,11 +79,12 @@ class _FakeProductWF:
         return None
 
 
-def _fake_accumulator(delta_method):
+def _fake_accumulator(delta_method, diffusion_probe="direct"):
     acc = bosonaccumulators.ABCDMCMatrixAccumulator(
         mf_inputs={},
         system_params={"dtype": float},
         delta_method=delta_method,
+        diffusion_probe=diffusion_probe,
         use_symm=False,
     )
     acc._boson_wf_type = _FakeBosonWF
@@ -91,7 +92,7 @@ def _fake_accumulator(delta_method):
     return acc
 
 
-def test_diffusion_probe_implements_minus_d_plus_g_without_mutating_production(
+def test_diffusion_probe_adds_d_to_g_without_mutating_production(
     monkeypatch,
 ):
     nconf = 2
@@ -115,10 +116,10 @@ def test_diffusion_probe_implements_minus_d_plus_g_without_mutating_production(
     acc = _fake_accumulator("diffusion")
     result = acc(configs, wf, tstep=tstep)
 
-    # At both R^j and R_tilde, phi=(1,2) and grad(phi)=(1,4) along x.
-    # G uses grad(log(Phi_B Psi_T))=3, D uses velocity=2, so
-    # Delta=-D+G=outer(phi, grad(phi))*(3-2).
-    expected_delta = np.array([[1.0, 4.0], [2.0, 8.0]])
+    # At both R and R_tilde, phi=(1,2) and grad(phi)=(1,4) along x.
+    # G uses grad(log(Phi_B Psi_T))=3 and D uses velocity=2, and the probe
+    # adds D, so delta = outer(phi, grad phi) * (3+2).
+    expected_delta = np.array([[5.0, 20.0], [10.0, 40.0]])
     expected_ovlp = np.array([[1.0, 2.0], [2.0, 4.0]])
     assert np.allclose(result["delta"], expected_delta[None, :, :])
     assert np.allclose(result["ovlp"], expected_ovlp[None, :, :])
@@ -129,9 +130,46 @@ def test_diffusion_probe_implements_minus_d_plus_g_without_mutating_production(
     assert np.allclose(probe_boson._configs, configs_before + displacement)
 
 
+def test_richardson_probe_cancels_constant_gradient_and_keeps_production(
+    monkeypatch,
+):
+    nconf = 2
+    tstep = 0.25
+    configs = OpenConfigs(np.zeros((nconf, 1, 3)))
+    wf = _FakeProductWF()
+    wf.recompute(configs)
+    configs_before = configs.configs.copy()
+    production_values_before = wf.wf_factors[0]._configs.copy()
+
+    z = np.zeros_like(configs.configs)
+    z[:, 0, 0] = 1.5
+
+    def fixed_normal(*, loc=0.0, scale=1.0, size=None):
+        assert scale == pytest.approx(1.0)
+        assert size == configs.configs.shape
+        return z.copy()
+
+    monkeypatch.setattr(bosonaccumulators.np.random, "normal", fixed_normal)
+
+    acc = _fake_accumulator("diffusion", diffusion_probe="richardson")
+    result = acc(configs, wf, tstep=tstep)
+
+    # Constant gradients make every odd score cancel, so D_ex = 0 and
+    # delta reduces to G = outer(phi, grad phi) * grad(log Phi_B Psi_T).
+    expected_delta = np.array([[3.0, 12.0], [6.0, 24.0]])
+    assert np.allclose(result["delta"], expected_delta[None, :, :])
+    assert np.array_equal(configs.configs, configs_before)
+    assert np.array_equal(wf.wf_factors[0]._configs, production_values_before)
+    probe_boson = acc._probe_wf.wf_factors[0]
+    last_displacement = -np.sqrt(0.5 * tstep) * z
+    assert np.allclose(probe_boson._configs, configs_before + last_displacement)
+
+
 def test_delta_method_validation_and_ibp_smoke():
     with pytest.raises(ValueError, match="delta_method"):
         _fake_accumulator("unknown")
+    with pytest.raises(ValueError, match="diffusion_probe"):
+        _fake_accumulator("diffusion", diffusion_probe="unknown")
 
     configs = OpenConfigs(np.zeros((2, 1, 3)))
     wf = _FakeProductWF()

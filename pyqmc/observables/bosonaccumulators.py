@@ -895,7 +895,8 @@ class ABCDMCMatrixAccumulator:
 
     The diffusion estimator instead evaluates Eq. 16 at a private
     pure-diffusion endpoint and combines it with the remaining gradient term
-    in Eq. 23.
+    in Eq. 23.  ``diffusion_probe="richardson"`` replaces that one endpoint
+    by an antithetic Richardson pair at ``tstep`` and ``tstep/2``.
     """    
     def __init__(
         self,
@@ -903,6 +904,7 @@ class ABCDMCMatrixAccumulator:
         system_params,
         use_symm=False,
         delta_method="ibp",
+        diffusion_probe="direct",
         **kwargs,
     ):
         """
@@ -913,6 +915,9 @@ class ABCDMCMatrixAccumulator:
             delta_method: Estimator for the grad(f_B) term. ``"ibp"`` uses
                 integration by parts; ``"diffusion"`` uses the pure-diffusion
                 estimator of Reboredo et al., Eqs. 15--16.
+            diffusion_probe: Branch used when ``delta_method="diffusion"``.
+                ``"direct"`` is the one-point probe. ``"richardson"`` is the
+                four-point antithetic Richardson probe.
             **kwargs: Additional arguments passed to ABQMCEnergyAccumulator
         """
         if delta_method not in {"ibp", "diffusion"}:
@@ -920,9 +925,15 @@ class ABCDMCMatrixAccumulator:
                 "delta_method must be either 'ibp' or 'diffusion'; "
                 f"got {delta_method!r}"
             )
+        if diffusion_probe not in {"direct", "richardson"}:
+            raise ValueError(
+                "diffusion_probe must be either 'direct' or 'richardson'; "
+                f"got {diffusion_probe!r}"
+            )
         # self.en_acc = ABQMCEnergyAccumulator(mf_inputs, **kwargs)
         self.use_symm = use_symm
         self.delta_method = delta_method
+        self.diffusion_probe = diffusion_probe
         self._symm_mask = None  # Set from boson_wf._det_prod_filter on first call when use_symm
         self._probe_wf = None
         self._probe_source_id = None
@@ -962,38 +973,17 @@ class ABCDMCMatrixAccumulator:
             )
         return boson_wf, jastrow_wf
 
-    def _accumulate_diffusion_probe(self, delta, configs, wf, tstep, symm_mask):
-        r"""Accumulate the direct diffusion estimator of the grad(f_B) term.
-
-        A private wavefunction is evaluated at the throwaway pure-diffusion
-        endpoint
-
-          R_tilde = R + sqrt(tstep) * eta,
-
-        while the production ``configs`` and ``wf`` remain untouched.  Define
-        the positive-displacement estimator
-
-          D_ln = phi_l^*(R_tilde) [(R_tilde-R)/tstep]
-                 . grad phi_n(R_tilde).
-
-        Differentiating the Gaussian with respect to its integration coordinate
-        gives
-
-          integral phi_l^* grad(f_B) . grad(phi_n) = -average(D_ln).
-
-        Eq. 23 contains the negative of this integral, so ``D_ln`` is added to
-        ``delta``.  This sign is also consistent with the integration-by-parts
-        identity in Eq. 17.  The production configurations and wavefunction are
-        not modified by the probe.
-        """
+    def _ensure_probe_wf(self, wf):
         if self._probe_wf is None or self._probe_source_id != id(wf):
             self._probe_wf = copy.deepcopy(wf)
             self._probe_source_id = id(wf)
 
-        displacement = np.random.normal(
-            scale=np.sqrt(tstep), size=configs.configs.shape
-        )
-        velocity = displacement / tstep
+    def _add_diffusion_endpoint(self, delta, configs, displacement, velocity, weight):
+        """Add ``weight * D`` at ``R + displacement`` into ``delta``.
+
+        ``D`` is the pure-diffusion score ``psi_l^* velocity · grad psi_n``.
+        The production configurations and wavefunction are not modified.
+        """
         probe_configs = configs.copy()
         accept_all = np.ones(self.nconf, dtype=bool)
         for e in range(self.nelec):
@@ -1037,8 +1027,68 @@ class ABCDMCMatrixAccumulator:
                 out=self._buf_delta,
                 optimize="optimal",
             )
-            delta += self._buf_delta
+            delta += weight * self._buf_delta
 
+    def _accumulate_diffusion_probe(self, delta, configs, wf, tstep, symm_mask):
+        r"""Accumulate the direct diffusion estimator of the grad(f_B) term.
+
+        A private wavefunction is evaluated at the throwaway pure-diffusion
+        endpoint
+
+          R_tilde = R + sqrt(tstep) * eta,
+
+        while the production ``configs`` and ``wf`` remain untouched.  Define
+        the positive-displacement estimator
+
+          D_ln = phi_l^*(R_tilde) [(R_tilde-R)/tstep]
+                 . grad phi_n(R_tilde).
+
+        Differentiating the Gaussian with respect to its integration coordinate
+        gives
+
+          integral phi_l^* grad(f_B) . grad(phi_n) = -average(D_ln).
+
+        Eq. 23 contains the negative of this integral, so ``D_ln`` is added to
+        ``delta``.  This sign is also consistent with the integration-by-parts
+        identity in Eq. 17.  The production configurations and wavefunction are
+        not modified by the probe.  One ``normal`` draw is consumed.
+        """
+        self._ensure_probe_wf(wf)
+        displacement = np.random.normal(
+            scale=np.sqrt(tstep), size=configs.configs.shape
+        )
+        velocity = displacement / tstep
+        self._add_diffusion_endpoint(delta, configs, displacement, velocity, 1.0)
+        delta *= symm_mask[np.newaxis, :, :]
+
+    def _accumulate_diffusion_probe_richardson(self, delta, configs, wf, tstep, symm_mask):
+        r"""Four-point antithetic Richardson probe for the grad(f_B) term.
+
+        Draw one standard normal ``z`` (the same single draw the direct probe
+        consumes) and score the endpoints
+
+          R ± sqrt(tstep) z,        velocity = ±z / sqrt(tstep),     weight -1/2,
+          R ± sqrt(tstep/2) z,      velocity = ±z / sqrt(tstep/2),   weight +1.
+
+        The weights are ``2 D_±(tstep/2) - D_±(tstep)``.  The ± pair removes
+        the odd part of the ``1/tstep`` score, and the two widths cancel the
+        ``O(tstep)`` smoothing bias.  The production configurations and
+        wavefunction are not modified.
+        """
+        self._ensure_probe_wf(wf)
+        z = np.random.normal(size=configs.configs.shape)
+        sqrt_tau = np.sqrt(tstep)
+        sqrt_half = np.sqrt(0.5 * tstep)
+        endpoints = (
+            (sqrt_tau * z, z / sqrt_tau, -0.5),
+            (-sqrt_tau * z, -z / sqrt_tau, -0.5),
+            (sqrt_half * z, z / sqrt_half, 1.0),
+            (-sqrt_half * z, -z / sqrt_half, 1.0),
+        )
+        for displacement, velocity, weight in endpoints:
+            self._add_diffusion_endpoint(
+                delta, configs, displacement, velocity, weight
+            )
         delta *= symm_mask[np.newaxis, :, :]
 
     @timer_func
@@ -1210,11 +1260,18 @@ class ABCDMCMatrixAccumulator:
         if self.delta_method == "diffusion":
             if do:
                 te = time.perf_counter()
-            self._accumulate_diffusion_probe(
-                delta, configs, wf, tstep, symm_mask
-            )
+            if self.diffusion_probe == "richardson":
+                self._accumulate_diffusion_probe_richardson(
+                    delta, configs, wf, tstep, symm_mask
+                )
+                probe_prof_key = "delta_diffusion_probe_richardson"
+            else:
+                self._accumulate_diffusion_probe(
+                    delta, configs, wf, tstep, symm_mask
+                )
+                probe_prof_key = "delta_diffusion_probe"
             if do:
-                self._prof_add("delta_diffusion_probe", te)
+                self._prof_add(probe_prof_key, te)
             
         results = {'delta': delta,
                    'ovlp': ovlp_ij}

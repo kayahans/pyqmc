@@ -209,6 +209,7 @@ def ABDMC(
     use_dft_density = False,
     evaluate_mf_with: str = "numba",
     delta_method: str = "ibp",
+    diffusion_probe: str = "direct",
     **dmc_kws,
 ):  
     """Auxiliary Boson DMC recipe
@@ -226,6 +227,9 @@ def ABDMC(
         evaluate_mf_with (str, optional): MF AO/ρ backend ("numba" or "pyscf"). Defaults to "numba".
         delta_method (str, optional): ABCDMC estimator for the grad(f_B) term:
             "ibp" (default) or "diffusion".
+        diffusion_probe (str, optional): When delta_method is "diffusion",
+            "direct" (default) is the one-point probe and "richardson" is the
+            four-point antithetic Richardson probe.
 
     Extra ``**dmc_kws`` are forwarded to ``bosondmc.rundmc``, including:
 
@@ -253,6 +257,7 @@ def ABDMC(
         initial_guess_r=initial_guess_r,
         evaluate_mf_with=evaluate_mf_with,
         delta_method=delta_method,
+        diffusion_probe=diffusion_probe,
     )
     # Extract VMC options from DMC keyword arguments if present, otherwise return None
     vmc_options = dmc_kws.pop('vmc_options', None)
@@ -598,6 +603,7 @@ def initialize_boson_qmc_objects(
     njastrow = 2,
     evaluate_mf_with = "numba",
     delta_method = "ibp",
+    diffusion_probe = "direct",
 ):  
     
     target_root=0
@@ -740,6 +746,7 @@ def initialize_boson_qmc_objects(
                                  system_params,
                                  use_symm=use_symm,
                                  delta_method=delta_method,
+                                 diffusion_probe=diffusion_probe,
                              ),
                              'density':bosonaccumulators.DensityAccumulator(),
                              'radial_density':bosonaccumulators.RadialDensityAccumulator()}
