@@ -144,3 +144,5 @@ dmypy.json
 .idea/
 .vscode/
 *.code-workspace
+sync_to_inti.sh
+uv.lock
