@@ -896,7 +896,8 @@ class ABCDMCMatrixAccumulator:
     The diffusion estimator instead evaluates Eq. 16 at a private
     pure-diffusion endpoint and combines it with the remaining gradient term
     in Eq. 23.  ``diffusion_probe="richardson"`` replaces that one endpoint
-    by an antithetic Richardson pair at ``tstep`` and ``tstep/2``.
+    by an antithetic Richardson pair at ``probe_tstep`` and ``probe_tstep/2``.
+    When ``probe_tstep`` is unset, the DMC propagation timestep is used.
     """    
     def __init__(
         self,
@@ -905,6 +906,7 @@ class ABCDMCMatrixAccumulator:
         use_symm=False,
         delta_method="ibp",
         diffusion_probe="direct",
+        probe_tstep=None,
         **kwargs,
     ):
         """
@@ -918,6 +920,10 @@ class ABCDMCMatrixAccumulator:
             diffusion_probe: Branch used when ``delta_method="diffusion"``.
                 ``"direct"`` is the one-point probe. ``"richardson"`` is the
                 four-point antithetic Richardson probe.
+            probe_tstep: Optional probe width for ``delta_method="diffusion"``.
+                If None, the DMC ``tstep`` passed to ``__call__`` is used.
+                Set this to keep a large propagation step while scoring the
+                probe at a smaller (or larger) width.
             **kwargs: Additional arguments passed to ABQMCEnergyAccumulator
         """
         if delta_method not in {"ibp", "diffusion"}:
@@ -930,10 +936,18 @@ class ABCDMCMatrixAccumulator:
                 "diffusion_probe must be either 'direct' or 'richardson'; "
                 f"got {diffusion_probe!r}"
             )
+        if probe_tstep is not None and (
+            not np.isfinite(probe_tstep) or probe_tstep <= 0
+        ):
+            raise ValueError(
+                "probe_tstep must be a positive finite float or None; "
+                f"got {probe_tstep!r}"
+            )
         # self.en_acc = ABQMCEnergyAccumulator(mf_inputs, **kwargs)
         self.use_symm = use_symm
         self.delta_method = delta_method
         self.diffusion_probe = diffusion_probe
+        self.probe_tstep = probe_tstep
         self._symm_mask = None  # Set from boson_wf._det_prod_filter on first call when use_symm
         self._probe_wf = None
         self._probe_source_id = None
@@ -1091,14 +1105,23 @@ class ABCDMCMatrixAccumulator:
             )
         delta *= symm_mask[np.newaxis, :, :]
 
+    def _resolve_probe_tstep(self, tstep):
+        """Return the probe width, preferring ``self.probe_tstep`` over DMC ``tstep``."""
+        probe_tstep = self.probe_tstep if self.probe_tstep is not None else tstep
+        if probe_tstep is None or not np.isfinite(probe_tstep) or probe_tstep <= 0:
+            raise ValueError(
+                "A positive finite probe timestep is required for "
+                "delta_method='diffusion'. Pass tstep=... or set probe_tstep "
+                f"on the accumulator; got probe_tstep={self.probe_tstep!r}, "
+                f"tstep={tstep!r}"
+            )
+        return probe_tstep
+
     @timer_func
     def __call__(self, configs, wf, use_symm=None, tstep=None):
-        if self.delta_method == "diffusion" and (
-            tstep is None or not np.isfinite(tstep) or tstep <= 0
-        ):
-            raise ValueError(
-                "A positive finite tstep is required for delta_method='diffusion'"
-            )
+        probe_tstep = None
+        if self.delta_method == "diffusion":
+            probe_tstep = self._resolve_probe_tstep(tstep)
         do = boson_dmc_profile_enabled()
         if do:
             bdmc_profile_ensure_banner_once()
@@ -1262,12 +1285,12 @@ class ABCDMCMatrixAccumulator:
                 te = time.perf_counter()
             if self.diffusion_probe == "richardson":
                 self._accumulate_diffusion_probe_richardson(
-                    delta, configs, wf, tstep, symm_mask
+                    delta, configs, wf, probe_tstep, symm_mask
                 )
                 probe_prof_key = "delta_diffusion_probe_richardson"
             else:
                 self._accumulate_diffusion_probe(
-                    delta, configs, wf, tstep, symm_mask
+                    delta, configs, wf, probe_tstep, symm_mask
                 )
                 probe_prof_key = "delta_diffusion_probe"
             if do:

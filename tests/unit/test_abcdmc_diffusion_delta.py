@@ -79,12 +79,13 @@ class _FakeProductWF:
         return None
 
 
-def _fake_accumulator(delta_method, diffusion_probe="direct"):
+def _fake_accumulator(delta_method, diffusion_probe="direct", probe_tstep=None):
     acc = bosonaccumulators.ABCDMCMatrixAccumulator(
         mf_inputs={},
         system_params={"dtype": float},
         delta_method=delta_method,
         diffusion_probe=diffusion_probe,
+        probe_tstep=probe_tstep,
         use_symm=False,
     )
     acc._boson_wf_type = _FakeBosonWF
@@ -170,19 +171,62 @@ def test_delta_method_validation_and_ibp_smoke():
         _fake_accumulator("unknown")
     with pytest.raises(ValueError, match="diffusion_probe"):
         _fake_accumulator("diffusion", diffusion_probe="unknown")
+    with pytest.raises(ValueError, match="probe_tstep"):
+        _fake_accumulator("diffusion", probe_tstep=-0.1)
 
     configs = OpenConfigs(np.zeros((2, 1, 3)))
     wf = _FakeProductWF()
     wf.recompute(configs)
 
     diffusion = _fake_accumulator("diffusion")
-    with pytest.raises(ValueError, match="positive finite tstep"):
+    with pytest.raises(ValueError, match="positive finite probe timestep"):
         diffusion(configs, wf)
+
+    # probe_tstep alone is enough; the DMC tstep may be omitted.
+    with_probe = _fake_accumulator("diffusion", probe_tstep=0.05)
+    result_probe = with_probe(configs, wf)
+    assert result_probe["delta"].shape == (2, 2, 2)
 
     ibp = _fake_accumulator("ibp")
     result = ibp(configs, wf)
     assert result["delta"].shape == (2, 2, 2)
     assert result["ovlp"].shape == (2, 2, 2)
+
+
+def test_richardson_probe_uses_probe_tstep_not_dmc_tstep(monkeypatch):
+    nconf = 2
+    dmc_tstep = 0.1
+    probe_tstep = 0.02
+    configs = OpenConfigs(np.zeros((nconf, 1, 3)))
+    wf = _FakeProductWF()
+    wf.recompute(configs)
+
+    z = np.zeros_like(configs.configs)
+    z[:, 0, 0] = 1.0
+    seen_scales = []
+
+    def fixed_normal(*, loc=0.0, scale=1.0, size=None):
+        seen_scales.append(scale)
+        assert size == configs.configs.shape
+        return z.copy()
+
+    monkeypatch.setattr(bosonaccumulators.np.random, "normal", fixed_normal)
+
+    acc = _fake_accumulator(
+        "diffusion",
+        diffusion_probe="richardson",
+        probe_tstep=probe_tstep,
+    )
+    result = acc(configs, wf, tstep=dmc_tstep)
+
+    # Richardson draws unit-variance z; widths come from probe_tstep only.
+    assert seen_scales == [pytest.approx(1.0)]
+    probe_boson = acc._probe_wf.wf_factors[0]
+    last_displacement = -np.sqrt(0.5 * probe_tstep) * z
+    assert np.allclose(probe_boson._configs, last_displacement)
+    # Constant-gradient model: D cancels, delta is G only.
+    expected_delta = np.array([[3.0, 12.0], [6.0, 24.0]])
+    assert np.allclose(result["delta"], expected_delta[None, :, :])
 
 
 def test_real_boson_wf_diffusion_smoke(tmp_path):
