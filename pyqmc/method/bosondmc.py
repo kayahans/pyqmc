@@ -221,6 +221,7 @@ def dmc_propagate(
     accumulators=None,
     ekey=("energy", "total"),
     no_branching=False,
+    accumulate_every=1,
 ):
     """
     Propagate DMC without branching
@@ -232,8 +233,12 @@ def dmc_propagate(
     :parameter nsteps: number of DMC steps to take
     :parameter accumulators: A dictionary of functor objects that take in (coords,wf) and return a dictionary of quantities to be averaged. np.mean(quantity,axis=0) should give the average over configurations. If none, a default energy accumulator will be used.
     :parameter ekey: tuple of strings; energy is needed for DMC weights. Access total energy by accumulators[ekey[0]](configs, wf)[ekey[1]
+    :parameter accumulate_every: Collect non-energy accumulators every this many
+        steps (after steps ``accumulate_every``, ``2*accumulate_every``, ...).
+        Energy, weights, and acceptance are still evaluated every step. Default 1.
     :returns: (df,coords,weights)
-      df: A list of dictionaries nstep long that contains all results from the accumulators.
+      df: Block-averaged dictionary of accumulator results. Energy averages use
+      every step; other accumulators average only over collection steps.
 
       coords: The final coordinates from this calculation.
 
@@ -242,6 +247,11 @@ def dmc_propagate(
     """
     global _dmc_propagate_mpi_prof_noted
     assert accumulators is not None, "Need an energy accumulator for DMC"
+    accumulate_every = int(accumulate_every)
+    if accumulate_every < 1:
+        raise ValueError(
+            f"accumulate_every must be a positive integer, got {accumulate_every}"
+        )
     if _bosondmc_prof_enabled() and not _dmc_propagate_mpi_prof_noted:
         _dmc_propagate_mpi_prof_noted = True
         try:
@@ -255,13 +265,22 @@ def dmc_propagate(
             pass
     nconfig, nelec = configs.configs.shape[0:2]
     wf.recompute(configs)
-    
+
     energy_acc = accumulators[ekey[0]](configs, wf)
     eloc = energy_acc[ekey[1]].real
     v2 = get_V2(configs, wf, energy_acc)
     df = []
 
-    for _ in range(nsteps):
+    abcdmc_key = None
+    try:
+        _bk = _bacc_mod()
+        abcdmc_key = (
+            _bk.ABCDMC_ACC_KEY if _bk.ABCDMC_ACC_KEY in accumulators else None
+        )
+    except Exception:
+        abcdmc_key = None
+
+    for istep in range(nsteps):
         b = _bacc_mod() if _bosondmc_prof_enabled() else None
         if b is not None:
             t_step0 = time.perf_counter()
@@ -273,6 +292,13 @@ def dmc_propagate(
         if b is not None:
             t_inner = time.perf_counter()
 
+        # Collect after accumulate_every, 2*accumulate_every, ... and always on
+        # the final substep so a block still records optional data when
+        # accumulate_every does not divide nsteps.
+        collect_optional = (
+            ((istep + 1) % accumulate_every) == 0 or (istep + 1) == nsteps
+        )
+
         # if accumulators[ekey[0]].has_nonlocal_moves():
         #     for e in range(nelec):  # T-moves
         #         newepos, mask, probability, ecp_totweight = propose_tmoves(
@@ -282,7 +308,7 @@ def dmc_propagate(
         #         configs.move(e, newepos, accept)
         #         wf.updateinternals(e, newepos, configs, mask=accept)
         #         tmove_acceptance += accept / nelec
-        
+
         # wf.curr_config = copy.deepcopy(configs)
 
         for e in range(nelec):  # drift-diffusion
@@ -312,18 +338,10 @@ def dmc_propagate(
         if b is not None:
             t_inner = _bacc_mod().bdmc_prop_inner_mark("state_copy_eloc_v2", t_inner)
 
-        # When ABCDMC is present, run it first so it can stash kinetic intermediates
+        # When ABCDMC is collected, run it first so it can stash kinetic intermediates
         # (∇log Φ_B + jastrow grad/lap) for boson_kinetic inside the energy accumulator.
-        abcdmc_key = None
         abcdmc_dat = None
-        try:
-            _bk = _bacc_mod()
-            abcdmc_key = (
-                _bk.ABCDMC_ACC_KEY if _bk.ABCDMC_ACC_KEY in accumulators else None
-            )
-        except Exception:
-            abcdmc_key = None
-        if abcdmc_key is not None:
+        if collect_optional and abcdmc_key is not None:
             from pyqmc.observables import bosonenergy as _ben
 
             _ben.clear_boson_kinetic_cache(wf)
@@ -362,20 +380,26 @@ def dmc_propagate(
         if b is not None:
             t_inner = _bacc_mod().bdmc_prop_inner_mark("weight_update", t_inner)
         # print(wavg)
-        
+
         avg = {}
         t_accum_loop = time.perf_counter() if b is not None else None
-        for k, accumulator in accumulators.items():
-            if k == ekey[0]:
-                dat = energydat
-            elif abcdmc_key is not None and k == abcdmc_key:
-                dat = abcdmc_dat
-            else:
-                dat = accumulator(configs, wf)
-            for m, res in dat.items():
-                avg[k + m] = np.einsum("...i,i...->...", weights, res) / (
-                    nconfig * wavg
-                )
+        # Energy is always collected for weight control and block averaging.
+        for m, res in energydat.items():
+            avg[ekey[0] + m] = np.einsum("...i,i...->...", weights, res) / (
+                nconfig * wavg
+            )
+        if collect_optional:
+            for k, accumulator in accumulators.items():
+                if k == ekey[0]:
+                    continue
+                if abcdmc_key is not None and k == abcdmc_key:
+                    dat = abcdmc_dat
+                else:
+                    dat = accumulator(configs, wf)
+                for m, res in dat.items():
+                    avg[k + m] = np.einsum("...i,i...->...", weights, res) / (
+                        nconfig * wavg
+                    )
         if b is not None:
             _bacc_mod().bdmc_prop_inner_add(
                 "accumulators_avg_loop_excl_ABCDMC",
@@ -388,14 +412,19 @@ def dmc_propagate(
             b.bdmc_profile_add_prop(time.perf_counter() - t_step0 - t_abcdmc)
             b.bdmc_profile_end_step(accumulators)
         df.append(avg)
-    weight = np.asarray([d["weight"] for d in df])
-    avg_weight = weight / np.mean(weight)
-    df_ret = {
-        k: np.mean([d[k] * w for d, w in zip(df, avg_weight)], axis=0)
-        for k in df[0].keys()
-    }
 
-    df_ret["weight"] = np.mean(weight)
+    # Energy/weight/acceptance exist every step; optional keys only on collection steps.
+    all_keys = set().union(*(d.keys() for d in df))
+    df_ret = {}
+    for k in all_keys:
+        samples = [(d[k], d["weight"]) for d in df if k in d]
+        w = np.asarray([s[1] for s in samples], dtype=float)
+        avg_w = w / np.mean(w)
+        df_ret[k] = np.mean(
+            [s[0] * ww for s, ww in zip(samples, avg_w)], axis=0
+        )
+    df_ret["weight"] = float(np.mean([d["weight"] for d in df]))
+    df_ret["accumulate_every"] = accumulate_every
 
     return df_ret, configs, weights
 
@@ -702,6 +731,7 @@ def rundmc(
     stepoffset=None,
     nsteps=None,
     no_branching=False,
+    accumulate_every=1,
 ):
     """
     Run DMC
@@ -726,6 +756,9 @@ def rundmc(
     :parameter ekey: tuple of strings; energy is needed for DMC weights. Access total energy by accumulators[ekey[0]](configs, wf)[ekey[1]
     :parameter int branchcut_start: Used in computing weights. Recommended for "experts only".
     :parameter float feedback: Feedback strength for controlling normalization. Recommended for "experts only".
+    :parameter int accumulate_every: Collect non-energy accumulators every this many
+        substeps within each block. Energy is still evaluated every substep for
+        branching weights. Default 1 (collect everything every step).
     :returns: (df,coords,weights)
       df: A list of dictionaries nblocks long that contains all results from the accumulators.
 
@@ -865,6 +898,7 @@ def rundmc(
                 accumulators=accumulators,
                 ekey=ekey,
                 no_branching=no_branching,
+                accumulate_every=accumulate_every,
             )
         else:
             df_, configs, weights = dmc_propagate_parallel(
@@ -880,7 +914,8 @@ def rundmc(
                 nsteps=nsteps_per_block,
                 accumulators=accumulators,
                 ekey=ekey,
-                no_branching=no_branching,  
+                no_branching=no_branching,
+                accumulate_every=accumulate_every,
             )
 
         df_["e_trial"] = e_trial
@@ -890,6 +925,7 @@ def rundmc(
         df_["tstep"] = tstep
         df_["weight_std"] = np.std(weights)
         df_["nsteps_per_block"] = nsteps_per_block
+        df_["accumulate_every"] = accumulate_every
 
         configs, weights, branch_info = branch(configs, weights)
         df_.update(branch_info)
