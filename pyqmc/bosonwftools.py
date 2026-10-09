@@ -15,6 +15,7 @@ def generate_boson(
     optimize_zeros=True,    
     epsilon=1e-8,
     det_emax=None,
+    e_virt_max=None,
     use_symm=False,
     **kwargs,
 ):
@@ -26,7 +27,15 @@ def generate_boson(
     :returns: slater, to_opt
     """
     
-    wf = bosonslater.BosonWF(mol, mf, mc=mc, det_emax=det_emax, use_symm=use_symm, **kwargs)
+    wf = bosonslater.BosonWF(
+        mol,
+        mf,
+        mc=mc,
+        det_emax=det_emax,
+        e_virt_max=e_virt_max,
+        use_symm=use_symm,
+        **kwargs,
+    )
     # TODO: update here later
     to_opt = {}
     # to_opt["det_coeff"] = np.zeros_like(wf.parameters["det_coeff"], dtype=bool)
@@ -78,7 +87,15 @@ def generate_boson(
 
 
 def generate_boson_wf(
-    mol, mf, jastrow=generate_jastrow, jastrow_kws=None, slater_kws=None, mc = None, det_emax = None, use_symm = True
+    mol,
+    mf,
+    jastrow=generate_jastrow,
+    jastrow_kws=None,
+    slater_kws=None,
+    mc=None,
+    det_emax=None,
+    e_virt_max=None,
+    use_symm=True,
 ):
     """
     """
@@ -88,7 +105,15 @@ def generate_boson_wf(
     if slater_kws is None:
         slater_kws = {}
     if jastrow == None or jastrow == [None]:
-        wf, to_opt1 = generate_boson(mol, mf, mc=mc, det_emax=det_emax, use_symm=use_symm, **slater_kws)
+        wf, to_opt1 = generate_boson(
+            mol,
+            mf,
+            mc=mc,
+            det_emax=det_emax,
+            e_virt_max=e_virt_max,
+            use_symm=use_symm,
+            **slater_kws,
+        )
         to_opt = {"wf1" + k: v for k, v in to_opt1.items()}
     else:        
         if not isinstance(jastrow, list):
@@ -98,7 +123,15 @@ def generate_boson_wf(
         if len(jastrow_kws) == 2:
             jastrow.append(generate_jastrow3)
             jastrow_kws.append({})
-        wf1, to_opt1 = generate_boson(mol, mf, mc=mc, det_emax=det_emax, use_symm=use_symm, **slater_kws)
+        wf1, to_opt1 = generate_boson(
+            mol,
+            mf,
+            mc=mc,
+            det_emax=det_emax,
+            e_virt_max=e_virt_max,
+            use_symm=use_symm,
+            **slater_kws,
+        )
         to_opt = {"wf1" + k: v for k, v in to_opt1.items()}
         pack = [jast(mol, **kw) for jast, kw in zip(jastrow, jastrow_kws)]
         wfs = [p[0] for p in pack]

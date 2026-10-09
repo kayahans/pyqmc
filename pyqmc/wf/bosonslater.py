@@ -252,7 +252,18 @@ def _cas_string_occupations(ncas, nelec_cas, ncore, nstrings):
     return occ_cas
 
 
-def filter_determinants_from_ci(mc, mo_energies, det_emax, include_zeros=True, mol=None, mf=None, use_symm=False, energy_tol = 1e-3, print_report = True):
+def filter_determinants_from_ci(
+    mc,
+    mo_energies,
+    det_emax,
+    include_zeros=True,
+    mol=None,
+    mf=None,
+    use_symm=False,
+    energy_tol=1e-3,
+    print_report=True,
+    e_virt_max=None,
+):
     """
     Filter determinants from a CI object based on energy criteria before processing.
     include_zeros: Whether to include zeros in the filtering
@@ -262,6 +273,10 @@ def filter_determinants_from_ci(mc, mo_energies, det_emax, include_zeros=True, m
         mo_energies: MO energies from mean field calculation
         det_emax: Energy threshold for filtering (float, int, 'singles', 'doubles', or 'energy,criteria')
         include_zeros: Whether to include zeros in the filtering
+        e_virt_max: If set, reject any determinant that occupies an MO with
+            energy strictly above this ceiling (Hartree). Use ``0.0`` to drop
+            excitations into unbound (positive-energy) KS virtuals. The ground
+            determinant is still restored when ``include_zeros`` is True.
 
     Returns:
         list: Filtered determinants in format suitable for orbital_evaluator_from_pyscf
@@ -517,6 +532,20 @@ def filter_determinants_from_ci(mc, mo_energies, det_emax, include_zeros=True, m
         emax = float(np.max(total_energies))
         emin = float(np.min(total_energies))
 
+    n_before_virt = int(np.sum(mask))
+    if e_virt_max is not None:
+        # Drop any α/β string that occupies an MO above the continuum ceiling.
+        a_ok = np.max(mo_up[occ_a], axis=1) <= float(e_virt_max)
+        b_ok = np.max(mo_dn[occ_b], axis=1) <= float(e_virt_max)
+        virt_mask = a_ok[:, None] & b_ok[None, :]
+        mask = mask & virt_mask
+        if print_report:
+            print(
+                f"Virtual-energy ceiling e_virt_max={float(e_virt_max):.6f} Ha: "
+                f"removed {n_before_virt - int(np.sum(mask))} determinants "
+                f"occupying unbound MOs"
+            )
+
     if include_zeros:
         mask = mask | near_ground
     filtered_energies = total_energies[mask]
@@ -594,7 +623,8 @@ class BosonWF:
                  twist=None, 
                  determinants=None, 
                  eval_gto_precision=None, 
-                 det_emax = None, 
+                 det_emax = None,
+                 e_virt_max = None,
                  use_symm = True, 
                  target_dtype = None):
         """
@@ -642,7 +672,13 @@ class BosonWF:
         if mol.symmetry and det_emax is not None and mc is not None:
             # Filter determinants first, then pass them to orbital_evaluator_from_pyscf
             filtered_determinants, saved_filter = filter_determinants_from_ci(
-                mc, mf.mo_energy, det_emax, mol=mol, mf=mf, use_symm=use_symm
+                mc,
+                mf.mo_energy,
+                det_emax,
+                mol=mol,
+                mf=mf,
+                use_symm=use_symm,
+                e_virt_max=e_virt_max,
             )
             self.num_det = len(filtered_determinants)
 

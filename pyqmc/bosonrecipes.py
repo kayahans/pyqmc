@@ -23,6 +23,7 @@ def ABOPTIMIZE(
     jastrow_kws = {"ion_cusp":False, 'na':0},
     slater_kws:  list|None = None,
     det_emax: float|None=None,
+    e_virt_max: float|None=None,
     xc: str = 'LDA,VWN',
     use_symm = False,
     initial_guess_r = 10.0,
@@ -77,6 +78,7 @@ def ABOPTIMIZE(
         jastrow_kws=jastrow_kws,
         slater_kws=slater_kws,
         det_emax=det_emax,
+        e_virt_max=e_virt_max,
         opt_options=opt_options,
         xc=xc,
         use_symm=use_symm,
@@ -105,6 +107,7 @@ def ABVMC(
     accumulators: list|None = None,
     seed: int|None=None,
     det_emax: float|None=None,
+    e_virt_max: float|None=None,
     warmup_options = None,
     xc: str = 'LDA,VWN',
     use_symm = False,
@@ -141,6 +144,7 @@ def ABVMC(
         accumulators=accumulators,
         seed=seed,
         det_emax=det_emax,
+        e_virt_max=e_virt_max,
         xc=xc,
         use_symm=use_symm,
         initial_guess_r=initial_guess_r,
@@ -203,6 +207,7 @@ def ABDMC(
     accumulators: list|None = None,
     seed: int|None=None,
     det_emax: float|None=None,
+    e_virt_max: float|None=None,
     xc: str = 'LDA,VWN',
     use_symm = False,
     initial_guess_r = 15.0,
@@ -254,6 +259,7 @@ def ABDMC(
         accumulators=accumulators,
         seed=seed,
         det_emax=det_emax,
+        e_virt_max=e_virt_max,
         xc=xc,
         use_dft_density=use_dft_density,
         use_symm=use_symm,
@@ -599,6 +605,7 @@ def initialize_boson_qmc_objects(
     opt_wf=False,
     seed = None,
     det_emax = None,
+    e_virt_max = None,
     use_dft_density = False,
     initial_guess_r = 10.0,
     use_symm = False,
@@ -689,19 +696,42 @@ def initialize_boson_qmc_objects(
     # Use when testing HF
     if load_parameters is False:
         wf, to_opt = bosonwftools.generate_boson_wf(
-            mol, mf, mc=mc, jastrow = None, jastrow_kws=jastrow_kws, slater_kws=slater_kws, det_emax=det_emax, use_symm=use_symm
+            mol,
+            mf,
+            mc=mc,
+            jastrow=None,
+            jastrow_kws=jastrow_kws,
+            slater_kws=slater_kws,
+            det_emax=det_emax,
+            e_virt_max=e_virt_max,
+            use_symm=use_symm,
         )
         num_det = wf.num_det
         wf_dtype = wf.dtype
     else:
         if njastrow == 2:
             wf, to_opt = bosonwftools.generate_boson_wf(
-                mol, mf, mc=mc, jastrow_kws=jastrow_kws, slater_kws=slater_kws, det_emax=det_emax, use_symm=use_symm
+                mol,
+                mf,
+                mc=mc,
+                jastrow_kws=jastrow_kws,
+                slater_kws=slater_kws,
+                det_emax=det_emax,
+                e_virt_max=e_virt_max,
+                use_symm=use_symm,
             )
         elif njastrow == 3:
             from pyqmc.wftools import generate_jastrow, generate_jastrow3
             wf, to_opt = bosonwftools.generate_boson_wf(
-                mol, mf, mc=mc, jastrow = [generate_jastrow, generate_jastrow3], jastrow_kws=jastrow_kws, slater_kws=slater_kws, det_emax=det_emax, use_symm=use_symm
+                mol,
+                mf,
+                mc=mc,
+                jastrow=[generate_jastrow, generate_jastrow3],
+                jastrow_kws=jastrow_kws,
+                slater_kws=slater_kws,
+                det_emax=det_emax,
+                e_virt_max=e_virt_max,
+                use_symm=use_symm,
             )
         if load_parameters is not None:
             print('Loading WF parameters from', load_parameters)

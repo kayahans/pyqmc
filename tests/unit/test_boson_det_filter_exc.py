@@ -138,3 +138,44 @@ def test_filter_determinants_accepts_flat_ci():
     for (w1, o1), (w2, o2) in zip(dets_flat, dets_2d):
         assert abs(float(w1) - float(w2)) < 1e-12
         assert o1 == o2
+
+
+def test_e_virt_max_rejects_unbound_channel_only():
+    """Ar-like case: β virtual unbound, α virtual bound; e_virt_max drops only β."""
+    from pyscf import gto, scf, mcscf
+    from pyqmc.wf.bosonslater import filter_determinants_from_ci
+
+    mol = gto.M(atom="Li 0 0 0; H 0 0 1.6", basis="sto-3g", verbose=0)
+    mf = scf.RHF(mol).run()
+    mc = mcscf.CASCI(mf, 2, 2)
+    mc.kernel()
+
+    mo = np.asarray(mf.mo_energy, dtype=float).copy()
+    nocc = mol.nelec[0]
+    assert nocc < len(mo)
+    # Bound α virtual, unbound β virtual at the same index (Ar 3d pattern).
+    mo_up = mo.copy()
+    mo_dn = mo.copy()
+    mo_up[nocc] = -0.003
+    mo_dn[nocc] = 0.033
+
+    dets_all, _ = filter_determinants_from_ci(
+        mc, [mo_up, mo_dn], "singles", print_report=False, use_symm=False
+    )
+    dets_bound, _ = filter_determinants_from_ci(
+        mc,
+        [mo_up, mo_dn],
+        "singles",
+        print_report=False,
+        use_symm=False,
+        e_virt_max=0.0,
+    )
+
+    assert len(dets_bound) < len(dets_all)
+    # No kept determinant may occupy the unbound β virtual.
+    for _, (a_occ, b_occ) in dets_bound:
+        assert all(mo_up[i] <= 0.0 for i in a_occ)
+        assert all(mo_dn[i] <= 0.0 for i in b_occ)
+        assert nocc not in b_occ
+    # At least one kept determinant still uses the bound α virtual.
+    assert any(nocc in a_occ for _, (a_occ, _) in dets_bound)
